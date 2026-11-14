@@ -1,0 +1,72 @@
+"""Gino's long-term storage: one SQLite file holds his whole life."""
+import json
+import sqlite3
+import threading
+import time
+from typing import Any
+
+from . import config
+
+_lock = threading.RLock()
+_conn: sqlite3.Connection | None = None
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS memories (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, text TEXT NOT NULL,
+  importance INTEGER NOT NULL DEFAULT 2 CHECK (importance BETWEEN 1 AND 5), tags TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS journal (id INTEGER PRIMARY KEY, ts REAL NOT NULL, text TEXT NOT NULL, emotion TEXT);
+CREATE TABLE IF NOT EXISTS goals (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, title TEXT NOT NULL, why TEXT NOT NULL DEFAULT '',
+  steps TEXT NOT NULL DEFAULT '', progress TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','done','dropped')), updated REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS habitat (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, name TEXT NOT NULL, emoji TEXT NOT NULL,
+  x INTEGER NOT NULL, y INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS creations (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL,
+  filename TEXT NOT NULL, note TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY, ts REAL NOT NULL, sender TEXT NOT NULL, text TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, ts REAL NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS spend (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, day TEXT NOT NULL, purpose TEXT NOT NULL, model TEXT NOT NULL,
+  input_tokens INTEGER, output_tokens INTEGER, cache_read INTEGER, cache_write INTEGER, usd REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS spend_day ON spend(day);
+CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
+"""
+
+
+def conn() -> sqlite3.Connection:
+    global _conn
+    with _lock:
+        if _conn is None:
+            _conn = sqlite3.connect(config.DB_PATH, check_same_thread=False, isolation_level=None)
+            _conn.row_factory = sqlite3.Row
+            _conn.execute("PRAGMA journal_mode=WAL")
+            _conn.executescript(SCHEMA)
+        return _conn
+
+
+def q(sql: str, args: tuple = ()) -> list[dict]:
+    with _lock:
+        return [dict(r) for r in conn().execute(sql, args).fetchall()]
+
+
+def x(sql: str, args: tuple = ()) -> int:
+    with _lock:
+        cur = conn().execute(sql, args)
+        return cur.lastrowid or 0
+
+
+def get(key: str, default: Any = None) -> Any:
+    rows = q("SELECT value FROM kv WHERE key=?", (key,))
+    return json.loads(rows[0]["value"]) if rows else default
+
+
+def put(key: str, value: Any) -> None:
+    x("INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      (key, json.dumps(value)))
+
+
+def event(kind: str, text: str) -> None:
+    x("INSERT INTO events(ts,kind,text) VALUES(?,?,?)", (time.time(), kind, text[:2000]))
