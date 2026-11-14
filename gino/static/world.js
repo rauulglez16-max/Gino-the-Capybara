@@ -5,7 +5,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { U, env, B, mat, geos, part, rng, windy, buildItem, buildGino } from './kit.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { U, env, B, mat, geos, part, rng, windy, buildItem, buildGino, waterMat as sharedWater, ripples } from './kit.js';
 
 const CELL = 2, GW = 16, GH = 10, WATER_Y = -0.3;
 const LAKE = { x: 7, z: -29, r: 13 };
@@ -27,9 +29,9 @@ export function groundY(x, z) {
 }
 
 const SEASON = {
-  spring: { grass: [0.29, 0.55, 0.42], blade: ['#5fae4a', '#79c25c'], flowers: 520, leaves: null },
-  summer: { grass: [0.28, 0.55, 0.39], blade: ['#4f9a3f', '#63ad4c'], flowers: 320, leaves: null },
-  autumn: { grass: [0.2, 0.45, 0.4], blade: ['#8f9a3f', '#b0933d', '#6f9440'], flowers: 90, leaves: ['#e08a2e', '#d4552f', '#e6b93a'] },
+  spring: { grass: [0.29, 0.58, 0.37], blade: ['#5fae4a', '#79c25c'], flowers: 520, leaves: null },
+  summer: { grass: [0.285, 0.58, 0.34], blade: ['#4f9a3f', '#63ad4c'], flowers: 320, leaves: null },
+  autumn: { grass: [0.21, 0.5, 0.35], blade: ['#8f9a3f', '#b0933d', '#6f9440'], flowers: 90, leaves: ['#e08a2e', '#d4552f', '#e6b93a'] },
   winter: { grass: [0.55, 0.12, 0.9], blade: ['#d9cfa8', '#c9c39c'], flowers: 0, leaves: null },
 };
 const EMOJI = { happy: '😊', joyful: '😄', excited: '🤩', content: '😌', proud: '😎', peaceful: '😌', loved: '🥰', playful: '😜', curious: '🤔', grateful: '🙏',
@@ -45,7 +47,7 @@ export function createWorld(container, tooltip, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.5 : 2));
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
+  renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 0.92;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -61,15 +63,28 @@ export function createWorld(container, tooltip, opts = {}) {
   controls.addEventListener('start', () => { controls.autoRotate = false; idleAt = Infinity; intro = 1; focus = null; });
   controls.addEventListener('end', () => { idleAt = performance.now() + 25000; });
 
-  // post-processing: soft glow on lights, fire, sun and moon
-  let composer = null, bloom = null;
+  // post-processing: ambient shading in creases, soft glow on lights, then a gentle colour grade
+  let composer = null, bloom = null, gtao = null;
+  const Grade = { uniforms: { tDiffuse: { value: null }, warmth: { value: 0.5 }, vig: { value: 0.32 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float warmth; uniform float vig; varying vec2 vUv;
+      void main(){ vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+        c.rgb = mix(vec3(l), c.rgb, 1.14);                                   // a little more colour
+        c.rgb = (c.rgb - 0.5) * 1.06 + 0.5;                                  // a little more contrast
+        c.rgb *= mix(vec3(1.0), vec3(1.035, 1.0, 0.955), warmth);            // warm highlights
+        c.rgb += (1.0 - l) * vec3(-0.006, 0.0, 0.016);                       // cool shadows
+        vec2 d = vUv - 0.5; c.rgb *= 1.0 - vig * smoothstep(0.25, 0.95, dot(d, d) * 2.2);
+        gl_FragColor = vec4(clamp(c.rgb, 0.0, 1.0), c.a); }` };
   try {
     const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: small ? 2 : 4 });
     composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
+    if (!small) { gtao = new GTAOPass(scene, camera, 4, 4); gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.4, thickness: 1.2, scale: 1.25, samples: 10 }); gtao.blendIntensity = 0.85; composer.addPass(gtao);
+      const aoRender = gtao.render.bind(gtao), hidden = [];   // sprites and particles must not cast ambient shade
+      gtao.render = (...a) => { hidden.length = 0; scene.traverseVisible(o => { if (o.isSprite || o.isPoints || o.isLineSegments || o.userData.puff || o.userData.noAO) hidden.push(o); }); hidden.forEach(o => o.visible = false); aoRender(...a); hidden.forEach(o => o.visible = true); }; }
     bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.7, 1.0);
-    composer.addPass(bloom); composer.addPass(new OutputPass());
-  } catch (e) { console.warn('Bloom unavailable', e); composer = null; }
+    composer.addPass(bloom); composer.addPass(new OutputPass()); composer.addPass(new ShaderPass(Grade));
+  } catch (e) { console.warn('Post-processing unavailable', e); composer = null; }
 
   // ---------------------------------------------------------------- sky
   const skyU = { top: { value: C('#3f8fd8') }, horizon: { value: C('#bfe3f5') }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: C('#fff2c0') }, glow: { value: 1 } };
@@ -83,6 +98,13 @@ export function createWorld(container, tooltip, opts = {}) {
         gl_FragColor = vec4(col, 1.0); }`,
   }));
   sky.renderOrder = -10; scene.add(sky);
+  // the same sky lights every surface (soft reflections, coloured shade)
+  const pmrem = new THREE.PMREMGenerator(renderer), envScene = new THREE.Scene(); let envRT = null, envAt = -99, envKey = '';
+  envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50, 24, 12), sky.material));
+  function refreshEnv(t, key) {
+    if (key === envKey || t - envAt < 1.5) return;
+    envKey = key; envAt = t; const old = envRT; envRT = pmrem.fromScene(envScene, 0.03, 0.1, 100); scene.environment = envRT.texture; old?.dispose();
+  }
   const sunBall = new THREE.Mesh(geos.smooth, new THREE.MeshBasicMaterial({ color: C('#fff2b0').multiplyScalar(3), fog: false })); sunBall.scale.setScalar(26); scene.add(sunBall);
   const moon = new THREE.Mesh(geos.smooth, new THREE.MeshBasicMaterial({ color: C('#eef1ff').multiplyScalar(1.6), fog: false })); moon.scale.setScalar(20); scene.add(moon);
   const r0 = rng(5);
@@ -93,28 +115,31 @@ export function createWorld(container, tooltip, opts = {}) {
 
   const hemi = new THREE.HemisphereLight('#dff3ff', '#7fae62', 1.0); scene.add(hemi);
   const sun = new THREE.DirectionalLight('#fff3d6', 2.4);
-  sun.castShadow = true; sun.shadow.mapSize.set(small ? 1024 : 2048, small ? 1024 : 2048);
-  Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 26, bottom: -26, near: 1, far: 160 });
-  sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.05; sun.shadow.radius = 3;
+  sun.castShadow = true; sun.shadow.mapSize.set(small ? 1024 : 4096, small ? 1024 : 4096);
+  Object.assign(sun.shadow.camera, { left: -27, right: 27, top: 24, bottom: -24, near: 1, far: 170 });
+  sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.04; sun.shadow.radius = 4;
   scene.add(sun, sun.target);
 
   // ---------------------------------------------------------------- terrain
-  const tg = new THREE.PlaneGeometry(420, 420, 168, 168); tg.rotateX(-Math.PI / 2);
-  const pos = tg.attributes.position, cols = new Float32Array(pos.count * 3), c = new THREE.Color(), sand = C('#dccb9b'), rockC = C(env.season === 'winter' ? '#e9eef0' : '#8f9a86');
+  const sand = C('#dccb9b'), rockC = C(env.season === 'winter' ? '#e9eef0' : '#8f9a86'), c = new THREE.Color();
+  function groundColor(x, z, y, out) {
+    const n = Math.sin(x * 0.13 + Math.sin(z * 0.09) * 2) * Math.cos(z * 0.11 + Math.sin(x * 0.07)), m = Math.sin(x * 0.6 + z * 0.4) * Math.sin(z * 0.7 - x * 0.3);
+    out.setHSL(S.grass[0] + n * 0.018 - Math.min(0.05, Math.max(0, y) * 0.006), S.grass[1] + n * 0.05, S.grass[2] + n * 0.035 + m * 0.012 - Math.min(0.1, Math.max(0, y) * 0.008));
+    return out.lerp(sand, smooth(0.02, 0.5, lakeK(x, z))).lerp(rockC, smooth(11, 17, y));
+  }
+  const tg = new THREE.PlaneGeometry(440, 440, 220, 220); tg.rotateX(-Math.PI / 2);
+  const pos = tg.attributes.position, cols = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), z = pos.getZ(i), y = groundY(x, z);
-    pos.setY(i, y);
-    c.setHSL(S.grass[0] - Math.min(0.05, Math.max(0, y) * 0.006), S.grass[1], S.grass[2] + (r0() - 0.5) * 0.05 - Math.min(0.1, Math.max(0, y) * 0.008));
-    c.lerp(sand, smooth(0.02, 0.5, lakeK(x, z))).lerp(rockC, smooth(11, 17, y));
-    cols.set([c.r, c.g, c.b], i * 3);
+    pos.setY(i, y); groundColor(x, z, y, c); cols.set([c.r, c.g, c.b], i * 3);
   }
   tg.setAttribute('color', new THREE.BufferAttribute(cols, 3)); tg.computeVertexNormals();
-  const ground = new THREE.Mesh(tg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+  const ground = new THREE.Mesh(tg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, envMapIntensity: 0.6 }));
   ground.receiveShadow = true; scene.add(ground);
 
   // lake
-  const waterMat = windy(new THREE.MeshStandardMaterial({ color: '#3f9ccf', transparent: true, opacity: 0.86, roughness: 0.12, metalness: 0.25, flatShading: true }), 'water', 0.07);
-  const lake = new THREE.Mesh(new THREE.PlaneGeometry(40, 32, 50, 40), waterMat); lake.rotation.x = -Math.PI / 2; lake.position.set(LAKE.x, WATER_Y, LAKE.z); lake.receiveShadow = true; scene.add(lake);
+  const waterMat = sharedWater(), rip = ripples();
+  const lake = new THREE.Mesh(new THREE.PlaneGeometry(40, 32, 1, 1), waterMat); lake.rotation.x = -Math.PI / 2; lake.position.set(LAKE.x, WATER_Y, LAKE.z); lake.receiveShadow = true; scene.add(lake);
   const dock = new THREE.Group();
   for (let i = 0; i < 8; i++) { part(dock, 'box', '#a87645', [1.6, 0.08, 0.46], [0, 0.14, i * 0.52], [0, (r0() - 0.5) * 0.06, 0]); if (i % 3 === 1) for (const x of [-0.75, 0.75]) part(dock, 'cyl', '#7a5230', [0.14, 1.8, 0.14], [x, -0.4, i * 0.52]); }
   dock.position.set(LAKE.x - 5, WATER_Y, LAKE.z + 8.2); scene.add(dock);
@@ -125,8 +150,8 @@ export function createWorld(container, tooltip, opts = {}) {
 
   // mountains on the horizon
   const mcol = [C('#6f8a8f'), C('#8fa3a5'), C('#f4f8fb')];
-  for (let i = 0; i < 16; i++) {
-    const a = i / 16 * 6.28 + r0() * 0.3, d = 150 + r0() * 40, h = 38 + r0() * 34, w = 60 + r0() * 40;
+  for (let i = 0; i < 34; i++) {
+    const far = i >= 16, a = i / (far ? 18 : 16) * 6.28 + r0() * 0.3, d = (far ? 215 : 150) + r0() * 40, h = (far ? 60 : 38) + r0() * 34, w = (far ? 90 : 60) + r0() * 40;
     const g = new THREE.ConeGeometry(w / 2, h, 7, 4); const p = g.attributes.position, mc = new Float32Array(p.count * 3);
     for (let j = 0; j < p.count; j++) { const y = p.getY(j) / h + 0.5; if (y < 0.95 && y > 0.05) { p.setX(j, p.getX(j) + (r0() - 0.5) * w * 0.14); p.setZ(j, p.getZ(j) + (r0() - 0.5) * w * 0.14); } const cc = y > (env.season === 'winter' ? 0.3 : 0.62) ? mcol[2] : y > 0.3 ? mcol[1] : mcol[0]; mc.set([cc.r, cc.g, cc.b], j * 3); }
     g.setAttribute('color', new THREE.BufferAttribute(mc, 3)); g.computeVertexNormals();
@@ -134,19 +159,37 @@ export function createWorld(container, tooltip, opts = {}) {
   }
 
   // grass, wildflowers, forest
-  const N = Math.round((small ? 7000 : 16000) * (env.season === 'winter' ? 0.3 : 1));
-  const bladeGeo = new THREE.ConeGeometry(0.045, 0.34, 3); bladeGeo.translate(0, 0.17, 0);
-  const grass = new THREE.InstancedMesh(bladeGeo, windy(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, flatShading: true }), 'sway', 0.6), N);
-  grass.receiveShadow = true; let n = 0;
-  for (let i = 0; i < N * 3 && n < N; i++) {
-    const near = i % 3 !== 0, x = (r0() - 0.5) * (near ? 46 : 110), z = (r0() - 0.5) * (near ? 34 : 110), y = groundY(x, z);
-    if (lakeK(x, z) > 0.05 || y > 9) continue;
-    dummy.position.set(x, y - 0.03, z); dummy.rotation.set(0, r0() * 6, 0); const s = 0.5 + r0() * 0.9; dummy.scale.set(s, s * (0.7 + r0() * 0.8), s); dummy.updateMatrix();
-    grass.setMatrixAt(n, dummy.matrix); grass.setColorAt(n, c.set(S.blade[Math.floor(r0() * S.blade.length)]).offsetHSL(0, 0, 0.04 + (r0() - 0.5) * 0.08)); n++;
+  let grassShare = 1;
+  const N = Math.round((small ? 18000 : 60000) * (env.season === 'winter' ? 0.25 : 1));
+  const bladeGeo = new THREE.PlaneGeometry(0.11, 0.62, 1, 4); bladeGeo.translate(0, 0.31, 0);
+  { const p = bladeGeo.attributes.position, nrm = bladeGeo.attributes.normal, bc = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { const t = p.getY(i) / 0.62; p.setX(i, p.getX(i) * (1 - t * 0.88)); p.setZ(i, t * t * 0.2); nrm.setXYZ(i, 0, 1, 0.25 - t * 0.2); const k = 0.5 + t * 0.62; bc.set([k, k, k], i * 3); }
+    bladeGeo.setAttribute('color', new THREE.BufferAttribute(bc, 3)); }
+  const grass = new THREE.InstancedMesh(bladeGeo, windy(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, vertexColors: true, side: THREE.DoubleSide, envMapIntensity: 0.5 }), 'sway', 0.3), N);
+  grass.receiveShadow = true; grass.frustumCulled = false;
+  const blades = new Float32Array(N * 5), bladeCol = new Float32Array(N * 3), tint = new THREE.Color(); let nb = 0;
+  for (let i = 0; i < N * 3 && nb < N; i++) {
+    const near = i % 4 !== 0, x = (r0() - 0.5) * (near ? 54 : 130), z = (r0() - 0.5) * (near ? 42 : 130), y = groundY(x, z);
+    if (lakeK(x, z) > 0.04 || y > 9) continue;
+    const clump = 0.55 + 0.45 * Math.sin(x * 0.9 + Math.sin(z * 0.7) * 2) * Math.sin(z * 0.8);   // tufts and thinner patches
+    if (r0() > 0.35 + clump * 0.65) continue;
+    blades.set([x, y, z, r0() * 6.28, (0.55 + r0() * 0.8) * (0.8 + clump * 0.5)], nb * 5);
+    groundColor(x, z, y, c).lerp(tint.set(S.blade[Math.floor(r0() * S.blade.length)]), 0.35).multiplyScalar(0.98 + r0() * 0.2); bladeCol.set([c.r, c.g, c.b], nb * 3); nb++;
   }
-  grass.count = n; grass.instanceColor.needsUpdate = true; scene.add(grass);
+  scene.add(grass);
+  function layGrass(clear) {   // skip blades where Gino has put something
+    let k = 0;
+    for (let i = 0; i < nb; i++) {
+      const x = blades[i * 5], z = blades[i * 5 + 2]; let ok = true;
+      for (const [cx, cz, cr] of clear) if ((x - cx) * (x - cx) + (z - cz) * (z - cz) < cr * cr) { ok = false; break; }
+      if (!ok) continue;
+      const sc = blades[i * 5 + 4]; dummy.position.set(x, blades[i * 5 + 1] - 0.02, z); dummy.rotation.set(0, blades[i * 5 + 3], 0); dummy.scale.set(sc, sc, sc); dummy.updateMatrix();
+      grass.setMatrixAt(k, dummy.matrix); grass.setColorAt(k, c.fromArray(bladeCol, i * 3)); k++;
+    }
+    grass.count = Math.round(k * grassShare); grass.userData.full = k; grass.instanceMatrix.needsUpdate = true; if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
+  }
   if (S.flowers) {
-    const fl = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.11, 0).translate(0, 0.42, 0), windy(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8, flatShading: true }), 'sway', 0.35), S.flowers);
+    const fl = new THREE.InstancedMesh(new THREE.SphereGeometry(0.1, 8, 6).scale(1, 0.7, 1).translate(0, 0.5, 0), windy(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), 'sway', 0.3), S.flowers);
     const fc = ['#f27ca0', '#f6c833', '#ffffff', '#b78cf0', '#f2603d', '#7ab8f5']; let k = 0;
     for (let i = 0; i < S.flowers * 3 && k < S.flowers; i++) { const x = (r0() - 0.5) * 90, z = (r0() - 0.5) * 80; if (lakeK(x, z) > 0.05 || groundY(x, z) > 8) continue; dummy.position.set(x, groundY(x, z), z); dummy.rotation.set(0, 0, 0); dummy.scale.setScalar(0.7 + r0() * 0.8); dummy.updateMatrix(); fl.setMatrixAt(k, dummy.matrix); fl.setColorAt(k, c.set(fc[Math.floor(r0() * fc.length)])); k++; }
     fl.count = k; fl.instanceColor.needsUpdate = true; scene.add(fl);
@@ -164,10 +207,10 @@ export function createWorld(container, tooltip, opts = {}) {
   }
 
   // clouds
-  const clouds = [], cloudMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, flatShading: true, transparent: true, opacity: 0.95 });
+  const clouds = [], cloudMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, vertexColors: true, transparent: true, opacity: 0.95, envMapIntensity: 1.3 });
   for (let i = 0; i < 22; i++) {
     const g = new THREE.Group();
-    for (let j = 0; j < 5; j++) { const p = part(g, 'sphere', cloudMat, [6 + r0() * 6, 3 + r0() * 2.5, 5 + r0() * 3], [j * 3.6 - 7, r0() * 1.5, r0() * 3], [r0(), r0(), 0]); p.castShadow = false; p.receiveShadow = false; }
+    for (let j = 0; j < 7; j++) { const e = 1 - Math.abs(j - 3) / 4.5; const p = part(g, 'puff', cloudMat, [(6 + r0() * 5) * (0.6 + e * 0.6), (3.2 + r0() * 2.5) * (0.5 + e * 0.8), 5 + r0() * 3], [j * 3.1 - 9, e * 1.6 + r0(), (r0() - 0.5) * 4], [0, r0() * 6, 0]); p.castShadow = false; p.receiveShadow = false; }
     g.position.set((r0() - 0.5) * 380, 42 + r0() * 22, (r0() - 0.5) * 380); g.scale.setScalar(0.8 + r0() * 1.4); scene.add(g); clouds.push(g);
   }
 
@@ -246,6 +289,9 @@ export function createWorld(container, tooltip, opts = {}) {
     }
     for (const [id, o] of itemObjs) if (!seen.has(id)) { itemsGroup.remove(o); dispose(o); itemObjs.delete(id); }
     ponds = [...itemObjs.values()].filter(o => o.userData.kind === 'pond');
+    const CLEAR = { pond: 2.3, fountain: 1.4, garden: 1.3, house: 1.6, picnic: 1.3, path: 1.2, bed: 1.2, tent: 1.5, well: 0.9, windmill: 0.9, pumpkins: 1.0, campfire: 0.9 };
+    const gsig = s.habitat.map(i => [i.id, i.x, i.y, i.kind, i.size].join()).join(';');
+    if (gsig !== grass.userData.sig) { grass.userData.sig = gsig; layGrass([...itemObjs.values()].map(o => [o.position.x, o.position.z, (CLEAR[o.userData.kind] || 0.65) * (o.userData.grow || o.scale.x || 1)])); }
     hangArt();
     target.set(cellX(s.pos[0]) + 1.0, 0, cellZ(s.pos[1]) + 1.0);
     const p = ponds.find(o => Math.hypot(o.position.x - cellX(s.pos[0]), o.position.z - cellZ(s.pos[1])) < 0.1);
@@ -269,14 +315,16 @@ export function createWorld(container, tooltip, opts = {}) {
     scene.fog.color.copy(skyU.horizon.value); scene.fog.near = THREE.MathUtils.lerp(60, 8, W.fog); scene.fog.far = THREE.MathUtils.lerp(300, 70, W.fog);
     const az = (hour - 12) / 12 * Math.PI, sd = new THREE.Vector3(Math.sin(az) * 0.8, el, -0.45 + Math.cos(az) * 0.1).normalize();
     const lightDir = el > -0.05 ? sd : sd.clone().multiplyScalar(-1).setY(Math.max(0.35, -el));  // moonlight at night
-    sun.position.copy(lightDir).multiplyScalar(80); if (sun.position.y < 12) sun.position.y = 12;
+    sun.target.position.copy(controls.target).setY(0); sun.position.copy(lightDir).multiplyScalar(80); if (sun.position.y < 14) sun.position.y = 14; sun.position.add(sun.target.position);
     skyU.sunDir.value.copy(sd); skyU.sunCol.value.copy(K.sunDay).lerp(K.warm, glow); skyU.glow.value = (1 - dull) * smooth(-0.2, 0.05, el);
     sunBall.position.copy(sd).multiplyScalar(620); sunBall.visible = dull < 0.8; moon.position.copy(sd).multiplyScalar(-600).setY(Math.max(-el, -0.2) * 520 + 60);
-    sun.intensity = (0.5 + day * 2.1) * (1 - dull * 0.55); sun.color.copy(K.moonL).lerp(K.sunDay, day).lerp(K.sunLow, glow * 0.7);
-    hemi.intensity = 0.5 + day * 0.55 + dull * 0.15 * day; hemi.color.copy(K.hemiN).lerp(K.hemiD, day);
+    sun.intensity = (0.32 + day * 2.7) * (1 - dull * 0.6); sun.color.copy(K.moonL).lerp(K.sunDay, day).lerp(K.sunLow, glow * 0.7);
+    hemi.intensity = 0.42 - day * 0.24 + dull * 0.1 * day; hemi.color.copy(K.hemiN).lerp(K.hemiD, day); scene.environmentIntensity = 0.5 + day * 0.28;
+    refreshEnv(U.time.value, `${Math.round(hour * 6)}|${Math.round(W.cloud * 8)}|${Math.round(W.fog * 4)}`);
     stars.material.opacity = (1 - day) * (1 - dull); moon.material.opacity = 1;
     cloudMat.color.copy(K.nightCloud).lerp(K.white, day).lerp(K.stormCloud, dull * 0.75).lerp(K.warm, glow * 0.3);
-    waterMat.color.copy(tmp.set('#16305a')).lerp(tmp2.set('#3f9ccf'), day).lerp(K.grey, dull * 0.4);
+    waterMat.color.copy(tmp.set('#0f2444')).lerp(tmp2.set('#2a86b5'), day).lerp(K.grey, dull * 0.35); rip.offset.set(U.time.value * 0.012, U.time.value * 0.02);
+    Grade.uniforms.warmth.value = 0.35 + glow * 0.65; if (composer) composer.passes[composer.passes.length - 1].uniforms.warmth.value = Grade.uniforms.warmth.value;
     if (bloom) bloom.strength = 0.28 + (1 - day) * 0.5;
     return day;
   }
@@ -284,9 +332,15 @@ export function createWorld(container, tooltip, opts = {}) {
   // ---------------------------------------------------------------- frame loop
   const timer = new THREE.Timer(); timer.connect(document);
   const v3 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-  let snapshot = null;
+  let snapshot = null, quality = small ? 'low' : 'high', slow = 0, frames = 0;
+  function setQuality(q) {
+    quality = q; const hi = q === 'high';
+    if (gtao) gtao.enabled = hi; renderer.setPixelRatio(Math.min(devicePixelRatio, hi ? 2 : 1)); grassShare = hi ? 1 : 0.45; grass.count = Math.round((grass.userData.full || 0) * grassShare);
+    sun.shadow.mapSize.set(hi ? 4096 : 1024, hi ? 4096 : 1024); sun.shadow.map?.dispose(); sun.shadow.map = null; resize(); opts.onQuality?.(q);
+  }
   renderer.setAnimationLoop(() => {
-    timer.update(); const dt = Math.min(timer.getDelta(), 0.1), t = timer.getElapsed(); U.time.value = t;
+    timer.update(); const raw = timer.getDelta(), dt = Math.min(raw, 0.1), t = timer.getElapsed(); U.time.value = t;
+    if (quality === 'high' && opts.autoQuality !== false && intro >= 1 && ++frames > 30) { slow += raw > 0.045 ? 1 : -0.5; slow = Math.max(0, slow); if (slow > 50) setQuality('low'); }
     const now = new Date();
     const hour = timeMode === 'day' ? 12.5 : timeMode === 'sunset' ? 17.75 : timeMode === 'night' ? 23 : now.getHours() + now.getMinutes() / 60;
     const day = applySky(hour, dt);
@@ -371,7 +425,7 @@ export function createWorld(container, tooltip, opts = {}) {
     camera.aspect = w / h; camera.fov = w / h < 0.9 ? 58 : 42; camera.updateProjectionMatrix();
     renderer.setSize(w, h); composer?.setPixelRatio(renderer.getPixelRatio()); composer?.setSize(w, h);
   }
-  new ResizeObserver(resize).observe(container); resize();
+  new ResizeObserver(resize).observe(container); resize(); if (small) setQuality('low');
 
   // ---------------------------------------------------------------- pointer: hover names, pet Gino, double-click to look at something
   const ray = new THREE.Raycaster(), ptr = new THREE.Vector2(); let hoverT = 0, downAt = null;
@@ -404,6 +458,7 @@ export function createWorld(container, tooltip, opts = {}) {
     update,
     setFollow(v) { follow = v; focus = null; controls.autoRotate = false; idleAt = v ? Infinity : performance.now() + 25000; if (!v) focus = new THREE.Vector3(0, 0.6, 0); },
     setTime(m) { timeMode = m; },
+    setQuality, get quality() { return quality; },
     setWeather(w) { weatherOverride = w; weather = w || state.weather?.kind || 'clear'; },
     photo() { return new Promise(res => { snapshot = res; }); },
     pet() { hop = 1; heartT = timer.getElapsed(); },

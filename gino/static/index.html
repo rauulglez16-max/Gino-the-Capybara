@@ -85,7 +85,7 @@ dialog pre{white-space:pre-wrap;font:inherit}
     <div id="world"><svg id="scene" viewBox="0 0 800 500" role="img" aria-label="Gino's habitat"></svg><div id="tip"></div>
       <div id="hud"><div class="bubble"><b id="feeling">…</b> <span id="reason" class="muted"></span><div id="thought" style="margin-top:4px"></div></div></div>
       <div id="wx"></div>
-      <div id="worldBtns"><button class="ghost" id="followBtn">Follow Gino</button><button class="ghost" id="timeBtn">Sky: live</button><button class="ghost" id="wxBtn">Weather: live</button><button class="ghost" id="photoBtn">Photo</button><button class="ghost" id="fullBtn">Fullscreen</button></div></div>
+      <div id="worldBtns"><button class="ghost" id="followBtn">Follow Gino</button><button class="ghost" id="timeBtn">Sky: live</button><button class="ghost" id="wxBtn">Weather: live</button><button class="ghost" id="qBtn">Quality: high</button><button class="ghost" id="photoBtn">Photo</button><button class="ghost" id="fullBtn">Fullscreen</button></div></div>
     <div class="vitals" id="vitals"></div>
     <div class="row" style="margin-top:12px">
       <span class="muted">Leave a snack:</span>
@@ -235,6 +235,8 @@ refresh(); loadChat(); renderTab();
     const w = m.createWorld($('#world'), $('#tip'), {
       season: new URLSearchParams(location.search).get('season') || lastState.weather?.season, key: key(),
       onPet: () => api('/api/pet', {method: 'POST'}).then(refresh).catch(() => {}),
+      autoQuality: !new URLSearchParams(location.search).has('hq'),
+      onQuality: q => { $('#qBtn').textContent = 'Quality: ' + q; },
       onFollow: v => { f = v; $('#followBtn').textContent = f ? 'Free camera' : 'Follow Gino'; },
     });
     $('#scene').remove(); $('#worldBtns').style.display = 'flex'; world = w; window.ginoWorld = w; w.update(lastState);
@@ -242,6 +244,7 @@ refresh(); loadChat(); renderTab();
     const cycle = (btn, label, opts, fn) => { let i = 0; btn.onclick = () => { i = (i + 1) % opts.length; fn(opts[i][0]); btn.textContent = `${label}: ${opts[i][1]}`; }; };
     cycle($('#timeBtn'), 'Sky', [['auto', 'live'], ['day', 'day'], ['sunset', 'sunset'], ['night', 'night']], v => w.setTime(v));
     cycle($('#wxBtn'), 'Weather', [[null, 'live'], ['clear', 'clear'], ['cloudy', 'cloudy'], ['rain', 'rain'], ['snow', 'snow'], ['fog', 'fog']], v => w.setWeather(v));
+    $('#qBtn').textContent = 'Quality: ' + w.quality; $('#qBtn').onclick = () => w.setQuality(w.quality === 'high' ? 'low' : 'high');
     $('#photoBtn').onclick = async () => { const blob = await w.photo(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `gino-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
     $('#fullBtn').onclick = () => { document.fullscreenElement ? document.exitFullscreen() : $('#world').requestFullscreen?.(); };
   } catch (e) { console.warn('3D world unavailable, showing the flat map.', e); }

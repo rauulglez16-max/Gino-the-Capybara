@@ -1,5 +1,6 @@
 // Modelling kit for Gino's world: every object is built from simple shapes, no model files. three.js r186.
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 export const U = { time: { value: 0 } };           // shared shader clock
 export const env = { season: 'summer', art: [], artKey: '' };
@@ -7,20 +8,38 @@ export const env = { season: 'summer', art: [], artKey: '' };
 const mats = new Map();
 export function mat(color, extra = {}) {
   const key = color + JSON.stringify(extra);
-  if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.9, flatShading: true, ...extra }));
+  if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...extra }));
   return mats.get(key);
 }
+// Lumpy, smooth-shaded blob with a soft dark-to-light gradient baked in: used for foliage and clouds.
+function blob(lump, shade) {
+  const g = new THREE.SphereGeometry(0.5, 22, 16), p = g.attributes.position, col = new Float32Array(p.count * 3), v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i); const n = v.clone().normalize();
+    const d = 1 + lump * (Math.sin(n.x * 5.1 + n.y * 3.3) * Math.cos(n.z * 4.7 + n.x * 2.1) + 0.5 * Math.sin(n.y * 9.0 + n.z * 7.0) * Math.cos(n.x * 8.0));
+    v.copy(n).multiplyScalar(0.5 * d); p.setXYZ(i, v.x, v.y, v.z);
+    const k = 1 - shade + shade * (0.5 + n.y * 0.5) * 1.25 + (d - 1) * 0.6; col.set([k, k, k], i * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
+}
+function faceted(g) { const n = g.index ? g.toNonIndexed() : g; n.computeVertexNormals(); return n; }
 export const geos = {
-  box: new THREE.BoxGeometry(1, 1, 1),
-  sphere: new THREE.IcosahedronGeometry(0.5, 1),
-  smooth: new THREE.SphereGeometry(0.5, 24, 16),
-  cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
-  cone: new THREE.ConeGeometry(0.5, 1, 8),
-  pyramid: new THREE.ConeGeometry(0.5, 1, 4),
-  disc: new THREE.CylinderGeometry(0.5, 0.5, 1, 28),
-  torus: new THREE.TorusGeometry(0.5, 0.18, 8, 18),
+  box: new RoundedBoxGeometry(1, 1, 1, 3, 0.07),
+  sphere: new THREE.SphereGeometry(0.5, 18, 12),
+  smooth: new THREE.SphereGeometry(0.5, 28, 18),
+  leafy: blob(0.16, 0.55),
+  puff: blob(0.1, 0.3),
+  rock: faceted(new THREE.IcosahedronGeometry(0.5, 1)),
+  cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 20),
+  trunk: new THREE.CylinderGeometry(0.36, 0.5, 1, 14),
+  cone: new THREE.ConeGeometry(0.5, 1, 18),
+  pine: faceted(new THREE.ConeGeometry(0.5, 1, 9)),
+  pyramid: faceted(new THREE.ConeGeometry(0.5, 1, 4)),
+  disc: new THREE.CylinderGeometry(0.5, 0.5, 1, 40),
+  torus: new THREE.TorusGeometry(0.5, 0.18, 12, 28),
   plane: new THREE.PlaneGeometry(1, 1),
 };
+for (const g of Object.values(geos)) if (!g.attributes.color) g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(1), 3));
 export function part(parent, geo, color, [sx, sy, sz], [px, py, pz], rot, extra) {
   const m = new THREE.Mesh(geos[geo], color && color.isMaterial ? color : mat(color, extra));
   m.scale.set(sx, sy, sz); m.position.set(px, py, pz);
@@ -57,7 +76,8 @@ const LEAVES = {
   winter: ['#dfe8ea', '#cfdcde', '#eef3f4'],
 };
 export const leaf = r => { const p = LEAVES[env.season] || LEAVES.summer; return p[Math.floor(r() * p.length)]; };
-const leafMat = c => { const k = 'leaf' + c; if (!mats.has(k)) mats.set(k, windy(new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true }), 'sway', 0.035)); return mats.get(k); };
+const pineMat = c => { const k = 'pine' + c; if (!mats.has(k)) mats.set(k, windy(new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }), 'sway', 0.02)); return mats.get(k); };
+const leafMat = c => { const k = 'leaf' + c; if (!mats.has(k)) mats.set(k, windy(new THREE.MeshStandardMaterial({ color: c, roughness: 0.95, vertexColors: true }), 'sway', 0.035)); return mats.get(k); };
 
 function emitter(g, n, color, at, opts = {}) {            // smoke, sparks, fountain drops
   for (let i = 0; i < n; i++) {
@@ -79,16 +99,34 @@ function artPlane(g, size, pos, rot, slot) {
   m.userData.artSlot = slot; g.add(m); return m;
 }
 
+// Water: glossy, reflects the sky, with ripples from a generated normal map that the world scrolls.
+let _water = null, _ripples = null;
+export function ripples() {
+  if (_ripples) return _ripples;
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N;
+  const x = c.getContext('2d'), img = x.createImageData(N, N), T = Math.PI * 2 / N;
+  const h = (i, j) => Math.sin(i * T * 3 + Math.sin(j * T * 2) * 1.5) + Math.sin(j * T * 5 + Math.cos(i * T * 3) * 1.2) * 0.6 + Math.sin((i + j) * T * 9) * 0.3 + Math.sin((i - j) * T * 14) * 0.15;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const dx = (h(i + 1, j) - h(i - 1, j)) * 0.9, dy = (h(i, j + 1) - h(i, j - 1)) * 0.9, l = Math.hypot(dx, dy, 1), k = (j * N + i) * 4;
+    img.data[k] = (-dx / l * 0.5 + 0.5) * 255; img.data[k + 1] = (-dy / l * 0.5 + 0.5) * 255; img.data[k + 2] = (1 / l * 0.5 + 0.5) * 255; img.data[k + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  _ripples = new THREE.CanvasTexture(c); _ripples.wrapS = _ripples.wrapT = THREE.RepeatWrapping; _ripples.repeat.set(3, 3);
+  return _ripples;
+}
+export function waterMat() {
+  if (!_water) _water = new THREE.MeshStandardMaterial({ color: '#2f86b8', transparent: true, opacity: 0.88, roughness: 0.05, metalness: 0.1, normalMap: ripples(), normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.6 });
+  return _water;
+}
+
 // ---------------------------------------------------------------- everything Gino can build
 export const B = {
   tree(g, o, r) {
-    part(g, 'cyl', '#7a5230', [0.35, 1.7, 0.35], [0, 0.85, 0]);
-    part(g, 'cyl', '#7a5230', [0.14, 0.8, 0.14], [0.3, 1.5, 0], [0, 0, -0.8]);
+    part(g, 'trunk', '#6f4a2b', [0.5, 1.9, 0.5], [0, 0.95, 0]);
+    part(g, 'trunk', '#6f4a2b', [0.16, 0.9, 0.16], [0.32, 1.6, 0], [0, 0, -0.8]); part(g, 'trunk', '#6f4a2b', [0.14, 0.7, 0.14], [-0.28, 1.75, 0.1], [0.2, 0, 0.8]);
     const c = () => leafMat(o.color || leaf(r));
-    part(g, 'sphere', c(), [2.1, 1.8, 2.1], [0, 2.3, 0], [r(), r(), 0]);
-    part(g, 'sphere', c(), [1.4, 1.3, 1.4], [0.7, 3.0, 0.2], [r(), r(), 0]);
-    part(g, 'sphere', c(), [1.3, 1.1, 1.3], [-0.65, 2.8, -0.3], [r(), r(), 0]);
-    part(g, 'sphere', c(), [1.0, 0.9, 1.0], [0.1, 3.5, -0.2], [r(), r(), 0]);
+    for (const [s, x, y, z] of [[2.3, 0, 2.5, 0], [1.6, 0.85, 3.0, 0.25], [1.5, -0.8, 2.9, -0.3], [1.3, 0.1, 3.7, -0.2], [1.2, -0.2, 2.6, 0.85], [1.1, 0.3, 2.4, -0.9]])
+      part(g, 'leafy', c(), [s, s * 0.88, s], [x, y, z], [r() * 3, r() * 6, r() * 3]);
   },
   fruit_tree(g, o, r) {
     B.tree(g, { color: env.season === 'winter' ? null : '#4f9446' }, r);
@@ -96,14 +134,14 @@ export const B = {
     for (let i = 0; i < 11; i++) { const a = r() * 6.28, h = 1.8 + r() * 1.5; part(g, 'smooth', fc, [0.24, 0.24, 0.24], [Math.cos(a) * 1.0, h, Math.sin(a) * 1.0], null, { flatShading: false, roughness: 0.5 }); }
   },
   pine(g, o) {
-    part(g, 'cyl', '#6e4a2c', [0.3, 1, 0.3], [0, 0.5, 0]);
-    const c = leafMat(o.color || (env.season === 'winter' ? '#5f8f7a' : '#3f7d4e'));
-    part(g, 'cone', c, [2.1, 1.6, 2.1], [0, 1.5, 0]); part(g, 'cone', c, [1.6, 1.4, 1.6], [0, 2.4, 0]); part(g, 'cone', c, [1.05, 1.3, 1.05], [0, 3.3, 0]);
-    if (env.season === 'winter') for (const [s, y] of [[1.5, 2.05], [1.1, 2.9], [0.6, 3.75]]) part(g, 'cone', '#f4f8fa', [s, 0.5, s], [0, y, 0]);
+    part(g, 'trunk', '#6e4a2c', [0.36, 1.1, 0.36], [0, 0.55, 0]);
+    const c = pineMat(o.color || (env.season === 'winter' ? '#5f8f7a' : '#356f48'));
+    for (const [w, h, y] of [[2.3, 1.5, 1.45], [1.9, 1.4, 2.2], [1.45, 1.3, 2.95], [1.0, 1.2, 3.65], [0.55, 0.9, 4.25]]) part(g, 'pine', c, [w, h, w], [0, y, 0], [0, y * 1.3, 0]);
+    if (env.season === 'winter') for (const [s, y] of [[1.2, 2.75], [0.85, 3.5], [0.45, 4.3]]) part(g, 'pine', '#f4f8fa', [s, 0.5, s], [0, y, 0]);
   },
   bush(g, o, r) {
     const c = () => leafMat(o.color || leaf(r));
-    part(g, 'sphere', c(), [1.1, 0.8, 1.0], [0, 0.35, 0]); part(g, 'sphere', c(), [0.8, 0.6, 0.8], [0.55, 0.3, 0.2]); part(g, 'sphere', c(), [0.7, 0.6, 0.7], [-0.5, 0.28, -0.2]);
+    part(g, 'leafy', c(), [1.1, 0.8, 1.0], [0, 0.35, 0]); part(g, 'leafy', c(), [0.8, 0.6, 0.8], [0.55, 0.3, 0.2]); part(g, 'leafy', c(), [0.7, 0.6, 0.7], [-0.5, 0.28, -0.2]);
     if (/berry/.test(o.name)) for (let i = 0; i < 8; i++) part(g, 'sphere', '#c9365a', [0.12, 0.12, 0.12], [(r() - 0.5) * 1.2, 0.3 + r() * 0.4, (r() - 0.5) * 1.0]);
   },
   flowers(g, o, r) {
@@ -128,27 +166,27 @@ export const B = {
   },
   rock(g, o, r) {
     const c = o.color || '#9b978f';
-    part(g, 'sphere', c, [1.3, 0.9, 1.1], [0, 0.35, 0], [r(), r(), r()]);
-    part(g, 'sphere', c, [0.7, 0.5, 0.6], [0.7, 0.2, 0.3], [r(), r(), r()]);
+    part(g, 'rock', c, [1.3, 0.9, 1.1], [0, 0.35, 0], [r(), r(), r()]);
+    part(g, 'rock', c, [0.7, 0.5, 0.6], [0.7, 0.2, 0.3], [r(), r(), r()]);
     part(g, 'sphere', '#6f9a58', [0.6, 0.12, 0.5], [-0.1, 0.78, 0]);
   },
   pond(g, o, r) {
-    const wm = new THREE.MeshStandardMaterial({ color: o.color || '#5fb4dc', transparent: true, opacity: 0.85, roughness: 0.08, metalness: 0.2 });
+    const wm = o.color ? new THREE.MeshStandardMaterial({ color: o.color, transparent: true, opacity: 0.85, roughness: 0.08 }) : waterMat();
     const w = part(g, 'disc', wm, [3.6, 0.06, 3.0], [0, 0.05, 0]); w.castShadow = false; w.userData.water = true;
     part(g, 'disc', '#2f7ea8', [2.8, 0.05, 2.3], [0, 0.03, 0]).castShadow = false;
     part(g, 'disc', '#d9c9a0', [4.1, 0.04, 3.5], [0, 0.0, 0]).castShadow = false;
-    for (let i = 0; i < 13; i++) { const a = i / 13 * 6.28 + r() * 0.3, s = 0.25 + r() * 0.35; part(g, 'sphere', '#9a968c', [s, s * 0.6, s], [Math.cos(a) * 1.85, 0.08, Math.sin(a) * 1.55], [r(), r(), 0]); }
+    for (let i = 0; i < 13; i++) { const a = i / 13 * 6.28 + r() * 0.3, s = 0.25 + r() * 0.35; part(g, 'rock', '#9a968c', [s, s * 0.6, s], [Math.cos(a) * 1.85, 0.08, Math.sin(a) * 1.55], [r(), r(), 0]); }
     for (let i = 0; i < 4; i++) { const a = r() * 6.28, d = r() * 1.0, x = Math.cos(a) * d, z = Math.sin(a) * d; part(g, 'disc', '#6bbf59', [0.42, 0.03, 0.42], [x, 0.09, z]).castShadow = false; if (i < 2) part(g, 'sphere', '#f7b3cf', [0.16, 0.12, 0.16], [x, 0.14, z]); }
     for (let i = 0; i < 6; i++) { const a = r() * 6.28; const m = part(g, 'cyl', leafMat('#7fae52'), [0.05, 1.0, 0.05], [Math.cos(a) * 1.7, 0.5, Math.sin(a) * 1.4]); part(g, 'cyl', '#6b4423', [0.09, 0.25, 0.09], [m.position.x, 1.0, m.position.z]); }
   },
   fountain(g, o) {
     part(g, 'disc', '#bdb7ab', [2.2, 0.35, 2.2], [0, 0.17, 0]);
-    const w = part(g, 'disc', '#6fc0e6', [1.9, 0.1, 1.9], [0, 0.32, 0], null, { transparent: true, opacity: 0.85, roughness: 0.1 }); w.castShadow = false;
+    const w = part(g, 'disc', waterMat(), [1.9, 0.1, 1.9], [0, 0.32, 0]); w.castShadow = false;
     part(g, 'cyl', '#bdb7ab', [0.3, 1.0, 0.3], [0, 0.7, 0]); part(g, 'disc', '#cfc9bd', [0.8, 0.12, 0.8], [0, 1.2, 0]);
     emitter(g, 10, o.color || '#bfe6fb', [0, 1.3, 0], { rise: 0.9, spread: 0.7, size: 0.11, arc: true, speed: 0.6 });
   },
   well(g, o) {
-    part(g, 'cyl', '#a9a399', [1.2, 0.7, 1.2], [0, 0.35, 0]); part(g, 'disc', '#2f6f95', [0.95, 0.05, 0.95], [0, 0.69, 0]);
+    part(g, 'cyl', '#a9a399', [1.2, 0.7, 1.2], [0, 0.35, 0]); part(g, 'disc', waterMat(), [0.95, 0.05, 0.95], [0, 0.69, 0]);
     for (const x of [-0.55, 0.55]) part(g, 'box', '#7a5230', [0.1, 1.5, 0.1], [x, 1.2, 0]);
     part(g, 'pyramid', o.color || '#b5553c', [1.9, 0.6, 1.9], [0, 2.2, 0], [0, Math.PI / 4, 0]);
     part(g, 'cyl', '#7a5230', [0.08, 1.1, 0.08], [0, 1.75, 0], [0, 0, Math.PI / 2]); part(g, 'cyl', '#8d6a45', [0.25, 0.28, 0.25], [0, 1.2, 0]);
@@ -258,7 +296,7 @@ export const B = {
     const c = o.color || '#c9c2b4';
     for (const x of [-0.8, 0.8]) part(g, 'box', c, [0.35, 1.8, 0.35], [x, 0.9, 0]);
     for (let i = 0; i <= 6; i++) { const a = i / 6 * Math.PI; part(g, 'box', c, [0.36, 0.36, 0.36], [Math.cos(a) * 0.8, 1.8 + Math.sin(a) * 0.6, 0], [0, 0, a]); }
-    for (let i = 0; i < 7; i++) { const a = i / 6 * Math.PI; part(g, 'sphere', leafMat(leaf(r)), [0.4, 0.3, 0.45], [Math.cos(a) * 0.85, 1.85 + Math.sin(a) * 0.72, 0.1]); }
+    for (let i = 0; i < 7; i++) { const a = i / 6 * Math.PI; part(g, 'leafy', leafMat(leaf(r)), [0.5, 0.4, 0.55], [Math.cos(a) * 0.85, 1.85 + Math.sin(a) * 0.72, 0.1]); }
   },
   lamp(g, o) {
     part(g, 'cyl', '#3f3f47', [0.1, 1.9, 0.1], [0, 0.95, 0]); part(g, 'cyl', '#3f3f47', [0.3, 0.1, 0.3], [0, 0.05, 0]);
@@ -267,7 +305,7 @@ export const B = {
     light(g, o.color || '#ffcf66', [0, 1.95, 0], 16);
   },
   campfire(g, o) {
-    for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28; part(g, 'sphere', '#8d8a84', [0.3, 0.22, 0.3], [Math.cos(a) * 0.62, 0.08, Math.sin(a) * 0.62]); }
+    for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28; part(g, 'rock', '#8d8a84', [0.3, 0.22, 0.3], [Math.cos(a) * 0.62, 0.08, Math.sin(a) * 0.62]); }
     for (let i = 0; i < 3; i++) part(g, 'cyl', '#5a3a20', [0.13, 0.95, 0.13], [0, 0.22, 0], [1.1, i * 2.1, 0]);
     for (const [s, h, c, e] of [[0.55, 0.95, '#ff8a2c', '#ff5a00'], [0.32, 0.65, '#ffd24a', '#ffb000']]) { const f = part(g, 'cone', c, [s, h, s], [0, 0.3 + h / 2, 0], null, { emissive: e, emissiveIntensity: 2.6, transparent: true, opacity: 0.92 }); f.castShadow = false; f.userData.flame = h; }
     emitter(g, 6, '#ffb347', [0, 0.9, 0], { rise: 2.2, spread: 0.5, size: 0.06, emissive: '#ff8a00', glow: 3, speed: 0.5 });
@@ -366,6 +404,8 @@ export function buildItem(it) {
 export function buildGino() {
   const g = new THREE.Group(), fur = '#a9733c', dark = '#7a5230', light_ = '#c08d58';
   const sm = { flatShading: false, roughness: 0.95 };
+  const fuzz = m => { if (m.userData.fuzz) return m; m.userData.fuzz = true; m.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', 'float rimF = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.2);\n outgoingLight += rimF * diffuseColor.rgb * 0.5 + rimF * vec3(0.06, 0.04, 0.02);\n#include <opaque_fragment>'); }; m.customProgramCacheKey = () => 'fuzz'; return m; };
+  [fur, dark, light_].forEach(c => fuzz(mat(c, sm)));
   const body = new THREE.Group(); g.add(body);
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 0.8, 8, 18), mat(fur, sm));
   torso.rotation.z = Math.PI / 2; torso.position.set(-0.02, 0.76, 0); torso.scale.set(1, 1, 1.1); torso.castShadow = true; body.add(torso);

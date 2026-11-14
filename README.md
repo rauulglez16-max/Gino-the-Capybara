@@ -39,7 +39,9 @@ Then open **http://localhost:8787**. Leave the terminal running and Gino keeps l
   every few hours, and the seasons follow the calendar (`GINO_HEMISPHERE=south` flips them). Lamps, campfires and
   windows glow at night. Gino walks to what he builds, curls up to sleep, swims in his pond, and shows how he
   feels above his head. Click him to pet him. His drawings hang on any easel or gallery he builds. *Photo* saves
-  a picture, and the Sky and Weather buttons let you preview other times and weather.
+  a picture, and the Sky and Weather buttons let you preview other times and weather. *Quality* switches between
+  the full look (soft shadows, ambient shading, dense grass) and a lighter one; it drops to low by itself on slower
+  computers.
 - **How he feels**: fullness, energy, social, fun, comfort, and his overall mood, plus the emotion he names and why.
 - **Chat**: talk to him any time. Messaging him wakes him up if he's asleep, and he remembers what matters.
 - **Diary, Creations, Goals, Memories, About Gino**: his inner life, all written by him.
