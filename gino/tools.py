@@ -15,8 +15,10 @@ def _t(name, desc, props, required=()):
 S = {"type": "string"}
 I = {"type": "integer"}
 
-KINDS = ["auto", "tree", "fruit_tree", "pine", "bush", "flowers", "mushroom", "rock", "pond", "garden", "bed",
-         "hammock", "bench", "table", "bookshelf", "easel", "statue", "sign", "fence", "lamp", "campfire", "house"]
+KINDS = ["auto", "tree", "fruit_tree", "pine", "bush", "flowers", "mushroom", "rock", "pond", "fountain", "well",
+         "garden", "pumpkins", "beehive", "bed", "hammock", "swing", "bench", "table", "picnic", "bookshelf", "easel",
+         "gallery", "statue", "sign", "mailbox", "flag", "fence", "path", "bridge", "arch", "lamp", "campfire", "house",
+         "tent", "windmill", "boat", "snowman", "telescope", "piano"]
 
 
 def _look(a: dict) -> tuple[str, str, float]:
@@ -41,9 +43,9 @@ TOOLS = [
        {"hours": {"type": "number"}}, ["hours"]),
     _t("build", "Build or place a thing in your 3D world. Your home is a 16x10 meadow (x 0-15, y 0-9) surrounded by "
        "hills and forest, and dad can fly around it and see everything you make. Costs energy. Pick a 'kind' to "
-       "choose its 3D shape; anything else you invent appears as its emoji on a little plinth. Things like a pond "
-       "(you can swim in it by walking onto it), garden, bed, lamp or campfire (they glow at night) make your "
-       "home cozier and can unlock new things.",
+       "choose its 3D shape; anything else you invent appears as its emoji on a little plinth. You can swim in a "
+       "pond by walking onto it. Lamps, campfires and house windows glow at night. An easel or gallery shows "
+       "your latest drawings. A garden makes foraging better.",
        {"name": S, "emoji": {**S, "description": "One emoji that looks like it"}, "x": I, "y": I,
         "kind": {"type": "string", "enum": KINDS, "description": "3D shape. 'auto' guesses from the name."},
         "color": {**S, "description": "Optional main colour as hex, e.g. #e0705a"},

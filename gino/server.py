@@ -84,6 +84,8 @@ def state():
         "brain": "practice" if config.FAKE_BRAIN else config.MODEL,
         "spent_today": round(brain.spent_today(), 3), "budget": config.DAILY_BUDGET_USD,
         "foods": {k: v[2] for k, v in vitals.FOODS.items()},
+        "weather": vitals.weather(brain.local_now()),
+        "art": [r["filename"] for r in db.q("SELECT filename FROM creations WHERE kind='svg' ORDER BY ts DESC LIMIT 6")],
     }
 
 
@@ -128,6 +130,20 @@ def gift(g: GiftIn):
         body["social"] = vitals.clamp(body["social"] + 3)
         vitals.save(body)
     db.event("gift", f"Dad left a {food} in the pantry.")
+    return {"ok": True}
+
+
+@app.post("/api/pet", dependencies=[Depends(auth)])
+def pet():
+    """Dad petted Gino in the 3D world."""
+    now = time.time()
+    with brain.mind_lock:
+        body = vitals.load()
+        if now - body.get("last_pet", 0) > 600:  # a pet only "counts" every 10 minutes
+            body["social"] = vitals.clamp(body["social"] + 4)
+            body["last_pet"] = now
+            vitals.save(body)
+            db.event("pet", "Dad petted Gino. He did a happy little hop.")
     return {"ok": True}
 
 

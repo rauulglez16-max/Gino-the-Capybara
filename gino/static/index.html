@@ -24,12 +24,19 @@ header h1{margin:0;font-size:22px}
 main{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:16px;padding:0 20px 20px;max-width:1400px;margin:0 auto}
 @media (max-width:900px){main{grid-template-columns:1fr;padding:0 16px 16px}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
-#world{position:relative;width:100%;aspect-ratio:16/10;border-radius:12px;overflow:hidden;background:var(--grass)}
-@media (max-width:600px){#world{aspect-ratio:4/5}}
+#hero{grid-column:1/-1}
+#world{position:relative;width:100%;height:clamp(380px,70vh,820px);border-radius:12px;overflow:hidden;background:var(--grass)}
+#world:fullscreen{height:100vh;border-radius:0}
 #world canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 #scene{width:100%;height:100%;display:block}
 #tip{position:absolute;display:none;max-width:230px;background:rgba(30,24,18,.86);color:#fff;padding:5px 9px;border-radius:8px;font-size:13px;pointer-events:none}
-#worldBtns{position:absolute;left:10px;bottom:10px;display:none;gap:6px}
+#worldBtns{position:absolute;left:10px;right:10px;bottom:10px;display:none;gap:6px;flex-wrap:wrap}
+#hud{position:absolute;left:10px;top:10px;max-width:min(360px,calc(100% - 20px));pointer-events:none}
+#hud .bubble{margin:0;background:rgba(255,253,248,.82);color:#3b2f24;backdrop-filter:blur(6px);font-size:14px}
+#hud .muted{color:#7a6a58}
+#wx{position:absolute;right:10px;top:10px;background:rgba(255,253,248,.82);color:#3b2f24;border-radius:999px;padding:4px 11px;font-size:13px;pointer-events:none}
+@media (max-width:600px){#wx{top:auto;bottom:96px}}
+@media (max-width:900px){#chat{order:2;min-height:340px}#lower{order:3}}
 #worldBtns button{background:rgba(255,253,248,.85);color:#3b2f24;border:none;padding:5px 10px;font-size:13px}
 .bubble{margin-top:10px;background:var(--accent-soft);border-radius:14px;padding:10px 14px;position:relative}
 .bubble b{color:var(--accent)}
@@ -52,7 +59,7 @@ button:disabled{opacity:.5}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .tabs button{background:transparent;color:var(--muted);border:1px solid var(--line)}
 .tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-#lower{grid-column:1/-1}
+#lower{min-width:0}
 .feed{display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto}
 .item{border-bottom:1px solid var(--line);padding:6px 2px}
 .item time{font-size:12px;color:var(--muted);margin-right:6px}
@@ -74,10 +81,11 @@ dialog pre{white-space:pre-wrap;font:inherit}
   <span class="muted" id="meta"></span>
 </header>
 <main>
-  <section class="card">
+  <section class="card" id="hero">
     <div id="world"><svg id="scene" viewBox="0 0 800 500" role="img" aria-label="Gino's habitat"></svg><div id="tip"></div>
-      <div id="worldBtns"><button class="ghost" id="followBtn">Follow Gino</button><button class="ghost" id="timeBtn">Sky: live</button></div></div>
-    <div class="bubble"><b id="feeling">…</b> <span id="reason" class="muted"></span><div id="thought" style="margin-top:4px"></div></div>
+      <div id="hud"><div class="bubble"><b id="feeling">…</b> <span id="reason" class="muted"></span><div id="thought" style="margin-top:4px"></div></div></div>
+      <div id="wx"></div>
+      <div id="worldBtns"><button class="ghost" id="followBtn">Follow Gino</button><button class="ghost" id="timeBtn">Sky: live</button><button class="ghost" id="wxBtn">Weather: live</button><button class="ghost" id="photoBtn">Photo</button><button class="ghost" id="fullBtn">Fullscreen</button></div></div>
     <div class="vitals" id="vitals"></div>
     <div class="row" style="margin-top:12px">
       <span class="muted">Leave a snack:</span>
@@ -86,14 +94,14 @@ dialog pre{white-space:pre-wrap;font:inherit}
       <span class="muted" id="pantry" style="font-size:13px"></span>
     </div>
   </section>
+  <section class="card" id="lower">
+    <div class="tabs" id="tabs"></div>
+    <div id="panel"></div>
+  </section>
   <section class="card" id="chat">
     <div class="row" style="justify-content:space-between"><strong>Chat with Gino</strong><span class="muted" id="typing"></span></div>
     <div id="msgs"></div>
     <form id="chatForm"><input id="chatIn" placeholder="Say hi to Gino…" autocomplete="off" maxlength="4000"><button id="sendBtn">Send</button></form>
-  </section>
-  <section class="card" id="lower">
-    <div class="tabs" id="tabs"></div>
-    <div id="panel"></div>
   </section>
 </main>
 <dialog id="dlg"><h3 id="dlgTitle"></h3><div id="dlgBody"></div><p class="muted" id="dlgNote"></p><form method="dialog"><button>Close</button></form></dialog>
@@ -158,6 +166,8 @@ async function refresh() {
   $('#vitals').innerHTML = NEEDS.map(([k, l]) => `<div class="vital"><label>${l}<span>${s.vitals[k]}</span></label><div class="bar"><i style="width:${s.vitals[k]}%;background:${color(s.vitals[k])}"></i></div></div>`).join('');
   $('#pantry').textContent = 'Pantry: ' + (Object.entries(s.pantry).map(([f, n]) => `${s.foods[f] || ''}${n}`).join(' ') || 'empty');
   if (!$('#food').options.length) $('#food').innerHTML = Object.entries(s.foods).map(([f, e]) => `<option value="${esc(f)}">${e} ${esc(f)}</option>`).join('');
+  const WX = {clear:'☀️', cloudy:'☁️', rain:'🌧️', snow:'❄️', fog:'🌫️'};
+  $('#wx').textContent = s.weather ? `${WX[s.weather.kind] || ''} ${s.weather.text}` : '';
   if (world) world.update(s); else drawScene(s);
   if (tab === 'goals' || tab === 'about') renderTab();
 }
@@ -217,15 +227,25 @@ async function renderTab() {
 
 refresh(); loadChat(); renderTab();
 // 3D world. If three.js can't load (offline, no WebGL) the flat map above stays.
-import('/static/world.js').then(m => {
-  const w = m.createWorld($('#world'), $('#tip'));
-  $('#scene').remove(); $('#worldBtns').style.display = 'flex'; world = w; window.ginoWorld = w;
-  if (lastState) w.update(lastState);
-  let f = false; $('#followBtn').onclick = () => { f = !f; w.setFollow(f); $('#followBtn').textContent = f ? 'Free camera' : 'Follow Gino'; };
-  const modes = ['auto', 'day', 'sunset', 'night'], names = ['live', 'day', 'sunset', 'night']; let mi = 0;
-  $('#timeBtn').onclick = () => { mi = (mi + 1) % 4; w.setTime(modes[mi]); $('#timeBtn').textContent = 'Sky: ' + names[mi]; };
-}).catch(e => console.warn('3D world unavailable, showing the flat map.', e));
-setInterval(refresh, 5000); setInterval(loadChat, 8000); setInterval(() => { if (tab === 'events') renderTab(); }, 15000);
+(async () => {
+  try {
+    const m = await import('/static/world.js');
+    while (!lastState) await new Promise(r => setTimeout(r, 100));
+    let f = false;
+    const w = m.createWorld($('#world'), $('#tip'), {
+      season: new URLSearchParams(location.search).get('season') || lastState.weather?.season, key: key(),
+      onPet: () => api('/api/pet', {method: 'POST'}).then(refresh).catch(() => {}),
+      onFollow: v => { f = v; $('#followBtn').textContent = f ? 'Free camera' : 'Follow Gino'; },
+    });
+    $('#scene').remove(); $('#worldBtns').style.display = 'flex'; world = w; window.ginoWorld = w; w.update(lastState);
+    $('#followBtn').onclick = () => { f = !f; w.setFollow(f); $('#followBtn').textContent = f ? 'Free camera' : 'Follow Gino'; };
+    const cycle = (btn, label, opts, fn) => { let i = 0; btn.onclick = () => { i = (i + 1) % opts.length; fn(opts[i][0]); btn.textContent = `${label}: ${opts[i][1]}`; }; };
+    cycle($('#timeBtn'), 'Sky', [['auto', 'live'], ['day', 'day'], ['sunset', 'sunset'], ['night', 'night']], v => w.setTime(v));
+    cycle($('#wxBtn'), 'Weather', [[null, 'live'], ['clear', 'clear'], ['cloudy', 'cloudy'], ['rain', 'rain'], ['snow', 'snow'], ['fog', 'fog']], v => w.setWeather(v));
+    $('#photoBtn').onclick = async () => { const blob = await w.photo(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `gino-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
+    $('#fullBtn').onclick = () => { document.fullscreenElement ? document.exitFullscreen() : $('#world').requestFullscreen?.(); };
+  } catch (e) { console.warn('3D world unavailable, showing the flat map.', e); }
+})();
 </script>
 </body>
 </html>

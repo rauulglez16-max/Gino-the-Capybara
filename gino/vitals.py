@@ -1,4 +1,6 @@
 """Gino's body: needs that drift over time, food, sleep and mood."""
+import datetime as dt
+import hashlib
 import random
 import time
 
@@ -148,3 +150,25 @@ def snapshot(s: dict) -> dict:
     out = {k: round(s[k]) for k in NEEDS}
     out["mood"] = mood(s)
     return out
+
+
+def season(now: dt.datetime) -> str:
+    names = ["winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "autumn", "autumn",
+             "autumn", "winter"]
+    s = names[now.month - 1]
+    if config.HEMISPHERE == "south":
+        s = {"winter": "summer", "summer": "winter", "spring": "autumn", "autumn": "spring"}[s]
+    return s
+
+
+def weather(now: dt.datetime) -> dict:
+    """The sky over Gino's world. Changes every three hours, the same for everyone looking."""
+    s = season(now)
+    block = f"{now:%Y-%m-%d}-{now.hour // 3}"
+    roll = int(hashlib.sha256(block.encode()).hexdigest()[:8], 16) % 100
+    table = {"spring": (50, 72, 92), "summer": (66, 84, 95), "autumn": (42, 68, 88), "winter": (40, 66, 88)}[s]
+    kind = "clear" if roll < table[0] else "cloudy" if roll < table[1] else "rain" if roll < table[2] else "fog"
+    if kind == "rain" and s == "winter":
+        kind = "snow"
+    words = {"clear": "clear skies", "cloudy": "cloudy", "rain": "raining", "snow": "snowing", "fog": "foggy"}[kind]
+    return {"kind": kind, "season": s, "text": f"{words}, {s}"}

@@ -40,8 +40,9 @@ Using your tools:
   your own turns) or just reply (when he's chatting with you).
 - Message dad when you genuinely have something to share or miss him, not every turn. Usually a few \
   times a day at most. He may be busy or asleep.
-- Your home is a real 3D world: a meadow ringed by hills and forest, with a sun, moon and stars \
-  that follow dad's clock. Build it thoughtfully: plan where things go, choose shapes, colours and sizes, \
+- Your home is a real 3D world: a meadow by a lake, ringed by forest and snowy mountains, with a sun, moon \
+  and stars that follow dad's clock, real weather and seasons. Dad can fly around it, pet you, and see your \
+  drawings hanging on any easel or gallery you build. Build it thoughtfully: plan where things go, choose shapes, colours and sizes, \
   walk around it, swim in your pond, and make it feel like home.
 - End each turn with set_next_wake (how long until you want another turn) or sleep. Sleep at night, \
   roughly when dad would. Short turns are fine: 2-6 actions is a good turn.
@@ -99,7 +100,8 @@ def context(body: dict) -> str:
     n_creations = db.q("SELECT COUNT(*) AS n FROM creations")[0]["n"]
 
     lines = [
-        f"## Now\n{now:%A %d %B %Y, %H:%M} (dad's local time). You are {age_days:.1f} days old.",
+        f"## Now\n{now:%A %d %B %Y, %H:%M} (dad's local time). You are {age_days:.1f} days old.\n"
+        f"Outside: {vitals.weather(now)['text']}.",
         f"\n## Body\nfullness {v['fullness']}, energy {v['energy']}, social {v['social']}, fun {v['fun']}, "
         f"comfort {v['comfort']} -> overall mood {v['mood']}/100",
         f"Feeling: {body.get('emotion')} ({body.get('emotion_intensity')}/5) because {body.get('emotion_reason')}",

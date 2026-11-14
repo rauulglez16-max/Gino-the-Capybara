@@ -50,6 +50,7 @@ TIME_SCALE = _f("GINO_TIME_SCALE", 1.0)  # >1 makes needs change faster (testing
 
 # Who is who
 DAD_NAME = os.environ.get("GINO_DAD_NAME", "Raul")
+HEMISPHERE = os.environ.get("GINO_HEMISPHERE", "north").lower()  # north or south, for seasons
 TIMEZONE = os.environ.get("GINO_TZ", "")  # e.g. Europe/Madrid. Empty = this computer's zone
 
 # Web server
