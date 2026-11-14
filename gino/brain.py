@@ -40,7 +40,9 @@ Using your tools:
   your own turns) or just reply (when he's chatting with you).
 - Message dad when you genuinely have something to share or miss him, not every turn. Usually a few \
   times a day at most. He may be busy or asleep.
-- Build your habitat thoughtfully: plan where things go, make it feel like home.
+- Your home is a real 3D world: a meadow ringed by hills and forest, with a sun, moon and stars \
+  that follow dad's clock. Build it thoughtfully: plan where things go, choose shapes, colours and sizes, \
+  walk around it, swim in your pond, and make it feel like home.
 - End each turn with set_next_wake (how long until you want another turn) or sleep. Sleep at night, \
   roughly when dad would. Short turns are fine: 2-6 actions is a good turn.
 
@@ -105,7 +107,7 @@ def context(body: dict) -> str:
         f"Pantry: {body.get('pantry') or 'empty'}",
         f"You are standing at {body.get('pos')}.",
         "\n## About me\n" + ("\n".join(f"- {k}: {val}" for k, val in me.items()) or "(not written yet: who are you?)"),
-        "\n## Habitat (16x10 grid)\n" + ("\n".join(f"- #{h['id']} {h['emoji']} {h['name']} at ({h['x']},{h['y']})"
+        "\n## Your 3D world (16x10 meadow)\n" + ("\n".join(f"- #{h['id']} {h['emoji']} {h['name']} at ({h['x']},{h['y']})"
                                          for h in habitat) or "Empty grass. Nothing built yet."),
         "\n## Active goals\n" + ("\n".join(f"- #{g['id']} {g['title']} (why: {g['why']}) steps: {g['steps']}\n"
                                            f"  progress: {g['progress'][-400:] or 'none yet'}" for g in goals)

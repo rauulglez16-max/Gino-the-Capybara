@@ -33,7 +33,9 @@ Then open **http://localhost:8787**. Leave the terminal running and Gino keeps l
 
 ## What you'll see
 
-- **His habitat**, a 16x10 meadow he furnishes himself. Hover over things to see what they are.
+- **His 3D world**, a meadow ringed by hills and forest that he furnishes himself. Drag to orbit, scroll to zoom,
+  hover over things to see what they are, or press *Follow Gino*. The sun, moon and stars follow your clock;
+  lamps and campfires glow at night. He walks to what he builds, curls up to sleep, and swims in his pond.
 - **How he feels**: fullness, energy, social, fun, comfort, and his overall mood, plus the emotion he names and why.
 - **Chat**: talk to him any time. Messaging him wakes him up if he's asleep, and he remembers what matters.
 - **Diary, Creations, Goals, Memories, About Gino**: his inner life, all written by him.
@@ -66,6 +68,7 @@ Then open **http://localhost:8787**. Leave the terminal running and Gino keeps l
 | Storage (SQLite) | `gino/db.py` |
 | Heartbeat and web server | `gino/server.py` |
 | The page you look at | `gino/static/index.html` |
+| The 3D world (three.js) | `gino/static/world.js` |
 
 His needs drift on their own: he gets hungry, tired and lonely over time, sleeps them off, and a garden in his
 habitat makes foraging better. When he forgets to choose when to wake up, he wakes in an hour.
@@ -111,7 +114,7 @@ into the volume first: his whole life is in `data/gino.db` plus `data/creations/
 ## Ideas for next versions
 
 - Phone notifications when Gino messages you
-- Day/night cycle and weather in the habitat, and seasons for the garden
+- Weather and seasons in his world
 - Friends: other animals he can meet
 - Pixel-art sprites he designs for his own furniture
 - Voice: hear Gino talk

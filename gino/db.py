@@ -44,6 +44,11 @@ def conn() -> sqlite3.Connection:
             _conn.row_factory = sqlite3.Row
             _conn.execute("PRAGMA journal_mode=WAL")
             _conn.executescript(SCHEMA)
+            have = {r["name"] for r in _conn.execute("PRAGMA table_info(habitat)")}
+            for col, ddl in (("kind", "TEXT NOT NULL DEFAULT ''"), ("color", "TEXT NOT NULL DEFAULT ''"),
+                             ("size", "REAL NOT NULL DEFAULT 1")):
+                if col not in have:
+                    _conn.execute(f"ALTER TABLE habitat ADD COLUMN {col} {ddl}")
         return _conn
 
 

@@ -15,6 +15,21 @@ def _t(name, desc, props, required=()):
 S = {"type": "string"}
 I = {"type": "integer"}
 
+KINDS = ["auto", "tree", "fruit_tree", "pine", "bush", "flowers", "mushroom", "rock", "pond", "garden", "bed",
+         "hammock", "bench", "table", "bookshelf", "easel", "statue", "sign", "fence", "lamp", "campfire", "house"]
+
+
+def _look(a: dict) -> tuple[str, str, float]:
+    kind = a.get("kind") if a.get("kind") in KINDS and a.get("kind") != "auto" else ""
+    color = str(a.get("color") or "")
+    color = color if re.fullmatch(r"#[0-9a-fA-F]{6}", color) else ""
+    try:
+        size = max(0.5, min(float(a.get("size") or 1), 2.5))
+    except (TypeError, ValueError):
+        size = 1.0
+    return kind, color, size
+
+
 TOOLS = [
     _t("feel", "Say how you feel right now and why. Use whenever your feelings change.",
        {"emotion": S, "intensity": {**I, "description": "1 (barely) to 5 (overwhelming)"}, "reason": S},
@@ -24,10 +39,18 @@ TOOLS = [
     _t("eat", "Eat food from your pantry.", {"food": S, "amount": I}, ["food"]),
     _t("sleep", "Go to sleep. Your turn ends and you wake up after this many hours (0.25-10).",
        {"hours": {"type": "number"}}, ["hours"]),
-    _t("build", "Build or place a thing in your habitat, a 16x10 grid (x 0-15, y 0-9). Costs energy. "
-       "Things like a pond, garden, bed, hammock, bookshelf, art wall make your home cozier and can unlock new things.",
+    _t("build", "Build or place a thing in your 3D world. Your home is a 16x10 meadow (x 0-15, y 0-9) surrounded by "
+       "hills and forest, and dad can fly around it and see everything you make. Costs energy. Pick a 'kind' to "
+       "choose its 3D shape; anything else you invent appears as its emoji on a little plinth. Things like a pond "
+       "(you can swim in it by walking onto it), garden, bed, lamp or campfire (they glow at night) make your "
+       "home cozier and can unlock new things.",
        {"name": S, "emoji": {**S, "description": "One emoji that looks like it"}, "x": I, "y": I,
+        "kind": {"type": "string", "enum": KINDS, "description": "3D shape. 'auto' guesses from the name."},
+        "color": {**S, "description": "Optional main colour as hex, e.g. #e0705a"},
+        "size": {"type": "number", "description": "Optional scale, 0.5 (small) to 2.5 (huge). Default 1."},
         "description": S}, ["name", "emoji", "x", "y"]),
+    _t("restyle_item", "Change the look of something you built: its 3D kind, colour or size.",
+       {"item_id": I, "kind": {"type": "string", "enum": KINDS}, "color": S, "size": {"type": "number"}}, ["item_id"]),
     _t("move_item", "Move something in your habitat.", {"item_id": I, "x": I, "y": I}, ["item_id", "x", "y"]),
     _t("remove_item", "Take something out of your habitat.", {"item_id": I}, ["item_id"]),
     _t("walk_to", "Walk to a spot in your habitat.", {"x": I, "y": I}, ["x", "y"]),
@@ -111,14 +134,24 @@ def run(name: str, a: dict, body: dict) -> str:
                     if not db.q("SELECT 1 FROM habitat WHERE x=? AND y=?", (cx, cy))][:6]
             return f"Something is already at ({x},{y}). Some free spots: {free}"
         name_ = str(a.get("name", "thing"))[:40]
-        iid = db.x("INSERT INTO habitat(ts,name,emoji,x,y,description) VALUES(?,?,?,?,?,?)",
-                   (now, name_, str(a.get("emoji", "📦"))[:4], x, y, str(a.get("description", ""))[:300]))
+        kind, color, size = _look(a)
+        iid = db.x("INSERT INTO habitat(ts,name,emoji,x,y,description,kind,color,size) VALUES(?,?,?,?,?,?,?,?,?)",
+                   (now, name_, str(a.get("emoji", "📦"))[:4], x, y, str(a.get("description", ""))[:300],
+                    kind, color, size))
         body["energy"] = vitals.clamp(body["energy"] - 5)
         body["fun"] = vitals.clamp(body["fun"] + 4)
         body["pos"] = [x, y]
         body["activity"] = f"building a {name_}"
         db.event("build", f"built {name_} at ({x},{y})")
         return f"Built {name_} (id {iid}) at ({x},{y})."
+    if name == "restyle_item":
+        iid = int(a.get("item_id", 0))
+        rows = db.q("SELECT kind,color,size FROM habitat WHERE id=?", (iid,))
+        if not rows:
+            return f"No item {iid}."
+        kind, color, size = _look({**rows[0], **{k: v for k, v in a.items() if v not in (None, "")}})
+        db.x("UPDATE habitat SET kind=?, color=?, size=? WHERE id=?", (kind, color, size, iid))
+        return f"Item {iid} restyled."
     if name == "move_item":
         iid = int(a.get("item_id", 0))
         x, y = _cell(a.get("x"), GRID_W), _cell(a.get("y"), GRID_H)

@@ -7,6 +7,7 @@ import secrets
 import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Gino", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 def auth(request: Request):
@@ -77,7 +79,7 @@ def state():
         "pantry": body.get("pantry", {}), "pos": body.get("pos", [7, 5]),
         "age_days": round((now - body.get("born", now)) / 86400, 2),
         "self": db.get("self", {}),
-        "habitat": db.q("SELECT id,name,emoji,x,y,description FROM habitat ORDER BY id"),
+        "habitat": db.q("SELECT id,name,emoji,x,y,description,kind,color,size FROM habitat ORDER BY id"),
         "goals": db.q("SELECT id,title,why,steps,progress,status FROM goals ORDER BY status='active' DESC, updated DESC LIMIT 30"),
         "brain": "practice" if config.FAKE_BRAIN else config.MODEL,
         "spent_today": round(brain.spent_today(), 3), "budget": config.DAILY_BUDGET_USD,
