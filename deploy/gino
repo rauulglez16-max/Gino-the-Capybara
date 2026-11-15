@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Little helper for looking after Gino on his server. Type `gino` to see what it can do.
+set -euo pipefail
+
+ENV_FILE=/etc/gino/gino.env
+APP=/opt/gino/app
+
+need_root() { [ "$(id -u)" -eq 0 ] || { echo "Please run this as root (or with sudo)."; exit 1; }; }
+setting() { grep -m1 "^$1=" "$ENV_FILE" | cut -d= -f2-; }
+set_setting() {  # set_setting NAME value
+  local tmp; tmp="$(mktemp)"
+  grep -v "^$1=" "$ENV_FILE" > "$tmp" || true
+  printf '%s=%s\n' "$1" "$2" >> "$tmp"
+  cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
+}
+
+case "${1:-help}" in
+  status)
+    systemctl is-active --quiet gino && echo "🌿 Gino is running." || echo "😴 Gino is NOT running (try: gino restart, then gino logs)."
+    echo "   Address:  https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)"
+    echo "   Version:  $(runuser -u gino -- git -C "$APP" log -1 --format='%h %s (%cr)')"
+    echo "   Brain:    $( [ -n "$(setting ANTHROPIC_API_KEY)" ] && setting GINO_MODEL || echo 'practice brain (no key yet: gino set-key)')"
+    echo "   Next update check: $(systemctl list-timers gino-update.timer --no-legend | awk '{print $1, $2, $3}')"
+    if [ -s /var/lib/gino-deploy/bad-commit ]; then
+      echo "   ⚠️  Skipped version $(head -c 7 /var/lib/gino-deploy/bad-commit) because it wouldn't start."
+    fi
+    ;;
+  logs)    journalctl -u gino -u gino-update -n "${2:-80}" --no-pager ;;
+  follow)  journalctl -u gino -f ;;
+  restart) need_root; systemctl restart gino; echo "Gino restarted." ;;
+  stop)    need_root; systemctl stop gino; echo "Gino is paused. Start him again with: gino start" ;;
+  start)   need_root; systemctl start gino; echo "Gino is up." ;;
+  update)  need_root; bash "$APP/deploy/update.sh" --verbose ;;
+  backup)  need_root; bash "$APP/deploy/update.sh" --backup-only ;;
+  password)
+    need_root
+    if [ -n "${2:-}" ]; then set_setting GINO_PASSWORD "$2"; systemctl restart gino; echo "Password changed."
+    else echo "Gino's password: $(setting GINO_PASSWORD)"; fi
+    ;;
+  set-key)
+    need_root
+    read -r -p "Paste your Claude API key: " key
+    [ -n "$key" ] || { echo "Nothing pasted, nothing changed."; exit 1; }
+    set_setting ANTHROPIC_API_KEY "$key"; systemctl restart gino
+    echo "Gino has his real brain now. 🧠"
+    ;;
+  settings) need_root; "${EDITOR:-nano}" "$ENV_FILE" && systemctl restart gino && echo "Saved and restarted." ;;
+  *)
+    cat <<'EOF'
+gino status      is he running, which version, which brain
+gino logs        what happened recently
+gino follow      watch what he's doing live (Ctrl+C to stop watching)
+gino restart     restart him
+gino stop/start  pause him / wake him up again
+gino update      check GitHub for new code right now
+gino backup      save a copy of his memories now
+gino password    show (or: gino password NEW to change) the page password
+gino set-key     give him his Claude API key
+gino settings    edit all his settings
+EOF
+    ;;
+esac

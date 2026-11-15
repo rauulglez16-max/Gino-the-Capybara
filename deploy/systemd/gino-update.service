@@ -1,0 +1,8 @@
+[Unit]
+Description=Check GitHub for a new version of Gino
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/gino/app/deploy/update.sh

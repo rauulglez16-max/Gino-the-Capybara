@@ -1,0 +1,22 @@
+[Unit]
+Description=Gino the Capybara
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=gino
+Group=gino
+WorkingDirectory=/opt/gino/app
+EnvironmentFile=/etc/gino/gino.env
+ExecStart=/opt/gino/venv/bin/python run.py
+Restart=always
+RestartSec=10
+# Gino only needs his own folder
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/opt/gino/data
+
+[Install]
+WantedBy=multi-user.target
