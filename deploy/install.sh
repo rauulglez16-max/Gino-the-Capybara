@@ -15,6 +15,7 @@
 set -euo pipefail
 
 main() {
+  umask 022
   REPO="${GINO_REPO:-rauulglez16-max/Gino-the-Capybara}"
   BRANCH="${GINO_BRANCH:-main}"
   BASE=/opt/gino
@@ -62,7 +63,6 @@ main() {
   "$BASE/venv/bin/pip" install -q -r "$APP/requirements.txt"
 
   # --- settings (kept if they already exist) ---
-  local fresh_password=""
   if [ ! -f "$ENV_FILE" ]; then
     local key="${ANTHROPIC_API_KEY:-}"
     if [ -z "$key" ]; then
@@ -71,7 +71,6 @@ main() {
     local password="${GINO_PASSWORD:-}"
     if [ -z "$password" ]; then
       password="$(tr -dc 'a-km-z2-9' </dev/urandom | head -c 16 || true)"
-      fresh_password="$password"
     fi
     umask 027
     cat > "$ENV_FILE" <<EOF
@@ -123,7 +122,7 @@ EOF
   systemctl restart caddy
 
   # --- firewall: only ssh and the website get in ---
-  ufw allow OpenSSH >/dev/null
+  ufw allow 22/tcp >/dev/null
   ufw allow 80/tcp >/dev/null
   ufw allow 443/tcp >/dev/null
   ufw --force enable >/dev/null
@@ -138,9 +137,8 @@ EOF
 
   say "Gino is home! 🎉"
   printf '\n   Visit him:   https://%s\n' "$domain"
-  if [ -n "$fresh_password" ]; then
-    printf '   Password:    %s   (write this down; see it again with: gino password)\n' "$fresh_password"
-  fi
+  printf '   Password:    %s   (write this down; see it again any time with: gino password)\n' \
+    "$(grep -m1 '^GINO_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
   if ! grep -q '^ANTHROPIC_API_KEY=.\+' "$ENV_FILE"; then
     printf '\n   He is on his practice brain for now. Give him his real one with:  gino set-key\n'
   fi
