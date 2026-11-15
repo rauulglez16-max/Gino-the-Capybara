@@ -43,7 +43,7 @@ main() {
   chmod 700 "$BASE/data" "$BASE/backups"
 
   # --- the code ---
-  local url="https://github.com/$REPO.git"
+  local url="${GINO_REPO_URL:-https://github.com/$REPO.git}"
   if [ ! -d "$APP/.git" ]; then
     say "Downloading Gino from GitHub..."
     if [ -n "${GITHUB_TOKEN:-}" ]; then
