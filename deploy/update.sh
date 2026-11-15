@@ -6,6 +6,8 @@
 # Everything is inside main() so bash reads the whole file before running it: this script can safely update itself.
 set -euo pipefail
 
+as_gino() { HOME=/opt/gino setpriv --reuid=gino --regid=gino --init-groups -- "$@"; }
+
 main() {
   local BASE=/opt/gino APP=/opt/gino/app STATE=/var/lib/gino-deploy
   local BRANCH force="${1:-}"
@@ -15,7 +17,7 @@ main() {
   exec 9>"$STATE/lock"
   flock -n 9 || { echo "Another update is already running."; return 0; }
 
-  g() { runuser -u gino -- git -C "$APP" "$@"; }
+  g() { as_gino git -C "$APP" "$@"; }
   healthy() {
     for _ in $(seq 1 30); do
       sleep 2
@@ -59,8 +61,8 @@ main() {
 
 apply() {  # apply <commit> <previous commit>: put that code in place and restart Gino
   local target="$1" previous="$2" APP=/opt/gino/app BASE=/opt/gino
-  runuser -u gino -- git -C "$APP" reset --quiet --hard "$target"
-  if ! runuser -u gino -- git -C "$APP" diff --quiet "$previous" "$target" -- requirements.txt; then
+  as_gino git -C "$APP" reset --quiet --hard "$target"
+  if ! as_gino git -C "$APP" diff --quiet "$previous" "$target" -- requirements.txt; then
     "$BASE/venv/bin/pip" install -q -r "$APP/requirements.txt"
   fi
   # Pick up changes to the service files themselves

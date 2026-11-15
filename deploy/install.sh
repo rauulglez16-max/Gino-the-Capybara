@@ -22,6 +22,7 @@ main() {
   APP="$BASE/app"
   ENV_FILE=/etc/gino/gino.env
 
+  as_gino() { HOME=/opt/gino setpriv --reuid=gino --regid=gino --init-groups -- "$@"; }
   say() { printf '\n\033[1;32m🌿 %s\033[0m\n' "$*"; }
   die() { printf '\n\033[1;31m✋ %s\033[0m\n' "$*" >&2; exit 1; }
   ask() {  # ask "question" -> answer on stdout, empty when nobody is at a keyboard
@@ -50,10 +51,10 @@ main() {
     if [ -n "${GITHUB_TOKEN:-}" ]; then
       url="https://x-access-token:${GITHUB_TOKEN}@github.com/$REPO.git"
     fi
-    runuser -u gino -- git clone --quiet --branch "$BRANCH" "$url" "$APP" \
+    as_gino git clone --quiet --branch "$BRANCH" "$url" "$APP" \
       || die "Couldn't download Gino. If the repo is private, add GITHUB_TOKEN=... in front of bash (see deploy/README.md)."
   elif [ -n "${GITHUB_TOKEN:-}" ]; then
-    runuser -u gino -- git -C "$APP" remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$REPO.git"
+    as_gino git -C "$APP" remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$REPO.git"
   fi
   printf '%s\n' "$BRANCH" > /var/lib/gino-deploy/branch
 
