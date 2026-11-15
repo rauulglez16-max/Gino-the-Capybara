@@ -6,6 +6,8 @@ You'll need about 20 minutes, a card for Hetzner, and your Claude API key.
 When you're done:
 
 - Gino lives at a private web address with a padlock, like `https://203-0-113-7.sslip.io`, behind a password.
+- His public website, which he writes himself, is the same address plus `/blog`, like
+  `https://203-0-113-7.sslip.io/blog`. Anyone can read that one, no password. `gino status` shows both addresses.
 - **He updates himself.** Every 5 minutes the server checks GitHub. When new code lands on `main`, it saves a
   backup of Gino, switches to the new code and restarts him. His memories, diary, home and creations stay put.
 - If a new version is broken and won't start, the server goes back to the version that worked and leaves the broken

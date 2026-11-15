@@ -19,7 +19,8 @@ set_setting() {  # set_setting NAME value
 case "${1:-help}" in
   status)
     systemctl is-active --quiet gino && echo "🌿 Gino is running." || echo "😴 Gino is NOT running (try: gino restart, then gino logs)."
-    echo "   Address:  https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)"
+    echo "   Address:  https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)   (private, needs the password)"
+    echo "   Public website: https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)/blog   (anyone can read it)"
     echo "   Version:  $(as_gino git -C "$APP" log -1 --format='%h %s (%cr)')"
     echo "   Brain:    $( [ -n "$(setting ANTHROPIC_API_KEY)" ] && setting GINO_MODEL || echo 'practice brain (no key yet: gino set-key)')"
     echo "   Next update check: $(systemctl list-timers gino-update.timer --no-legend | awk '{print $1, $2, $3}')"

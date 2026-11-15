@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import brain, config, db, vitals
+from . import brain, config, db, public, vitals
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Gino", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.include_router(public.router)  # Gino's public website at /blog: no password, only what he chose to publish
 
 
 def auth(request: Request):

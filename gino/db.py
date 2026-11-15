@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, ts REAL NOT NULL, kin
 CREATE TABLE IF NOT EXISTS spend (
   id INTEGER PRIMARY KEY, ts REAL NOT NULL, day TEXT NOT NULL, purpose TEXT NOT NULL, model TEXT NOT NULL,
   input_tokens INTEGER, output_tokens INTEGER, cache_read INTEGER, cache_write INTEGER, usd REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS posts (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, updated REAL NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('diary','page')), slug TEXT NOT NULL, title TEXT NOT NULL,
+  body TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', creation_id INTEGER REFERENCES creations(id),
+  UNIQUE (kind, slug));
 CREATE INDEX IF NOT EXISTS spend_day ON spend(day);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 """

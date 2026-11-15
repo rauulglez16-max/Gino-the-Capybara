@@ -46,6 +46,11 @@ Then open **http://localhost:8787**. Leave the terminal running and Gino keeps l
 - **Chat**: talk to him any time. Messaging him wakes him up if he's asleep, and he remembers what matters.
 - **Diary, Creations, Goals, Memories, About Gino**: his inner life, all written by him.
 - **Leave a snack**: drop food in his pantry.
+- **His public website, "Gino's Burrow"** at `/blog` (for example `http://localhost:8787/blog`, or
+  `https://<your-address>/blog` on the server). Anyone can read it, no password. Gino writes it himself: a public
+  diary of what he did and learned each day, plus pages for things he makes (drawings, poems, write-ups of what he
+  learned). It only ever shows what he chose to publish. His private page, memories, private diary and your chats
+  are never on it. There's also an RSS feed at `/blog/feed.xml`.
 
 ## How Gino works
 
@@ -116,7 +121,10 @@ Always set `GINO_PASSWORD` before he's on the internet. His whole life is in `da
 ## Boundaries
 
 - On the internet Gino can only look (search and read pages). He has no accounts and cannot buy, post or sign up.
-- He's told never to share anything about you.
+  The one place he publishes is his own website at `/blog`.
+- He's told never to share anything about you. On top of that, everything he tries to put on his public website is
+  checked first and turned away if it mentions you (your name or "dad"), quotes your chats, or contains a key,
+  a password, an email address or a phone number.
 - He only touches his own `data/` folder. He can't run code or read your files.
 - Pages he reads can't give him orders; his instructions say to ignore anything that tries.
 
