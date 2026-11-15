@@ -2,7 +2,7 @@
 import re
 import time
 
-from . import config, db, vitals
+from . import config, db, public, vitals
 
 GRID_W, GRID_H = 16, 10
 
@@ -74,6 +74,27 @@ TOOLS = [
        ["field", "value"]),
     _t("message_dad", f"Send a message to your dad and best friend, {config.DAD_NAME}. He reads it when he's around.",
        {"text": S}, ["text"]),
+    _t("public_diary", "Write in your PUBLIC diary on your own website, which anyone on the internet can read. "
+       "Tell the world about your day: what you did, what you learned, what you made, how it felt. One diary page "
+       "per day; writing again the same day adds to it (or set replace to rewrite it). Unlike write_journal, this "
+       "is public, so NEVER mention your dad (not his name, not that you have one), your chats with him, keys, "
+       "passwords or anything private. It's rejected if it does. Markdown works (## headings, **bold**, - lists, "
+       "[links](https://...)).",
+       {"entry": S, "title": {**S, "description": "Optional title for today's page"},
+        "replace": {"type": "boolean", "description": "true rewrites today's entry instead of adding to it"}},
+       ["entry"]),
+    _t("public_page", "Publish (or update) a page on your public website: a project, a guide to something you "
+       "learned, a list of favourite things, a showcase of one of your creations. Anyone can read it, so the same "
+       "privacy rules as public_diary apply. Use the same slug again to update a page. To show off a poem, story "
+       "or drawing you made, pass its creation_id and write a few words about it in content.",
+       {"title": S, "content": {**S, "description": "The page, in markdown"},
+        "slug": {**S, "description": "Short web address name, e.g. 'my-pond'. Defaults to the title."},
+        "summary": {**S, "description": "One line shown on your homepage"},
+        "creation_id": {**I, "description": "Optional: id of one of your creations to show on the page"}},
+       ["title", "content"]),
+    _t("public_unpublish", "Take a diary day or page off your public website.",
+       {"kind": {"type": "string", "enum": ["diary", "page"]},
+        "slug": {**S, "description": "The page's slug, or the diary's date like 2026-11-15"}}, ["kind", "slug"]),
     _t("set_next_wake", "Choose how many minutes until your next turn (you'll still wake if dad messages you).",
        {"minutes": I}, ["minutes"]),
 ]
@@ -240,6 +261,20 @@ def run(name: str, a: dict, body: dict) -> str:
         db.x("INSERT INTO chat(ts,sender,text) VALUES(?,?,?)", (now, "gino", str(a.get("text", ""))[:4000]))
         db.event("chat", "sent dad a message")
         return f"Message sent to {config.DAD_NAME}."
+    if name == "public_diary":
+        return public.write_diary(a.get("entry", ""), a.get("title", ""), bool(a.get("replace")))
+    if name == "public_page":
+        cid = a.get("creation_id")
+        try:
+            cid = int(cid) if cid not in (None, "", 0) else None
+        except (TypeError, ValueError):
+            cid = None
+        r = public.write_page(a.get("title", ""), a.get("content", ""), a.get("slug", ""), a.get("summary", ""), cid)
+        if r.startswith(("Published", "Updated")):
+            body["fun"] = vitals.clamp(body["fun"] + 6)
+        return r
+    if name == "public_unpublish":
+        return public.unpublish(str(a.get("kind", "page")), str(a.get("slug", "")))
     if name == "set_next_wake":
         m = max(config.MIN_WAKE_MINUTES, min(int(a.get("minutes", 60) or 60), config.MAX_WAKE_MINUTES))
         body["next_wake"] = now + m * 60
