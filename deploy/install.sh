@@ -39,6 +39,12 @@ main() {
   apt-get update -qq
   apt-get install -y -qq git python3 python3-venv curl ca-certificates caddy ufw >/dev/null
 
+  # Small servers (1-2 GB) get a little swap so a pip install can't run out of memory
+  if [ ! -f /swapfile ] && [ "$(awk '/MemTotal/{print $2}' /proc/meminfo)" -lt 2100000 ] && ! swapon --show | grep -q .; then
+    { fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap -q /swapfile && swapon /swapfile \
+      && echo '/swapfile none swap sw 0 0' >> /etc/fstab; } || rm -f /swapfile
+  fi
+
   id gino >/dev/null 2>&1 || useradd --system --home-dir "$BASE" --shell /usr/sbin/nologin gino
   mkdir -p "$BASE/data" "$BASE/backups" /etc/gino /var/lib/gino-deploy
   chown gino:gino "$BASE" "$BASE/data"

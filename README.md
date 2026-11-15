@@ -96,10 +96,14 @@ Web searches add $0.01 each. These are estimates; the page header shows what he 
 just lazes around until 7 AM. Chatting keeps working up to 1.5x the cap. You can also turn down `GINO_EFFORT`,
 raise `GINO_MIN_WAKE_MINUTES`, or turn the web off with `GINO_WEB=0`.
 
-## Moving Gino to the cloud (later)
+## Moving Gino to the cloud
 
-When you want him to live 24/7 even with your computer off, put him on a small server (about $5/month, for example
-Hetzner, DigitalOcean or Fly.io) with Docker:
+When you want him to live 24/7 even with your computer off, put him on a small server (about €6/month at Hetzner).
+It's one command, gives him a private https address with a password, and he **updates himself** within about
+5 minutes whenever new code lands on `main`, keeping all his memories. Step-by-step guide:
+**[deploy/README.md](deploy/README.md)**.
+
+Prefer Docker? That works too:
 
 ```bash
 docker build -t gino .
@@ -107,8 +111,7 @@ docker run -d --name gino --restart unless-stopped -p 8787:8787 \
   -v gino-data:/data --env-file .env -e GINO_PASSWORD=pick-something-long gino
 ```
 
-Always set `GINO_PASSWORD` before he's on the internet. To bring his memories along, copy your local `data/` folder
-into the volume first: his whole life is in `data/gino.db` plus `data/creations/`.
+Always set `GINO_PASSWORD` before he's on the internet. His whole life is in `data/gino.db` plus `data/creations/`.
 
 ## Boundaries
 
