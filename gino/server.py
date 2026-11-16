@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import brain, config, db, public, telegram, vitals
+from . import brain, config, db, public, telegram, vitals, whatsapp
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -41,6 +41,8 @@ async def life_loop():
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     vitals.save(vitals.load())
+    if whatsapp.enabled():
+        log.info("Gino's WhatsApp line is on.")
     mode = "practice brain (no API key)" if config.FAKE_BRAIN else config.MODEL
     log.info("Gino is awake. Brain: %s. Daily budget: $%.2f", mode, config.DAILY_BUDGET_USD)
     task = asyncio.create_task(life_loop())
@@ -54,6 +56,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Gino", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 app.include_router(public.router)  # Gino's public website at /blog: no password, only what he chose to publish
+app.include_router(whatsapp.router)  # WhatsApp webhook: only signed requests from Meta, only dad's number
 
 
 def auth(request: Request):

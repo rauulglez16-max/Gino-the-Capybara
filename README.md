@@ -44,8 +44,8 @@ Then open **http://localhost:8787**. Leave the terminal running and Gino keeps l
   computers.
 - **How he feels**: fullness, energy, social, fun, comfort, and his overall mood, plus the emotion he names and why.
 - **Chat**: talk to him any time. Messaging him wakes him up if he's asleep, and he remembers what matters.
-- **Phone**: on his server, `gino telegram` connects him to your Telegram, so he texts your phone and you can text
-  him back. Only your chat can talk to him (see deploy/README.md).
+- **Phone**: on his server, `gino telegram` or `gino whatsapp` connects him to your phone, so he texts you and you can
+  text him back. Only you can talk to him there (see deploy/README.md).
 - **Diary, Creations, Goals, Memories, About Gino**: his inner life, all written by him.
 - **Leave a snack**: drop food in his pantry.
 - **His public website, "Gino's Burrow"** at `/blog` (for example `http://localhost:8787/blog`, or

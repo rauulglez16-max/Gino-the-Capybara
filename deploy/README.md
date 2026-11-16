@@ -131,6 +131,93 @@ and whatever you text the bot reaches him, just like chatting on his page. Both 
 If you ever think someone saw the token, open @BotFather, send `/revoke`, pick your bot, and run
 `gino telegram` again with the new token.
 
+## Let Gino message you on WhatsApp 💬
+
+This uses WhatsApp's official system for apps (Meta's "WhatsApp Cloud API"), so nothing gets banned. Setting it up takes
+about 30 minutes, mostly clicking around Meta's website once. Only your number can talk to Gino. He ignores messages
+from anyone else, and the server checks that every message really comes from WhatsApp.
+
+**One WhatsApp rule to know:** Gino can text you freely for 24 hours after your last message to him. If he wants to tell
+you something after that, he sends you one short nudge. His actual message waits, and arrives as soon as you reply.
+So if you text him every day or so, you'll hardly notice the rule.
+
+**Cost:** the first 1,000 replies each month are free, which is far more than Gino needs. A nudge costs about 2p.
+On Meta's free test number, nudges are free too.
+
+### Step 1: Make a Meta app (10 minutes)
+
+1. Go to **https://developers.facebook.com**, log in with your Facebook account, and click **Get started** to register
+   as a developer (it's free; it may ask you to confirm your phone or email).
+2. Click **My Apps** > **Create app**. Name it `Gino`. When it asks for a use case, pick
+   **Connect with customers through WhatsApp**. If it asks for a business portfolio, create one (any name, like `Gino`).
+   Click through to **Create app**.
+3. In the app, open **WhatsApp** > **API Setup** in the left menu. Meta has given Gino a free **test number**.
+   - Under **To**, click **Manage phone number list**, add **your own** mobile number and type in the code WhatsApp
+     sends you.
+   - Copy the **Phone number ID** (the long number shown under the test number, not the phone number itself).
+     That's **thing 1 of 4**.
+   - Click **Send message**. You get a "Hello World" message on WhatsApp from the test number. Save that number in
+     your phone as **Gino 🐾**.
+
+### Step 2: Get the app secret (1 minute)
+
+In the left menu, go to **App settings** > **Basic**. Next to **App secret**, click **Show** and copy it.
+That's **thing 2 of 4**.
+
+### Step 3: Get a permanent token (5 minutes)
+
+The token on the API Setup page stops working after a day, so make one that doesn't:
+
+1. Go to **https://business.facebook.com/latest/settings** and choose **System users** (under Users).
+2. Click **Add**, call it `gino`, set the role to **Admin**, and create it.
+3. Click **Assign assets**. Pick your app `Gino` and turn on **Manage app** (full control). Pick your WhatsApp account
+   and turn on full control too. Save.
+4. Click **Generate token**. Choose the app `Gino`, set the expiry to **Never**, and tick these permissions:
+   `business_management`, `whatsapp_business_messaging` and `whatsapp_business_management`.
+   Copy the long token. That's **thing 3 of 4**. Keep it secret.
+
+**Thing 4 of 4** is your own WhatsApp number with the country code and no `+`, like `447700900123` for a UK mobile.
+
+### Step 4: Tell Gino (2 minutes)
+
+In PowerShell, log in to the server with `ssh root@<your IP>`, then type:
+
+```bash
+gino whatsapp
+```
+
+It asks for the 4 things, one at a time. Paste each one (right-click pastes in PowerShell) and press Enter. When it's
+done it shows a **Callback URL** and a **Verify token**.
+
+### Step 5: Connect the webhook (2 minutes)
+
+Back on developers.facebook.com, in your app, open **WhatsApp** > **Configuration**:
+
+1. Under **Webhook**, click **Edit**, paste the **Callback URL** and the **Verify token**, and click **Verify and save**.
+2. Under **Webhook fields**, find **messages** and click **Subscribe**.
+
+Now open WhatsApp, send **hi** to Gino 🐾, and he'll answer. 🎉
+
+### Optional: a nicer nudge
+
+Out of the box, Gino's nudge is Meta's "Hello World" message. To make it say what's going on, open **WhatsApp Manager**
+(https://business.facebook.com/wa/manage/message-templates/) > **Create template**:
+
+- Category **Utility**, name `gino_nudge`, language **English (UK)**
+- Body: `🐾 Gino has a message for you. Reply to read it.`
+
+Submit it. Once it shows **Active** (usually within minutes), run `gino whatsapp template gino_nudge en_GB` on the server.
+
+| Command | What it does |
+| --- | --- |
+| `gino whatsapp test` | Send the nudge to your phone, to check everything works |
+| `gino whatsapp webhook` | Show the Callback URL and Verify token again |
+| `gino whatsapp template NAME en_GB` | Change which template Gino uses as his nudge |
+| `gino whatsapp` | Set it up again (new token, new number...) |
+| `gino whatsapp off` | Disconnect WhatsApp |
+
+Telegram and WhatsApp can both be on at once. When Gino messages you, it goes to both.
+
 ## Looking after Gino
 
 Log in with `ssh root@<your IP>` and type `gino` to see everything:
@@ -144,7 +231,8 @@ Log in with `ssh root@<your IP>` and type `gino` to see everything:
 | `gino backup` | Save a copy of his memories now |
 | `gino password` | Show the page password (`gino password NEW` changes it) |
 | `gino set-key` | Give him a new Claude API key |
-| `gino telegram` | Connect him to your phone (see above) |
+| `gino telegram` | Connect him to Telegram on your phone (see above) |
+| `gino whatsapp` | Connect him to your WhatsApp (see above) |
 | `gino settings` | Change any setting (model, budget, time zone...). Save with Ctrl+O, Enter, then Ctrl+X |
 
 ## Where things live on the server
@@ -153,7 +241,7 @@ Log in with `ssh root@<your IP>` and type `gino` to see everything:
 | --- | --- |
 | Gino's memories, diary, home, creations | `/opt/gino/data/` (never touched by updates) |
 | Backups | `/opt/gino/backups/` |
-| Settings, API key and Telegram token | `/etc/gino/gino.env` (only root and Gino can read it) |
+| Settings, API key and phone tokens | `/etc/gino/gino.env` (only root and Gino can read it) |
 | The code (a copy of GitHub `main`) | `/opt/gino/app/` |
 
 **Restoring a backup:** `gino stop`, then
