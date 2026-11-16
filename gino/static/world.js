@@ -43,6 +43,7 @@ export function createWorld(container, tooltip, opts = {}) {
   env.artKey = opts.key || '';
   const S = SEASON[env.season];
   const small = container.clientWidth < 600;
+  env.lite = !!opts.lite || small;      // phones and the server camera get lighter trees
 
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.5 : 2));
@@ -197,7 +198,7 @@ export function createWorld(container, tooltip, opts = {}) {
   for (let i = 0; i < 150; i++) {
     const a = r0() * 6.28, d = 27 + r0() * 75, x = Math.cos(a) * d * 1.2, z = Math.sin(a) * d;
     if (lakeK(x, z) > 0.02) continue;
-    const g = new THREE.Group(), t = r0(); (t < 0.45 ? B.pine : t < 0.8 ? B.tree : t < 0.9 ? B.bush : B.rock)(g, { name: '' }, r0);
+    const g = new THREE.Group(), t = r0(); (t < 0.45 ? B.pine : t < 0.8 ? B.tree : t < 0.9 ? B.bush : B.rock)(g, { name: '', far: true }, r0);
     g.position.set(x, groundY(x, z) - 0.05, z); g.rotation.y = r0() * 6; g.scale.setScalar(0.9 + r0() * 1.5); scene.add(g);
   }
   for (let i = 0; i < 40; i++) { // reeds on the lake shore
@@ -382,6 +383,7 @@ export function createWorld(container, tooltip, opts = {}) {
   let snapshot = null, quality = small ? 'low' : 'high', slow = 0, frames = 0;
   function setQuality(q) {
     quality = q; const hi = q === 'high';
+    gino.traverse(n => { if (n.userData.shell) n.visible = hi || n.userData.shell % 2 === 0; });   // half the fur layers on slow devices
     if (gtao) gtao.enabled = hi; renderer.setPixelRatio(Math.min(devicePixelRatio, hi ? 2 : 1)); grassShare = hi ? 1 : 0.45; grass.count = Math.round((grass.userData.full || 0) * grassShare);
     sun.shadow.mapSize.set(hi ? 4096 : 1024, hi ? 4096 : 1024); sun.shadow.map?.dispose(); sun.shadow.map = null; resize(); opts.onQuality?.(q);
   }
@@ -537,6 +539,7 @@ export function createWorld(container, tooltip, opts = {}) {
     setWeather(w) { weatherOverride = w; weather = w || state.weather?.kind || 'clear'; },
     photo() { return new Promise(res => { snapshot = res; }); },
     get doing() { return doing(); },
+    get where() { return [gino.position.x / CELL + (GW - 1) / 2, gino.position.z / CELL + (GH - 1) / 2]; },   // where he is right now, in grid squares
     pet() { hop = 1; heartT = timer.getElapsed(); },
     _debug: { scene, camera, controls, gino, roam: R, skip() { intro = 1; camera.position.copy(HOME); },
       snap() { target.copy(anchor); gino.position.set(target.x, groundY(target.x, target.z), target.z); R.arrived = true; } },

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 export const U = { time: { value: 0 } };           // shared shader clock
-export const env = { season: 'summer', art: [], artKey: '' };
+export const env = { season: 'summer', art: [], artKey: '', lite: false };
 
 const mats = new Map();
 export function mat(color, extra = {}) {
@@ -120,13 +120,110 @@ export function waterMat() {
 }
 
 // ---------------------------------------------------------------- everything Gino can build
+
+// ---- lifelike shapes: sculpted forms and hand-drawn surface textures (still no model files) ----
+const sq = (t, e) => Math.sign(t) * Math.pow(Math.abs(t), e);
+function sculpt(fn, ws = 44, hs = 30) {
+  const g = new THREE.SphereGeometry(1, ws, hs), p = g.attributes.position, col = new Float32Array(p.count * 3), v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).normalize(); const k = fn(v) ?? 1; p.setXYZ(i, v.x, v.y, v.z); col.set([k, k, k], i * 3); }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
+}
+function canvasTex(size, draw, rx = 1, ry = 1) {
+  const c = document.createElement('canvas'); c.width = c.height = size; draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+const texCache = {};
+const tex = (k, mk) => texCache[k] || (texCache[k] = mk());
+const furTex = () => tex('fur', () => canvasTex(512, (x, n) => {
+  const r = rng(7); x.fillStyle = '#cfcfcf'; x.fillRect(0, 0, n, n);
+  for (let i = 0; i < 16000; i++) { const px = r() * n, py = r() * n, l = 8 + r() * 16, a = (r() - 0.5) * 0.7 + Math.PI / 2, v = 120 + Math.floor(r() * 135);
+    x.strokeStyle = `rgba(${v},${v},${v},0.55)`; x.lineWidth = 0.8 + r() * 1.2; x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke(); }
+}, 5, 3));
+const barkTex = () => tex('bark', () => canvasTex(256, (x, n) => {
+  const r = rng(3); x.fillStyle = '#d6d6d6'; x.fillRect(0, 0, n, n);
+  for (let i = 0; i < 500; i++) { const px = r() * n, py = r() * n, l = 20 + r() * 70, v = 130 + Math.floor(r() * 110);
+    x.strokeStyle = `rgba(${v},${v},${v},0.6)`; x.lineWidth = 1 + r() * 3; x.beginPath(); x.moveTo(px, py); x.bezierCurveTo(px + (r() - 0.5) * 8, py + l * 0.3, px + (r() - 0.5) * 8, py + l * 0.6, px + (r() - 0.5) * 6, py + l); x.stroke(); }
+}, 3, 2));
+const plankTex = () => tex('plank', () => canvasTex(256, (x, n) => {
+  const r = rng(11); x.fillStyle = '#f2f2f2'; x.fillRect(0, 0, n, n);
+  for (let row = 0; row < 8; row++) { const y0 = row * 32, v = 215 + Math.floor(r() * 40); x.fillStyle = `rgb(${v},${v},${v})`; x.fillRect(0, y0, n, 32);
+    for (let i = 0; i < 26; i++) { const yy = y0 + 3 + r() * 26, xx = r() * n, v2 = 150 + Math.floor(r() * 70); x.strokeStyle = `rgba(${v2},${v2},${v2},0.5)`; x.lineWidth = 1; x.beginPath(); x.moveTo(xx, yy); x.lineTo(xx + 30 + r() * 90, yy + (r() - 0.5) * 3); x.stroke(); }
+    x.fillStyle = 'rgba(40,30,20,0.55)'; x.fillRect(0, y0, n, 2.5); const bx = r() * n; x.fillRect(bx, y0, 2, 32); }
+}, 2, 1));
+const shingleTex = () => tex('shingle', () => canvasTex(256, (x, n) => {
+  const r = rng(5); x.fillStyle = '#8a8a8a'; x.fillRect(0, 0, n, n);
+  for (let row = 0; row < 8; row++) for (let c = -1; c < 8; c++) { const w = 32, x0 = c * w + (row % 2 ? 16 : 0), y0 = row * 32, v = 170 + Math.floor(r() * 85);
+    x.fillStyle = `rgb(${v},${v},${v})`; x.beginPath(); x.moveTo(x0 + 1, y0); x.lineTo(x0 + w - 1, y0); x.lineTo(x0 + w - 1, y0 + 22); x.quadraticCurveTo(x0 + w / 2, y0 + 36, x0 + 1, y0 + 22); x.closePath(); x.fill();
+    x.strokeStyle = 'rgba(30,20,15,0.6)'; x.lineWidth = 1.5; x.stroke(); }
+}, 3, 4));
+function texMat(key, color, map, extra = {}) {
+  const k = 'tx' + key + color; if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color, map, bumpMap: map, bumpScale: 0.6, roughness: 0.95, vertexColors: true, ...extra })); return mats.get(k);
+}
+const barkMat = () => texMat('bark', '#8a6240', barkTex(), { bumpScale: 0.9 });
+function meshOf(parent, geo, material, [sx, sy, sz], [px, py, pz], rot) {
+  const m = new THREE.Mesh(geo, material); m.scale.set(sx, sy, sz); m.position.set(px, py, pz); if (rot) m.rotation.set(rot[0], rot[1], rot[2]);
+  m.castShadow = true; m.receiveShadow = true; parent.add(m); return m;
+}
+let trunkG = null;
+function trunkGeo() { if (trunkG) return trunkG; const pts = [[0.62, 0], [0.42, 0.18], [0.31, 0.5], [0.27, 1.2], [0.24, 2.0], [0.2, 2.7], [0.0, 2.75]].map(([x, y]) => new THREE.Vector2(x, y));
+  const g = new THREE.LatheGeometry(new THREE.SplineCurve(pts).getPoints(24), 16), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const y = p.getY(i), a = Math.atan2(p.getZ(i), p.getX(i)), k = 1 + 0.09 * Math.sin(a * 5 + y * 1.3) * (1.2 - y / 2.75); p.setXYZ(i, p.getX(i) * k + 0.05 * Math.sin(y * 1.6), y, p.getZ(i) * k); }
+  g.computeVertexNormals(); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(p.count * 3).fill(1), 3)); return trunkG = g; }
+let firG = null;
+function firGeo() {
+  if (firG) return firG; const seg = 30, g = new THREE.ConeGeometry(0.5, 1, seg, 5, true), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), t = 0.5 - y, k = Math.round((Math.atan2(z, x) / (Math.PI * 2)) * seg), alt = ((k % 2) + 2) % 2;
+    const rs = 1 - (0.3 + 0.12 * Math.sin(k * 1.7)) * alt * t; p.setXYZ(i, x * rs, y - (alt ? 0 : 0.2 * t * t) + 0.07 * Math.sin(k * 2.3) * t, z * rs); }
+  g.computeVertexNormals(); const c = new Float32Array(p.count * 3); for (let i = 0; i < p.count; i++) { const k = 0.72 + 0.4 * (0.5 - p.getY(i)); c.set([k, k, k], i * 3); } g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  return firG = g;
+}
+const firMat = c => { const k = 'fir' + c; if (!mats.has(k)) mats.set(k, windy(new THREE.MeshStandardMaterial({ color: c, roughness: 1, side: THREE.DoubleSide, vertexColors: true, flatShading: true }), 'sway', 0.02)); return mats.get(k); };
+const shade = (hex, dl, dh = 0) => '#' + new THREE.Color(hex).offsetHSL(dh, 0, dl).getHexString();
+
+// Real fur: thin shells of dotted hair stacked outward from the skin. world.js thins them on slow devices (userData.shell).
+const furDots = () => tex('furdots', () => canvasTex(256, (x, n) => { const r = rng(13); x.fillStyle = '#000'; x.fillRect(0, 0, n, n);
+  for (let i = 0; i < 5600; i++) { const v = 80 + Math.floor(r() * 175); x.fillStyle = `rgb(${v},${v},${v})`; x.beginPath(); x.arc(r() * n, r() * n, 0.8 + r() * 0.9, 0, 6.3); x.fill(); } }, 10, 7));
+function furShells(mesh, color, len = 0.05, n = 14) {
+  const sc = mesh.scale, k = len / ((sc.x + sc.y + sc.z) / 3);
+  for (let i = 1; i <= n; i++) { const t = i / n, key = `shell${color}${i}${k.toFixed(3)}`;
+    if (!mats.has(key)) { const m = new THREE.MeshStandardMaterial({ color: shade(color, -0.07 + t * 0.17), alphaMap: furDots(), alphaTest: 0.1 + t * 0.6, roughness: 1, vertexColors: true });
+      const off = (k * t).toFixed(4), droop = (k * t * t * 0.7).toFixed(4);
+      m.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\n transformed += normalize(objectNormal) * ${off}; transformed.y -= ${droop};`); };
+      m.customProgramCacheKey = () => 'shell' + off; mats.set(key, m); }
+    const sh = new THREE.Mesh(mesh.geometry, mats.get(key)); sh.receiveShadow = true; sh.userData.shell = i; mesh.add(sh); }
+  return mesh;
+}
+let leafG = null;
+function leafGeo() { if (leafG) return leafG; const sh = new THREE.Shape(); sh.moveTo(0, -0.5); sh.quadraticCurveTo(0.46, -0.12, 0, 0.5); sh.quadraticCurveTo(-0.46, -0.12, 0, -0.5);
+  const g = new THREE.ShapeGeometry(sh, 4), p = g.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, Math.abs(p.getX(i)) * 0.35);   // slight fold along the midrib
+  g.computeVertexNormals(); return leafG = g; }
+let leafCardM = null;
+const leafCardMat = () => leafCardM || (leafCardM = windy(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.75, side: THREE.DoubleSide }), 'sway', 0.03));
+// Real leaves: one instanced mesh of little folded leaf shapes per tree.
+function leaves(g, clusters, base, r, per = 85, big = 1) {
+  const inst = new THREE.InstancedMesh(leafGeo(), leafCardMat(), clusters.length * per), o = new THREE.Object3D(), c = new THREE.Color(), v = new THREE.Vector3(); let k = 0;
+  for (const [x, y, z, s] of clusters) for (let i = 0; i < per; i++) {
+    v.set(r() - 0.5, r() - 0.42, r() - 0.5).normalize(); const rad = s * 0.5 * (0.82 + r() * 0.3);
+    o.position.set(x + v.x * rad, y + v.y * rad * 0.85, z + v.z * rad); o.lookAt(o.position.x + v.x + (r() - 0.5) * 1.2, o.position.y + v.y + (r() - 0.5) * 1.2 - 0.3, o.position.z + v.z + (r() - 0.5) * 1.2);
+    o.rotateZ(r() * 6.28); o.scale.setScalar((0.14 + r() * 0.12) * big); o.updateMatrix(); inst.setMatrixAt(k, o.matrix);
+    c.set(base).offsetHSL((r() - 0.5) * 0.05, (r() - 0.5) * 0.1, (r() - 0.5) * 0.16 + v.y * 0.06); inst.setColorAt(k++, c); }
+  inst.castShadow = true; inst.receiveShadow = true; g.add(inst); return inst;
+}
+const brickTex = () => tex('brick', () => canvasTex(128, (x, n) => { const r = rng(21); x.fillStyle = '#6a625a'; x.fillRect(0, 0, n, n);
+  for (let row = 0; row < 8; row++) for (let c = -1; c < 4; c++) { const v = 150 + Math.floor(r() * 100); x.fillStyle = `rgb(${v},${v - 8},${v - 14})`; x.fillRect(c * 32 + (row % 2 ? 16 : 0) + 1.5, row * 16 + 1.5, 29, 13); } }, 1, 2));
+
 export const B = {
   tree(g, o, r) {
-    part(g, 'trunk', '#6f4a2b', [0.5, 1.9, 0.5], [0, 0.95, 0]);
-    part(g, 'trunk', '#6f4a2b', [0.16, 0.9, 0.16], [0.32, 1.6, 0], [0, 0, -0.8]); part(g, 'trunk', '#6f4a2b', [0.14, 0.7, 0.14], [-0.28, 1.75, 0.1], [0.2, 0, 0.8]);
-    const c = () => leafMat(o.color || leaf(r));
-    for (const [s, x, y, z] of [[2.3, 0, 2.5, 0], [1.6, 0.85, 3.0, 0.25], [1.5, -0.8, 2.9, -0.3], [1.3, 0.1, 3.7, -0.2], [1.2, -0.2, 2.6, 0.85], [1.1, 0.3, 2.4, -0.9]])
-      part(g, 'leafy', c(), [s, s * 0.88, s], [x, y, z], [r() * 3, r() * 6, r() * 3]);
+    const bark = barkMat();
+    meshOf(g, trunkGeo(), bark, [1, 1, 1], [0, 0, 0]);
+    for (let i = 0; i < 5; i++) { const a = i * 1.257 + r() * 0.5, t = 0.75 + r() * 0.3, l = 1.1 + r() * 0.5;
+      meshOf(g, geos.trunk, bark, [0.17, l, 0.17], [Math.cos(a) * 0.45, 2.35 + r() * 0.3, Math.sin(a) * 0.45], [Math.sin(a) * t, 0, -Math.cos(a) * t]); }
+    const base = o.color || leaf(r), cl = [], far = o.far || env.lite;      // far: scenery trees on the hills get a lighter crown
+    for (let i = 0; i < (far ? 16 : 30); i++) { const a = r() * 6.283, e = (r() - 0.25) * 1.5, rad = 0.7 + r() * 0.8, s = 0.6 + r() * 0.6;
+      const x = Math.cos(a) * Math.cos(e) * rad * 1.25, y = 3.05 + Math.sin(e) * rad * 0.95, z = Math.sin(a) * Math.cos(e) * rad * 1.25;
+      part(g, 'leafy', leafMat(shade(base, -0.1 + (y - 3.1) * 0.03)), [s * (far ? 1.0 : 0.74), s * (far ? 0.82 : 0.6), s * (far ? 1.0 : 0.74)], [x, y, z], [r() * 3, r() * 6, r() * 3]); cl.push([x, y, z, s]); }
+    leaves(g, cl, base, r, far ? 26 : 150, far ? 2.6 : 1);
+    for (let i = 0; i < 4; i++) { const a = r() * 6.28; meshOf(g, geos.trunk, bark, [0.07, 0.9, 0.07], [Math.cos(a) * 1.0, 2.75, Math.sin(a) * 1.0], [Math.sin(a) * 1.25, 0, -Math.cos(a) * 1.25]); }
   },
   fruit_tree(g, o, r) {
     B.tree(g, { color: env.season === 'winter' ? null : '#4f9446' }, r);
@@ -134,10 +231,13 @@ export const B = {
     for (let i = 0; i < 11; i++) { const a = r() * 6.28, h = 1.8 + r() * 1.5; part(g, 'smooth', fc, [0.24, 0.24, 0.24], [Math.cos(a) * 1.0, h, Math.sin(a) * 1.0], null, { flatShading: false, roughness: 0.5 }); }
   },
   pine(g, o) {
-    part(g, 'trunk', '#6e4a2c', [0.36, 1.1, 0.36], [0, 0.55, 0]);
-    const c = pineMat(o.color || (env.season === 'winter' ? '#5f8f7a' : '#356f48'));
-    for (const [w, h, y] of [[2.3, 1.5, 1.45], [1.9, 1.4, 2.2], [1.45, 1.3, 2.95], [1.0, 1.2, 3.65], [0.55, 0.9, 4.25]]) part(g, 'pine', c, [w, h, w], [0, y, 0], [0, y * 1.3, 0]);
-    if (env.season === 'winter') for (const [s, y] of [[1.2, 2.75], [0.85, 3.5], [0.45, 4.3]]) part(g, 'pine', '#f4f8fa', [s, 0.5, s], [0, y, 0]);
+    meshOf(g, geos.trunk, barkMat(), [0.6, 0.3, 0.6], [0, 0.15, 0]);
+    meshOf(g, geos.trunk, barkMat(), [0.34, 2.6, 0.34], [0, 1.3, 0]);
+    const base = o.color || (env.season === 'winter' ? '#5f8f7a' : '#2b5c3c'), n = o.far || env.lite ? 9 : 14;
+    meshOf(g, geos.cone, mat('#1f3f2b'), [1.5, 5.4, 1.5], [0, 3.6, 0]);
+    for (let i = 0; i < n; i++) { const t = i / (n - 1), w = 2.9 * (1 - t * 0.88), h = 1.0 - t * 0.3;
+      meshOf(g, firGeo(), firMat(shade(base, -0.03 + t * 0.07)), [w, h * (14 / n), w], [0, 1.15 + i * 0.36 * (13 / (n - 1)), 0], [0, i * 0.73, 0]); }
+    if (env.season === 'winter') for (const [s, y] of [[1.2, 2.75], [0.85, 3.6], [0.45, 4.6]]) part(g, 'pine', '#f4f8fa', [s, 0.5, s], [0, y, 0]);
   },
   bush(g, o, r) {
     const c = () => leafMat(o.color || leaf(r));
@@ -313,12 +413,40 @@ export const B = {
     light(g, '#ff8a3c', [0, 0.9, 0], 18, true);
   },
   house(g, o) {
-    part(g, 'box', o.color || '#e8d3b0', [2.1, 1.4, 1.8], [0, 0.7, 0]);
-    part(g, 'pyramid', '#b5553c', [3.3, 1.2, 3.0], [0, 2.0, 0], [0, Math.PI / 4, 0]);
-    part(g, 'box', '#8d8a84', [0.32, 0.9, 0.32], [0.6, 2.1, -0.3]);
-    part(g, 'box', '#6b4a2f', [0.55, 0.9, 0.06], [0, 0.45, 0.91]); part(g, 'smooth', '#f6c833', [0.07, 0.07, 0.07], [0.18, 0.45, 0.95]);
-    for (const p of [[0.68, 0.85, 0.91, 0], [-0.68, 0.85, 0.91, 0], [1.06, 0.85, 0, 1]]) { const w = nightGlow(part(g, 'box', '#a9d8ee', [0.42, 0.42, 0.05], [p[0], p[1], p[2]], [0, p[3] * Math.PI / 2, 0]), '#ffc76a', 2.6); w.castShadow = false; }
-    emitter(g, 5, '#d8d8d8', [0.6, 2.6, -0.3], { rise: 2.4, spread: 0.45, size: 0.36, speed: 0.14 });
+    const wall = o.color || '#e8d3b0', wood = '#5d3f27', wm = texMat('plank', wall, plankTex()), roof = texMat('shingle', '#b5553c', shingleTex(), { bumpScale: 1.2 });
+    part(g, 'box', '#8b867f', [2.32, 0.3, 2.02], [0, 0.15, 0]);                                        // stone footing
+    for (let i = 0; i < 9; i++) part(g, 'rock', i % 2 ? '#9a958d' : '#7d7871', [0.34, 0.26, 0.2], [-1.0 + i * 0.25, 0.14, 1.0], [0, i, 0]);
+    meshOf(g, geos.box, wm, [2.1, 1.4, 1.8], [0, 0.98, 0]);
+    const tri = new THREE.Shape(); tri.moveTo(-1.05, 0); tri.lineTo(1.05, 0); tri.lineTo(0, 0.8); tri.closePath();
+    const gable = new THREE.ExtrudeGeometry(tri, { depth: 1.78, bevelEnabled: false }); gable.translate(0, 0, -0.89);
+    const gm = new THREE.Mesh(gable, mat(shade(wall, -0.04))); gm.position.y = 1.66; gm.castShadow = true; g.add(gm);
+    for (const sgn of [-1, 1]) { const sl = meshOf(g, geos.box, roof, [1.95, 0.12, 2.5], [sgn * 0.74, 2.1, 0], [0, 0, -sgn * 0.643]); sl.material.map.rotation = Math.PI / 2; }
+    part(g, 'box', wood, [0.16, 0.14, 2.6], [0, 2.62, 0]);                                              // ridge beam
+    for (const z of [-1.24, 1.24]) for (const sgn of [-1, 1]) part(g, 'box', wood, [1.95, 0.1, 0.08], [sgn * 0.74, 2.04, z], [0, 0, -sgn * 0.643]);   // barge boards
+    for (const [x, z] of [[-1.05, 0.9], [1.05, 0.9], [-1.05, -0.9], [1.05, -0.9]]) part(g, 'box', wood, [0.12, 1.42, 0.12], [x, 0.98, z]);            // corner posts
+    meshOf(g, geos.box, texMat('brick', '#b08a78', brickTex(), { bumpScale: 1.5 }), [0.4, 1.15, 0.4], [0.62, 2.45, -0.35]); part(g, 'box', '#6f6c67', [0.46, 0.1, 0.46], [0.62, 3.03, -0.35]);
+    part(g, 'box', '#6b4a2f', [0.56, 1.0, 0.07], [0, 0.8, 0.91]); part(g, 'box', wood, [0.7, 0.09, 0.1], [0, 1.33, 0.92]);
+    for (const sgn of [-1, 1]) part(g, 'box', wood, [0.08, 1.02, 0.1], [sgn * 0.31, 0.8, 0.92]);
+    part(g, 'smooth', '#f6c833', [0.08, 0.08, 0.08], [0.17, 0.8, 0.96]); part(g, 'box', '#9a958d', [0.9, 0.12, 0.4], [0, 0.06, 1.15]);
+    const winGlow = part(g, 'smooth', '#a9d8ee', [0.3, 0.3, 0.05], [0, 2.02, 0.9]); nightGlow(winGlow, '#ffc76a', 2.6); part(g, 'torus', wood, [0.34, 0.34, 0.2], [0, 2.02, 0.9]);
+    for (const p of [[0.68, 1.1, 0.91, 0], [-0.68, 1.1, 0.91, 0], [1.06, 1.1, 0, 1]]) {
+      const f = new THREE.Group(); f.position.set(p[0], p[1], p[2]); f.rotation.y = p[3] * Math.PI / 2; g.add(f);
+      const w = nightGlow(part(f, 'box', '#a9d8ee', [0.42, 0.46, 0.05], [0, 0, 0]), '#ffc76a', 2.6); w.castShadow = false;
+      part(f, 'box', wood, [0.5, 0.05, 0.08], [0, 0.25, 0.02]); part(f, 'box', wood, [0.56, 0.07, 0.14], [0, -0.26, 0.04]);
+      for (const sgn of [-1, 1]) part(f, 'box', wood, [0.05, 0.5, 0.08], [sgn * 0.23, 0, 0.02]);
+      part(f, 'box', wood, [0.03, 0.46, 0.07], [0, 0, 0.02]); part(f, 'box', wood, [0.42, 0.03, 0.07], [0, 0, 0.02]);
+      for (const sgn of [-1, 1]) part(f, 'box', '#3f6b4a', [0.17, 0.5, 0.04], [sgn * 0.35, 0, 0.02]);                                             // shutters
+    }
+    for (const sgn of [-1, 1]) { part(g, 'box', wood, [0.08, 1.3, 0.08], [sgn * 0.5, 0.78, 1.42]); part(g, 'box', wood, [0.07, 0.07, 0.55], [sgn * 0.5, 1.42, 1.17]); }
+    meshOf(g, geos.box, roof, [1.3, 0.08, 0.75], [0, 1.52, 1.22], [0.3, 0, 0]);                         // little porch roof
+    for (const dx of [-0.14, 0, 0.14]) part(g, 'box', '#4a321f', [0.012, 0.92, 0.02], [dx, 0.8, 0.95]);
+    for (const dy of [0.5, 1.1]) part(g, 'box', '#2b2b2b', [0.3, 0.035, 0.02], [-0.12, dy, 0.955]);
+    const lan = part(g, 'box', '#ffd27a', [0.09, 0.13, 0.09], [0.42, 1.2, 0.98]); nightGlow(lan, '#ffc76a', 3); part(g, 'box', '#2b2b2b', [0.12, 0.03, 0.12], [0.42, 1.28, 0.98]);
+    for (const x0 of [0.68, -0.68]) { part(g, 'box', '#6b4a2f', [0.52, 0.11, 0.14], [x0, 0.8, 1.0]);
+      for (let i = 0; i < 6; i++) { part(g, 'sphere', '#4f9446', [0.1, 0.1, 0.1], [x0 - 0.2 + i * 0.08, 0.88, 1.0]); part(g, 'sphere', ['#e8524f', '#f4c542', '#f6f1e6', '#d96bb0'][i % 4], [0.06, 0.06, 0.06], [x0 - 0.2 + i * 0.08, 0.94 + (i % 2) * 0.02, 1.03]); } }
+    for (let i = 0; i < 7; i++) meshOf(g, geos.cyl, barkMat(), [0.15, 0.6, 0.15], [-1.32, 0.1 + Math.floor(i / 4) * 0.14, -0.3 + (i % 4) * 0.16 + (i > 3 ? 0.08 : 0)], [0, 0, Math.PI / 2]);   // wood pile
+    part(g, 'box', wood, [0.16, 0.05, 2.62], [0, 2.7, 0]);
+    emitter(g, 5, '#d8d8d8', [0.62, 3.1, -0.35], { rise: 2.4, spread: 0.45, size: 0.36, speed: 0.14 });
     light(g, '#ffc76a', [0, 0.9, 1.6], 6);
   },
   tent(g, o) {
@@ -402,34 +530,45 @@ export function buildItem(it) {
 
 // ---------------------------------------------------------------- Gino himself
 export function buildGino() {
-  const g = new THREE.Group(), fur = '#a9733c', dark = '#7a5230', light_ = '#c08d58';
-  const sm = { flatShading: false, roughness: 0.95 };
+  const g = new THREE.Group(), fur = '#9c6b3a', dark = '#6b4628', light_ = '#b88a58';
   const fuzz = m => { if (m.userData.fuzz) return m; m.userData.fuzz = true; m.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', 'float rimF = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.2);\n outgoingLight += rimF * diffuseColor.rgb * 0.5 + rimF * vec3(0.06, 0.04, 0.02);\n#include <opaque_fragment>'); }; m.customProgramCacheKey = () => 'fuzz'; return m; };
-  [fur, dark, light_].forEach(c => fuzz(mat(c, sm)));
+  const F = c => fuzz(texMat('fur', c, furTex(), { bumpScale: 1.4, roughness: 1 }));
+  const sm = { flatShading: false, roughness: 0.6 };
   const body = new THREE.Group(); g.add(body);
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 0.8, 8, 18), mat(fur, sm));
-  torso.rotation.z = Math.PI / 2; torso.position.set(-0.02, 0.76, 0); torso.scale.set(1, 1, 1.1); torso.castShadow = true; body.add(torso);
-  part(body, 'smooth', fur, [0.95, 0.95, 1.05], [-0.42, 0.82, 0], null, sm);                     // round rump
-  part(body, 'smooth', light_, [1.2, 0.5, 0.8], [0, 0.42, 0], null, sm);                        // paler belly
+  // barrel body: high round rump, slightly lower shoulders, flatter belly, paler underneath
+  const torsoG = sculpt(n => { const x = n.x, y = n.y, z = n.z, r = 1 - 0.13 * Math.max(0, x) ** 2;
+    n.set(sq(x, 0.82) * 1.0, y * 0.52 * r * (y < 0 ? 1.0 : 1) + 0.09 * Math.max(0, -x) * Math.max(0, y), sq(z, 0.88) * 0.56 * r);
+    return y < -0.25 ? 1.18 : 0.98 - 0.12 * y; });
+  const torso = furShells(meshOf(body, torsoG, F(shade(fur, -0.06)), [1, 1, 1], [-0.08, 0.8, 0]), fur, 0.075);
+  furShells(meshOf(body, geos.smooth, F(shade(fur, -0.06)), [0.72, 0.7, 0.74], [0.52, 0.88, 0]), fur, 0.06);                                // thick neck
   const head = new THREE.Group(); head.position.set(0.7, 1.02, 0); body.add(head);
-  part(head, 'smooth', fur, [0.74, 0.66, 0.66], [0.05, 0, 0], null, sm);
-  const snout = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.22, 6, 14), mat(light_, sm));  // blunt capybara muzzle
-  snout.rotation.z = Math.PI / 2; snout.position.set(0.42, -0.07, 0); snout.scale.set(1, 1, 1.15); snout.castShadow = true; head.add(snout);
-  part(head, 'smooth', dark, [0.1, 0.2, 0.3], [0.66, -0.03, 0], null, sm);
-  for (const s of [-1, 1]) part(head, 'smooth', '#3d2a18', [0.05, 0.06, 0.06], [0.7, 0.03, s * 0.08], null, sm);
+  // big blocky capybara head: long deep muzzle with a blunt squared end
+  const headG = sculpt(n => { const x = n.x, y = n.y, z = n.z, f = Math.max(0, x);
+    n.set(x > 0 ? sq(x, 0.72) * 0.66 : x * 0.42, sq(y, 0.82) * 0.31 * (1 - 0.14 * f) - 0.05 * f + 0.02, sq(z, 0.85) * 0.3 * (1 - 0.24 * f * f));
+    return 1 - 0.22 * Math.max(0, (x - 0.55) / 0.45) + (y < -0.3 ? 0.14 : 0); }, 40, 28);
+  furShells(meshOf(head, headG, F(shade(fur, -0.05)), [1, 1, 1], [0.06, 0, 0]), fur, 0.03, 10);
+  part(head, 'smooth', '#3a281a', [0.09, 0.12, 0.2], [0.715, 0.09, 0], null, { flatShading: false, roughness: 0.35 });                        // nose pad
+  for (const s of [-1, 1]) part(head, 'smooth', '#1c120b', [0.035, 0.04, 0.05], [0.752, 0.105, s * 0.055], null, sm);
+  part(head, 'box', '#2a1b10', [0.02, 0.07, 0.015], [0.752, 0.0, 0]); for (const s of [-1, 1]) part(head, 'box', '#2a1b10', [0.02, 0.016, 0.1], [0.745, -0.035, s * 0.045], [-s * 0.3, 0, 0]);                                  // mouth line
+  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) part(head, 'smooth', '#2a1b10', [0.016, 0.016, 0.016], [0.6 - i * 0.05, 0.0 - i * 0.025, s * 0.2], null, sm);   // whisker dots
   const ears = [], eyes = [];
   for (const s of [-1, 1]) {
-    ears.push(part(head, 'smooth', dark, [0.17, 0.17, 0.1], [-0.14, 0.31, s * 0.21], null, sm));
-    eyes.push(part(head, 'smooth', '#1a120c', [0.105, 0.105, 0.06], [0.22, 0.11, s * 0.28], null, { flatShading: false, roughness: 0.15 }));
-    part(head, 'smooth', '#ffffff', [0.03, 0.03, 0.02], [0.245, 0.135, s * 0.305], null, { flatShading: false, emissive: '#ffffff', emissiveIntensity: 0.4 });
-    part(head, 'smooth', '#e8a08a', [0.14, 0.09, 0.04], [0.3, -0.06, s * 0.275], null, { flatShading: false, transparent: true, opacity: 0.55 }); // blush
+    const ear = new THREE.Group(); ear.position.set(-0.17, 0.3, s * 0.21); head.add(ear);
+    meshOf(ear, geos.smooth, F(dark), [0.15, 0.17, 0.08], [0, 0, 0], [s * 0.35, 0, 0]); part(ear, 'smooth', '#3a2416', [0.09, 0.11, 0.04], [0.02, 0, s * 0.03], [s * 0.35, 0, 0], sm);
+    part(head, 'smooth', '#3a2416', [0.13, 0.13, 0.03], [0.2, 0.14, s * 0.268], null, sm);                  // dark skin round the eye
+    ears.push(ear);
+    eyes.push(part(head, 'smooth', '#140d08', [0.1, 0.105, 0.07], [0.2, 0.14, s * 0.272], null, { flatShading: false, roughness: 0.08 }));
+    part(head, 'smooth', '#ffffff', [0.026, 0.026, 0.016], [0.224, 0.166, s * 0.305], null, { flatShading: false, emissive: '#ffffff', emissiveIntensity: 0.4 });
   }
-  const orange = new THREE.Group(); orange.position.set(0, 0.36, 0); orange.visible = false; head.add(orange);      // the classic: a yuzu on his head in the bath
+  const orange = new THREE.Group(); orange.position.set(0, 0.36, 0); orange.visible = false; head.add(orange);
   part(orange, 'smooth', '#f6a623', [0.26, 0.24, 0.26], [0, 0.08, 0], null, { flatShading: false, roughness: 0.5 }); part(orange, 'sphere', '#4f9446', [0.12, 0.03, 0.07], [0.03, 0.21, 0]);
   const legs = [];
-  for (const [x, z] of [[0.42, 0.27], [0.42, -0.27], [-0.45, 0.28], [-0.45, -0.28]]) {
+  for (const [x, z, back] of [[0.42, 0.27, 0], [0.42, -0.27, 0], [-0.5, 0.29, 1], [-0.5, -0.29, 1]]) {
     const pivot = new THREE.Group(); pivot.position.set(x, 0.46, z); body.add(pivot);
-    part(pivot, 'cyl', dark, [0.2, 0.44, 0.2], [0, -0.2, 0], null, sm); part(pivot, 'smooth', '#5e3f24', [0.26, 0.12, 0.24], [0.04, -0.42, 0], null, sm);
+    furShells(meshOf(pivot, geos.smooth, F(shade(fur, -0.06)), back ? [0.46, 0.56, 0.3] : [0.32, 0.46, 0.27], [back ? -0.02 : 0, 0.02, 0]), fur, 0.05, 10);     // haunch / shoulder
+    furShells(meshOf(pivot, geos.cyl, F(shade(fur, -0.12)), [0.2, 0.34, 0.2], [0.01, -0.24, 0]), shade(fur, -0.06), 0.022, 8);
+    part(pivot, 'smooth', '#4a321d', [0.27, 0.11, 0.23], [0.05, -0.41, 0], null, sm);
+    for (const t of [-1, 0, 1]) part(pivot, 'smooth', '#2e1e12', [0.07, 0.055, 0.06], [0.17, -0.43, t * 0.07], null, sm);  // toes
     legs.push(pivot);
   }
   const zs = [];
