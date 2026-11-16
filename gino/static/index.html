@@ -155,10 +155,15 @@ function drawScene(s) {
 let world = null;
 
 let lastState = null;
+function showStatus() {  // includes his own little wanderings between the things his brain decides
+  const s = lastState; if (!s) return;
+  $('#status').textContent = s.thinking ? 'thinking…' : s.asleep ? 'sleeping' : window.ginoWorld?.doing || s.activity || 'chilling';
+}
+setInterval(showStatus, 1500);
 async function refresh() {
   let s; try { s = await api('/api/state'); } catch (e) { $('#status').textContent = 'Gino is unreachable'; return; }
   lastState = s;
-  $('#status').textContent = s.thinking ? 'thinking…' : s.asleep ? 'sleeping' : s.activity || 'chilling';
+  showStatus();
   const nw = s.next_wake_in > 0 ? ` · next turn in ${Math.round(s.next_wake_in/60)} min` : '';
   $('#meta').textContent = `${s.age_days} days old · brain: ${s.brain} · today's thinking: $${s.spent_today.toFixed(2)} of $${s.budget.toFixed(2)}${nw}`;
   $('#feeling').textContent = `Feeling ${s.emotion} (${s.emotion_intensity}/5)`;

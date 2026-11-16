@@ -78,10 +78,18 @@ let state = null, clockAt = 0, world = null, sound = null;
 const gHour = () => state ? (state.local_hour + (Date.now() - clockAt) / 3.6e6) % 24 : new Date().getHours();
 const fmt = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
 
+// what he's up to this very moment: his own little wanderings between the things his brain decides
+function showNow() {
+  const s = state; if (!s) return;
+  const act = world?.doing || s.activity, doing = s.thinking && !s.asleep ? `${act} (deep in thought)` : act;
+  const html = `Gino is <b>${esc(doing)}</b> and feeling <b>${esc(s.emotion)}</b>.`;
+  if ($('#now').innerHTML !== html) $('#now').innerHTML = html;
+}
+setInterval(showNow, 1500);
+
 function render() {
   const s = state;
-  const doing = s.thinking && !s.asleep ? `${s.activity} (deep in thought)` : s.activity;
-  $('#now').innerHTML = `Gino is <b>${esc(doing)}</b> and feeling <b>${esc(s.emotion)}</b>.`;
+  showNow();
   $('#meta').textContent = `${WX[s.weather?.kind] || ''} ${s.weather?.text || ''} · ${fmt(gHour())} in his world · ${s.age_days} days old`;
   $('#bars').innerHTML = BARS.map(([k, l]) => `<div class="bar"><label>${l}<span>${s.vitals[k]}</span></label><div><i style="width:${s.vitals[k]}%"></i></div></div>`).join('');
   world?.update(s);

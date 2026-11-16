@@ -246,7 +246,51 @@ export function createWorld(container, tooltip, opts = {}) {
   const itemsGroup = new THREE.Group(); scene.add(itemsGroup);
   const itemObjs = new Map(); let ponds = [];
   let state = { pos: [7, 5], asleep: false, activity: '', habitat: [] }, placed = false;
-  const target = new THREE.Vector3();
+  const target = new THREE.Vector3(), anchor = new THREE.Vector3();
+
+  // Between his brain's decisions Gino lives a little life of his own: he wanders to the things he built and does
+  // something there. `anchor` is where his brain put him; `target` is where his feet are heading right now.
+  const R = { on: opts.roam !== false && !opts.lite, cur: 'idle', next: 'idle', aw: 0, until: 0, hold: 8, arrived: true, face: null, label: '', last: [], pond: null, n: 0, sincePond: 9, sig: '', zc: null };
+  const ACT = { pond: ['swim', 'paddling around the'], bench: ['sit', 'sitting by the'], picnic: ['sit', 'sitting at the'], campfire: ['sit', 'warming up by the'], table: ['sit', 'sitting at the'],
+    tent: ['sit', 'sitting outside the'], house: ['sit', 'sitting outside the'], hammock: ['nap', 'dozing by the'], bed: ['nap', 'having a quick doze on the'], flowers: ['sniff', 'sniffing the'],
+    mushroom: ['sniff', 'sniffing the'], bush: ['sniff', 'sniffing the'], beehive: ['sniff', 'carefully sniffing the'], garden: ['graze', 'nibbling in the'], pumpkins: ['graze', 'nibbling at the'],
+    fruit_tree: ['graze', 'munching under the'], tree: ['scratch', 'scratching his back on the'], pine: ['scratch', 'scratching his back on the'], rock: ['scratch', 'scratching his back on the'],
+    well: ['look', 'peering into the'], piano: ['dance', 'dancing by the'], swing: ['hops', 'bouncing around the'], fountain: ['hops', 'splashing about by the'] };
+  const FREE = [['roll', 'rolling in the grass'], ['graze', 'grazing'], ['zoom', 'having the zoomies'], ['sit', 'sitting in the sun'], ['stretch', 'having a big stretch'], ['look', 'watching the birds'], ['hops', 'hopping about'], ['nap', 'dozing in the grass'], ['roll', 'rolling in the grass']];
+  const BIG = { house: 2.0, tent: 1.7, fountain: 1.6, garden: 1.5, picnic: 1.4, windmill: 1.4, gallery: 1.4, bed: 1.3, piano: 1.3, pumpkins: 1.2, campfire: 1.2 };
+  const any = a => a[Math.floor(Math.random() * a.length)];
+  function actFor(text, onPond) {
+    const a = (text || '').toLowerCase();
+    if (/munch|eat|forag|graz|snack|nibbl/.test(a)) return 'graze';
+    if (!R.on) return 'idle';
+    if (onPond) return 'swim';
+    if (/nap|doz|rest|snooz/.test(a)) return 'nap';
+    if (/danc|music|piano|sing/.test(a)) return 'dance';
+    if (/play|celebrat|excit|zoom/.test(a)) return 'hops';
+    if (/sit|relax|loung|chill/.test(a)) return 'sit';
+    if (/paint|draw|creat|writ|read|think|look|watch|star|build|plac|admir/.test(a)) return 'look';
+    return 'idle';
+  }
+  function goHome(hold) {
+    target.copy(anchor); R.pond = ponds.find(o => Math.hypot(o.position.x - anchor.x, o.position.z - anchor.z) < 0.1) || null;
+    R.next = actFor(state.activity, !!R.pond); R.label = ''; R.hold = hold; R.arrived = false; R.face = null; if (R.pond) R.sincePond = 0;
+  }
+  function pickNext() {
+    R.sincePond++;
+    if (++R.n % 4 === 0) return goHome(22);
+    const spots = [...itemObjs.values()].filter(o => !R.last.includes(o) && (o.userData.kind !== 'pond' || R.sincePond > 3));
+    R.face = null; R.pond = null; R.arrived = false;
+    if (!spots.length || Math.random() < 0.38) {
+      target.set((Math.random() - 0.5) * 30, 0, (Math.random() - 0.5) * 18);
+      [R.next, R.label] = any(FREE); R.hold = R.next === 'zoom' ? 9 : R.next === 'stretch' ? 4 : 9 + Math.random() * 9;
+    } else {
+      const o = any(spots), kind = o.userData.kind, [act, words] = ACT[kind] || ['look', 'admiring the'], sc = o.userData.grow || 1;
+      R.last = [o, ...R.last].slice(0, 3);
+      if (kind === 'pond') { target.set(o.position.x, 0, o.position.z); R.pond = o; R.sincePond = 0; }
+      else { const a = Math.random() * 6.283, r = (BIG[kind] || 1.05) * sc + 0.35; target.set(o.position.x + Math.cos(a) * r, 0, o.position.z + Math.sin(a) * r); R.face = o.position; }
+      R.next = act; R.label = `${words} ${o.userData.item?.name || kind}`; R.hold = 10 + Math.random() * 10;
+    }
+  }
   let weatherOverride = null;
   let follow = false, timeMode = 'auto', weather = 'clear', lastEmote = null, hop = 0, heartT = -9;
   const W = { cloud: 0.25, rain: 0, snow: 0, fog: 0 };
@@ -293,9 +337,12 @@ export function createWorld(container, tooltip, opts = {}) {
     const gsig = s.habitat.map(i => [i.id, i.x, i.y, i.kind, i.size].join()).join(';');
     if (gsig !== grass.userData.sig) { grass.userData.sig = gsig; layGrass([...itemObjs.values()].map(o => [o.position.x, o.position.z, (CLEAR[o.userData.kind] || 0.65) * (o.userData.grow || o.scale.x || 1)])); }
     hangArt();
-    target.set(cellX(s.pos[0]) + 1.0, 0, cellZ(s.pos[1]) + 1.0);
+    anchor.set(cellX(s.pos[0]) + 1.0, 0, cellZ(s.pos[1]) + 1.0);
     const p = ponds.find(o => Math.hypot(o.position.x - cellX(s.pos[0]), o.position.z - cellZ(s.pos[1])) < 0.1);
-    if (p) target.set(p.position.x, 0, p.position.z);
+    if (p) anchor.set(p.position.x, 0, p.position.z);
+    const sig = [s.pos, s.activity, !!s.asleep].join('|');   // his brain decided something new: go there and do it for a while
+    if (!R.on) { target.copy(anchor); R.cur = R.next = actFor(s.activity, false); R.aw = 1; }
+    else if (sig !== R.sig) { R.sig = sig; goHome(placed ? 40 : 6); }
     if (!placed) { gino.position.copy(target); gino.position.y = groundY(target.x, target.z); placed = true; }
     const em = s.asleep ? '' : (EMOJI[(s.emotion || '').toLowerCase()] || '');
     if (em !== lastEmote) { lastEmote = em; const cv = G.emote.material.map.image, x = cv.getContext('2d'); x.clearRect(0, 0, 128, 128); if (em) { x.fillStyle = 'rgba(255,255,255,.92)'; x.beginPath(); x.arc(64, 64, 58, 0, 6.3); x.fill(); x.font = '72px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(em, 64, 70); } G.emote.material.map.needsUpdate = true; G.emote.userData.pop = 1; }
@@ -352,28 +399,55 @@ export function createWorld(container, tooltip, opts = {}) {
     if (performance.now() > idleAt && !follow) controls.autoRotate = true;
 
     // Gino
-    const d = v3.subVectors(target, gino.position); d.y = 0;
-    const dist = d.length(), walking = dist > 0.08 && !state.asleep;
-    if (walking) {
-      const step = Math.min(dist, 2.3 * dt); d.normalize(); gino.position.addScaledVector(d, step);
-      let diff = Math.atan2(-d.z, d.x) - gino.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); gino.rotation.y += diff * Math.min(1, dt * 8);
+    const asleep = state.asleep, inPond = ponds.some(o => Math.hypot(o.position.x - gino.position.x, o.position.z - gino.position.z) < 1.3 * o.scale.x);
+    if (R.on && placed) {
+      if (asleep) { if (R.next !== 'sleep') { R.next = 'sleep'; R.label = ''; R.face = null; R.arrived = false; target.copy(anchor); } }
+      else if (R.next === 'sleep') goHome(6);
+      else if (R.arrived && t > R.until) pickNext();
+      if (R.arrived && R.cur === R.next) {
+        if (R.cur === 'swim' && R.pond) target.set(R.pond.position.x + Math.cos(t * 0.45) * 0.6 * R.pond.scale.x, 0, R.pond.position.z + Math.sin(t * 0.45) * 0.6 * R.pond.scale.x);
+        if (R.cur === 'zoom' && Math.hypot(target.x - gino.position.x, target.z - gino.position.z) < 0.4) { const a = Math.random() * 6.283; target.set(THREE.MathUtils.clamp(R.zc.x + Math.cos(a) * 5, -16, 16), 0, THREE.MathUtils.clamp(R.zc.z + Math.sin(a) * 5, -10, 10)); }
+      }
     }
-    const inPond = ponds.some(o => Math.hypot(o.position.x - gino.position.x, o.position.z - gino.position.z) < 1.3 * o.scale.x);
+    const moving = R.cur === R.next && (R.cur === 'swim' || R.cur === 'zoom') && R.arrived;
+    const d = v3.subVectors(target, gino.position); d.y = 0;
+    const dist = d.length(), walking = dist > 0.08 && (!asleep || (R.on && !R.arrived)) && (R.aw < 0.25 || moving), down = asleep && !walking;
+    const speed = inPond ? 1.1 : moving && R.cur === 'zoom' ? 6.5 : dist > 8 ? 4.4 : 2.3, run = speed > 4;
+    if (walking) {
+      const step = Math.min(dist, speed * dt); d.normalize(); gino.position.addScaledVector(d, step);
+      let diff = Math.atan2(-d.z, d.x) - gino.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); gino.rotation.y += diff * Math.min(1, dt * (run ? 12 : 8));
+    } else if (R.face && R.arrived && !asleep && R.cur !== 'hops') {
+      let diff = Math.atan2(-(R.face.z - gino.position.z), R.face.x - gino.position.x) - gino.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); gino.rotation.y += diff * Math.min(1, dt * 4);
+    }
+    if (!R.arrived && dist <= 0.08) { R.arrived = true; R.until = t + R.hold; if (R.next === 'zoom') R.zc = gino.position.clone(); }
+    if (R.cur !== R.next || !R.arrived) { R.aw = Math.max(0, R.aw - dt * 3.5); if (R.aw < 0.02 && R.arrived) R.cur = R.next; }
+    else if (!walking || moving) R.aw = Math.min(1, R.aw + dt * 2.2);
+    const c = R.cur, a = asleep ? 0 : R.aw * R.aw * (3 - 2 * R.aw);
+    if (c === 'hops' && a > 0.6) { if (hop <= 0.02) hop = 1; gino.rotation.y += dt * 2.2; }
     hop = Math.max(0, hop - dt * 1.6);
     const gy = groundY(gino.position.x, gino.position.z) + (inPond ? -0.46 : 0);
     gino.position.y += (gy - gino.position.y) * Math.min(1, dt * 6);
-    const sleepK = G.sleepK = THREE.MathUtils.lerp(G.sleepK ?? 0, state.asleep ? 1 : 0, Math.min(1, dt * 3));
-    G.body.position.y = -0.3 * sleepK + (walking ? Math.abs(Math.sin(t * 9)) * 0.05 : Math.sin(t * 1.6) * 0.012) + Math.abs(Math.sin(hop * Math.PI * 2)) * 0.5 * hop + (inPond ? Math.sin(t * 1.3) * 0.03 : 0);
-    G.body.rotation.x = inPond ? Math.sin(t * 0.9) * 0.04 : 0;
-    G.body.scale.set(1, 1 + Math.sin(t * (state.asleep ? 1.1 : 1.8)) * 0.022, 1);
-    G.legs.forEach((l, i) => { l.rotation.z = walking ? Math.sin(t * 9 + (i % 3 ? Math.PI : 0)) * 0.6 : 0; l.scale.y = 1 - 0.75 * sleepK; });
-    const eating = /munch|eat|forag/.test(state.activity || '') && !state.asleep;
-    G.head.rotation.z = -0.35 * sleepK + (eating ? -0.35 + Math.sin(t * 7) * 0.12 : Math.sin(t * 0.7) * 0.05) + hop * 0.3;
-    G.head.rotation.y = state.asleep || walking ? 0 : Math.sin(t * 0.4) * 0.35;
-    const blink = state.asleep || (t % 4.2) < 0.13 || hop > 0.2; G.eyes.forEach(e => e.scale.y = blink ? 0.018 : 0.105);
+    const sleepK = G.sleepK = THREE.MathUtils.lerp(G.sleepK ?? 0, down ? 1 : 0, Math.min(1, dt * 3));
+    const lie = Math.max(sleepK, c === 'nap' ? a : 0), rollX = c === 'roll' ? Math.PI * a : 0;   // on his back, paws in the air
+    const bRz = { sit: 0.36, stretch: -0.24 }[c] || 0, rear = c === 'sit' ? 0.45 : 1;
+    const bRx = c === 'scratch' ? Math.sin(t * 6) * 0.11 : c === 'dance' ? Math.sin(t * 3) * 0.13 : c === 'roll' ? Math.sin(t * 5) * 0.32 : 0;
+    const gait = run ? 15 : 9;
+    G.body.position.y = -0.3 * lie + (walking ? Math.abs(Math.sin(t * gait)) * (run ? 0.11 : 0.05) : Math.sin(t * 1.6) * 0.012) + Math.abs(Math.sin(hop * Math.PI * 2)) * 0.5 * hop + (inPond ? Math.sin(t * 1.3) * 0.03 : 0)
+      + 0.63 * (1 - Math.cos(rollX)) + (c === 'dance' ? Math.abs(Math.sin(t * 6)) * 0.14 * a : 0) + (c === 'sit' ? 0.03 * a : 0);
+    G.body.position.z = c === 'scratch' ? Math.sin(t * 6) * 0.05 * a : 0;
+    G.body.rotation.x = rollX + bRx * a + (inPond ? Math.sin(t * 0.9) * 0.04 : 0);
+    G.body.rotation.z = bRz * a + (run && walking ? Math.sin(t * gait) * 0.05 : 0);
+    G.body.scale.set(1, 1 + Math.sin(t * (lie > 0.5 ? 1.1 : 1.8)) * 0.022, 1);
+    const paws = c === 'roll' ? 0.5 : c === 'dance' ? 0.3 : c === 'swim' ? 0.4 : 0;
+    G.legs.forEach((l, i) => { l.rotation.z = walking ? Math.sin(t * gait + (i % 3 ? Math.PI : 0)) * (run ? 0.85 : inPond ? 0.4 : 0.6) : Math.sin(t * 7 + i * 1.7) * paws * a; l.scale.y = (1 - 0.75 * lie) * (i > 1 ? 1 + (rear - 1) * a : 1); });
+    const hZ = { graze: -0.4 + Math.sin(t * 7) * 0.12, sniff: -0.3 + Math.sin(t * 11) * 0.04, sit: -0.28, stretch: 0.4, scratch: 0.18, look: 0.26, dance: Math.sin(t * 6) * 0.16, roll: 0.2 }[c] || 0;
+    const hY = c === 'look' ? Math.sin(t * 0.8) * 0.6 : c === 'sniff' ? Math.sin(t * 1.3) * 0.25 : c === 'graze' || c === 'roll' ? 0 : Math.sin(t * 0.4) * 0.35;
+    G.head.rotation.z = -0.35 * lie + hZ * a + Math.sin(t * 0.7) * 0.05 * (1 - a) + hop * 0.3;
+    G.head.rotation.y = down || walking ? 0 : hY;
+    const blink = down || lie > 0.6 || (c === 'roll' && a > 0.5) || (t % 4.2) < 0.13 || hop > 0.2; G.eyes.forEach(e => e.scale.y = blink ? 0.018 : 0.105);
     G.ears.forEach((e, i) => e.rotation.x = (Math.sin(t * 2.3 + i) > 0.96 ? 0.5 : 0));
-    G.orange.visible = inPond && !walking;
-    G.zs.forEach((z, i) => { const k = (t * 0.35 + i / 3) % 1; z.visible = state.asleep; z.position.set(1.0 + k * 0.5, 1.5 + k * 1.3, 0).applyAxisAngle(up, gino.rotation.y); z.scale.setScalar(0.25 + k * 0.4); z.material.opacity = 1 - k; });
+    G.orange.visible = inPond && (!walking || moving);
+    G.zs.forEach((z, i) => { const k = (t * 0.35 + i / 3) % 1; z.visible = down || (c === 'nap' && a > 0.7); z.position.set(1.0 + k * 0.5, 1.5 + k * 1.3, 0).applyAxisAngle(up, gino.rotation.y); z.scale.setScalar(0.25 + k * 0.4); z.material.opacity = 1 - k; });
     G.hearts.forEach((h, i) => { const k = (t - heartT) / 1.6 - i * 0.08; h.visible = k > 0 && k < 1; if (h.visible) { h.position.set(Math.cos(i * 1.05) * (0.3 + k * 0.7), 1.6 + k * 1.6, Math.sin(i * 1.05) * (0.3 + k * 0.7)); h.scale.setScalar(0.3 + Math.sin(k * Math.PI) * 0.25); h.material.opacity = 1 - k * k; } });
     const ep = G.emote.userData.pop = Math.max(0, (G.emote.userData.pop || 0) - dt * 1.5);
     G.emote.visible = !!lastEmote; G.emote.position.y = 2.15 + Math.sin(t * 1.5) * 0.05 - 0.3 * sleepK; G.emote.scale.setScalar(0.6 + Math.sin(ep * Math.PI) * 0.35);
@@ -437,11 +511,12 @@ export function createWorld(container, tooltip, opts = {}) {
     if (gh && (!ih || gh.distance < ih.distance)) return { gino: true, r };
     return { item: ih?.object.userData.item, obj: ih?.object, r };
   }
+  const doing = () => state.asleep ? 'sleeping' : R.on && R.label ? (R.arrived ? R.label : 'trotting off somewhere') : state.activity;
   const el = renderer.domElement;
   el.addEventListener('pointermove', ev => {
     const nw = performance.now(); if (nw - hoverT < 60) return; hoverT = nw;
     const h = hit(ev); let text = '';
-    if (h.gino) text = 'Gino' + (state.activity ? ' · ' + state.activity : '') + (opts.petHint ?? ' (click to pet)');
+    if (h.gino) text = 'Gino' + (doing() ? ' · ' + doing() : '') + (opts.petHint ?? ' (click to pet)');
     else if (h.item) text = `${h.item.emoji || ''} ${h.item.name}${h.item.description ? ' — ' + h.item.description : ''}`;
     tooltip.textContent = text; tooltip.style.display = text ? 'block' : 'none'; el.style.cursor = h.gino ? 'pointer' : 'grab';
     tooltip.style.left = Math.min(h.r.width - 240, Math.max(8, ev.clientX - h.r.left + 14)) + 'px'; tooltip.style.top = (ev.clientY - h.r.top + 14) + 'px';
@@ -461,8 +536,9 @@ export function createWorld(container, tooltip, opts = {}) {
     setQuality, get quality() { return quality; },
     setWeather(w) { weatherOverride = w; weather = w || state.weather?.kind || 'clear'; },
     photo() { return new Promise(res => { snapshot = res; }); },
+    get doing() { return doing(); },
     pet() { hop = 1; heartT = timer.getElapsed(); },
-    _debug: { scene, camera, controls, gino, skip() { intro = 1; camera.position.copy(HOME); },
-      snap() { gino.position.set(target.x, groundY(target.x, target.z), target.z); } },
+    _debug: { scene, camera, controls, gino, roam: R, skip() { intro = 1; camera.position.copy(HOME); },
+      snap() { target.copy(anchor); gino.position.set(target.x, groundY(target.x, target.z), target.z); R.arrived = true; } },
   };
 }
