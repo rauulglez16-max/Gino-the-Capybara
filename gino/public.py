@@ -337,8 +337,8 @@ def _now_line() -> str:
         doing = "napping 💤" if asleep else (body.get("activity") or "pottering about")
         feel = body.get("emotion") or "calm"
         if check(doing, feel):
-            return ""
-        return f'<div class="now">Right now Gino is <b>{E(doing)}</b> and feeling <b>{E(feel)}</b>.</div>'
+            return '<div class="now">Gino is out and about. <a href="/live">Watch him live</a></div>'
+        return f'<div class="now">Right now Gino is <b>{E(doing)}</b> and feeling <b>{E(feel)}</b>. <a href="/live">Watch him live</a></div>'
     except Exception:
         return ""
 
