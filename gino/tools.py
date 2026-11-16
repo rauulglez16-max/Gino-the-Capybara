@@ -2,7 +2,7 @@
 import re
 import time
 
-from . import config, db, public, vitals
+from . import config, db, public, social, vitals
 
 GRID_W, GRID_H = 16, 10
 
@@ -99,6 +99,14 @@ TOOLS = [
        {"minutes": I}, ["minutes"]),
 ]
 
+SOCIAL_TOOL = _t(
+    "social_post", "Post a short update on your PUBLIC Bluesky account, where anyone can read it: a moment from "
+    "your day, something you made or learned, how the meadow looks. Up to 300 characters, in your own voice. "
+    "You only post: you can't reply, follow or message anyone there, and you never @mention other accounts. "
+    "You may link to your own website, nothing else. The same privacy rules as your public website apply: never "
+    "mention your dad, your chats, keys or passwords. A few posts a day at most; quality over quantity.",
+    {"text": {**S, "description": "The post, max 300 characters"}}, ["text"])
+
 SERVER_TOOLS = [
     {"type": "web_search_20260209", "name": "web_search", "max_uses": 3},
     {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 3, "max_content_tokens": 8000},
@@ -106,7 +114,7 @@ SERVER_TOOLS = [
 
 
 def all_tools() -> list[dict]:
-    return TOOLS + (SERVER_TOOLS if config.WEB_ACCESS else [])
+    return TOOLS + ([SOCIAL_TOOL] if social.configured() else []) + (SERVER_TOOLS if config.WEB_ACCESS else [])
 
 
 def _slug(s: str) -> str:
@@ -275,6 +283,11 @@ def run(name: str, a: dict, body: dict) -> str:
         return r
     if name == "public_unpublish":
         return public.unpublish(str(a.get("kind", "page")), str(a.get("slug", "")))
+    if name == "social_post":
+        r = social.post(a.get("text", ""))
+        if r.startswith("Posted"):
+            body["fun"] = vitals.clamp(body["fun"] + 3)
+        return r
     if name == "set_next_wake":
         m = max(config.MIN_WAKE_MINUTES, min(int(a.get("minutes", 60) or 60), config.MAX_WAKE_MINUTES))
         body["next_wake"] = now + m * 60
