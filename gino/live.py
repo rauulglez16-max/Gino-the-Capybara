@@ -1,7 +1,7 @@
 """Gino's live habitat: anyone can watch him in his 3D world at /live, nobody can talk to him there.
 
 Visitors only ever see a small, filtered slice of his state: where he is, what he's doing, how he feels,
-his habitat and the drawings he already put on his public website. No chats, no thoughts, no memories,
+his habitat, the drawings he already put on his public website and the newest line of his public diary. No chats, no thoughts, no memories,
 no journal, nothing about dad. Every bit of text Gino wrote goes through public.check() first, the same
 filter his public website uses. There are no write endpoints here: chatting, gifts and petting stay
 behind the password on the private page.
@@ -55,6 +55,19 @@ def _item_name(name: str, kind: str) -> str:
     return _clean(stripped, 80) or (kind.replace("_", " ") if kind else "something Gino made")
 
 
+def _diary_line() -> str:
+    """The first sentence of the newest entry in his public diary: already public, and filtered again here."""
+    rows = db.q("SELECT body FROM posts WHERE kind='diary' ORDER BY slug DESC LIMIT 1")
+    if not rows:
+        return ""
+    entry = re.split(r"(?m)^###\s*\d{1,2}:\d{2}\s*$", rows[0]["body"] or "")[-1]
+    text = public._excerpt(entry, 400)
+    first = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0]
+    if len(first) > 120:
+        first = first[:120].rsplit(" ", 1)[0] + "…"
+    return _clean(first, 130)
+
+
 def _hour(now) -> float:
     return round(now.hour + now.minute / 60, 3)
 
@@ -92,6 +105,7 @@ def build() -> dict:
         "age_days": round((now - body.get("born", now)) / 86400, 1),
         "habitat": habitat,
         "art": art,
+        "note": _diary_line(),
     }
 
 
