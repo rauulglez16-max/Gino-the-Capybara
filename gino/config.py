@@ -58,6 +58,11 @@ HOST = os.environ.get("GINO_HOST", "127.0.0.1")
 PORT = int(_f("GINO_PORT", 8787))
 PASSWORD = os.environ.get("GINO_PASSWORD", "")  # set this before putting Gino on the internet
 
+# Phone (Telegram). Set up on the server with `gino telegram`. The bot only talks to this one chat.
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_API = os.environ.get("TELEGRAM_API", "https://api.telegram.org").rstrip("/")
+
 # USD per million tokens: (input, output, cache_read). Cache writes are billed at 1.25x input.
 PRICES = {
     "claude-opus-5-5": (4.0, 20.0, 0.20),

@@ -2,7 +2,7 @@
 import re
 import time
 
-from . import config, db, public, vitals
+from . import config, db, public, telegram, vitals
 
 GRID_W, GRID_H = 16, 10
 
@@ -72,7 +72,9 @@ TOOLS = [
     _t("update_self", "Update how you describe yourself: what you like, dislike, are passionate about, dream of.",
        {"field": {"type": "string", "enum": ["likes", "dislikes", "passions", "dreams", "about_me"]}, "value": S},
        ["field", "value"]),
-    _t("message_dad", f"Send a message to your dad and best friend, {config.DAD_NAME}. He reads it when he's around.",
+    _t("message_dad", f"Send a message to your dad and best friend, {config.DAD_NAME}. "
+       + ("It pops up on his phone, so it's like a text." if config.TELEGRAM_TOKEN and config.TELEGRAM_CHAT_ID
+          else "He reads it when he's around."),
        {"text": S}, ["text"]),
     _t("public_diary", "Write in your PUBLIC diary on your own website, which anyone on the internet can read. "
        "Tell the world about your day: what you did, what you learned, what you made, how it felt. One diary page "
@@ -258,9 +260,11 @@ def run(name: str, a: dict, body: dict) -> str:
         db.put("self", me)
         return "Updated who you are."
     if name == "message_dad":
-        db.x("INSERT INTO chat(ts,sender,text) VALUES(?,?,?)", (now, "gino", str(a.get("text", ""))[:4000]))
-        db.event("chat", "sent dad a message")
-        return f"Message sent to {config.DAD_NAME}."
+        text = str(a.get("text", ""))[:4000]
+        db.x("INSERT INTO chat(ts,sender,text) VALUES(?,?,?)", (now, "gino", text))
+        on_phone = telegram.send(text)
+        db.event("chat", "sent dad a message" + (" (it popped up on his phone)" if on_phone else ""))
+        return f"Message sent to {config.DAD_NAME}" + (", straight to his phone." if on_phone else ".")
     if name == "public_diary":
         return public.write_diary(a.get("entry", ""), a.get("title", ""), bool(a.get("replace")))
     if name == "public_page":

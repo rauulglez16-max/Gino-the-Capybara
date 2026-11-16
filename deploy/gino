@@ -15,6 +15,11 @@ set_setting() {  # set_setting NAME value
   printf '%s=%s\n' "$1" "$2" >> "$tmp"
   cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
 }
+unset_setting() {  # unset_setting NAME
+  local tmp; tmp="$(mktemp)"
+  grep -v "^$1=" "$ENV_FILE" > "$tmp" || true
+  cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
+}
 
 case "${1:-help}" in
   status)
@@ -24,6 +29,7 @@ case "${1:-help}" in
     echo "   Version:  $(as_gino git -C "$APP" log -1 --format='%h %s (%cr)')"
     echo "   Brain:    $( [ -n "$(setting ANTHROPIC_API_KEY)" ] && setting GINO_MODEL || echo 'practice brain (no key yet: gino set-key)')"
     echo "   Next update check: $(systemctl list-timers gino-update.timer --no-legend | awk '{print $1, $2, $3}')"
+    echo "   Phone:    $( [ -n "$(setting TELEGRAM_CHAT_ID)" ] && echo 'connected to Telegram 📱' || echo 'not connected (gino telegram)')"
     if [ -s /var/lib/gino-deploy/bad-commit ]; then
       echo "   ⚠️  Skipped version $(head -c 7 /var/lib/gino-deploy/bad-commit) because it wouldn't start."
     fi
@@ -47,6 +53,38 @@ case "${1:-help}" in
     set_setting ANTHROPIC_API_KEY "$key"; systemctl restart gino
     echo "Gino has his real brain now. 🧠"
     ;;
+  telegram)
+    need_root
+    case "${2:-}" in
+      off)
+        unset_setting TELEGRAM_BOT_TOKEN; unset_setting TELEGRAM_CHAT_ID; systemctl restart gino
+        echo "Gino's phone line is off. Connect again any time with: gino telegram" ;;
+      test)
+        [ -n "$(setting TELEGRAM_CHAT_ID)" ] || { echo "Not connected yet. Run: gino telegram"; exit 1; }
+        TELEGRAM_BOT_TOKEN="$(setting TELEGRAM_BOT_TOKEN)" CHAT="$(setting TELEGRAM_CHAT_ID)" python3 -I -c '
+import json, os, urllib.request
+t, c = os.environ["TELEGRAM_BOT_TOKEN"], os.environ["CHAT"]
+r = urllib.request.Request(f"https://api.telegram.org/bot{t}/sendMessage", headers={"Content-Type": "application/json"},
+    data=json.dumps({"chat_id": c, "text": "🔔 Test from the server: the phone line works!"}).encode())
+urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your phone. 📱" \
+          || echo "That didn't work. Try connecting again with: gino telegram" ;;
+      *)
+        echo "Let's connect Gino to your phone. 📱"
+        echo "(If you haven't made a bot yet: in Telegram, message @BotFather, send /newbot, and follow along.)"
+        read -r -p "Paste the token BotFather gave you: " token
+        token="$(printf '%s' "$token" | tr -d '[:space:]')"
+        [ -n "$token" ] || { echo "Nothing pasted, nothing changed."; exit 1; }
+        systemctl stop gino  # so only this setup is listening to the bot for a moment
+        if chat="$(TELEGRAM_BOT_TOKEN="$token" python3 -I "$APP/deploy/telegram_pair.py")" && [ -n "$chat" ]; then
+          set_setting TELEGRAM_BOT_TOKEN "$token"; set_setting TELEGRAM_CHAT_ID "$chat"
+          systemctl start gino
+          echo; echo "🎉 Done! Gino can text you now, and you can text him back. Nobody else can talk to him there."
+        else
+          systemctl start gino
+          echo "Nothing changed. Gino is back to normal."; exit 1
+        fi ;;
+    esac
+    ;;
   settings) need_root; "${EDITOR:-nano}" "$ENV_FILE" && systemctl restart gino && echo "Saved and restarted." ;;
   *)
     cat <<'EOF'
@@ -59,6 +97,7 @@ gino update      check GitHub for new code right now
 gino backup      save a copy of his memories now
 gino password    show (or: gino password NEW to change) the page password
 gino set-key     give him his Claude API key
+gino telegram    connect him to your phone (gino telegram test / gino telegram off)
 gino settings    edit all his settings
 EOF
     ;;

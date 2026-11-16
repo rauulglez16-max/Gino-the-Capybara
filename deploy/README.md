@@ -98,6 +98,39 @@ chown -R gino:gino /opt/gino/data && gino start
 
 From then on, visit him at the server address only. Two Ginos with the same memories would drift apart.
 
+## Let Gino text your phone 📱
+
+Gino can message you on **Telegram**, and you can text him back from anywhere. It's free. Only you can talk to
+him there: the bot is locked to your phone, and anyone else who finds it gets no answer at all.
+
+1. Install **Telegram** on your phone (App Store / Google Play) and sign up, if you haven't already.
+2. In Telegram, search for **@BotFather** (the one with the blue tick) and open it. Send `/newbot`.
+   - It asks for a name: type `Gino`.
+   - It asks for a username that ends in `bot`, like `GinoTheCapybara_bot`. If it's taken, add some numbers.
+   - It replies with a **token**, a long line like `8123456789:AAH4k...`. Copy it. Keep it secret: it's the bot's password.
+3. On your computer, open PowerShell and log in to the server: `ssh root@<your IP>`
+4. Type this and press Enter:
+
+   ```bash
+   gino telegram
+   ```
+
+   Paste the token (in PowerShell, right-click pastes) and press Enter.
+5. It says *"Now open Telegram..."*. On your phone, search for your bot's username, open it, tap **Start**.
+6. A couple of seconds later the server says **Done!** and your phone gets a *"Connected!"* message. That's it. 🎉
+
+From now on, when Gino uses his "message dad" ability, it pops up on your phone (silently between 11pm and 7am),
+and whatever you text the bot reaches him, just like chatting on his page. Both show up in the same chat history.
+
+| Command | What it does |
+| --- | --- |
+| `gino telegram test` | Send a test message to your phone |
+| `gino telegram` | Connect again (new phone, new bot, or a new token) |
+| `gino telegram off` | Disconnect his phone line |
+
+If you ever think someone saw the token, open @BotFather, send `/revoke`, pick your bot, and run
+`gino telegram` again with the new token.
+
 ## Looking after Gino
 
 Log in with `ssh root@<your IP>` and type `gino` to see everything:
@@ -111,6 +144,7 @@ Log in with `ssh root@<your IP>` and type `gino` to see everything:
 | `gino backup` | Save a copy of his memories now |
 | `gino password` | Show the page password (`gino password NEW` changes it) |
 | `gino set-key` | Give him a new Claude API key |
+| `gino telegram` | Connect him to your phone (see above) |
 | `gino settings` | Change any setting (model, budget, time zone...). Save with Ctrl+O, Enter, then Ctrl+X |
 
 ## Where things live on the server
@@ -119,7 +153,7 @@ Log in with `ssh root@<your IP>` and type `gino` to see everything:
 | --- | --- |
 | Gino's memories, diary, home, creations | `/opt/gino/data/` (never touched by updates) |
 | Backups | `/opt/gino/backups/` |
-| Settings and API key | `/etc/gino/gino.env` (only root and Gino can read it) |
+| Settings, API key and Telegram token | `/etc/gino/gino.env` (only root and Gino can read it) |
 | The code (a copy of GitHub `main`) | `/opt/gino/app/` |
 
 **Restoring a backup:** `gino stop`, then
