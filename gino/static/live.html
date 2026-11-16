@@ -10,7 +10,7 @@
 :root{--card:#fff7e8;--ink:#3b2e22;--muted:#7d6a55;--accent:#b5652b;--leaf:#4f7a37;--line:rgba(59,46,34,.12);--live:#d6453d;--edge:#5b4a38;--drop:rgba(91,74,56,.35);--board:#d9b382;--field:#dcebb8}
 @media (prefers-color-scheme:dark){:root{--card:#2a231b;--ink:#efe4d2;--muted:#b9a68c;--accent:#e39a5f;--leaf:#a6cf86;--line:rgba(239,228,210,.14);--edge:#cdb99a;--drop:rgba(0,0,0,.45);--board:#5a4530;--field:#3d4a2c}}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:#9fd0ea;color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden}
+html,body{margin:0;height:100%;background:#9fd0ea;color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden;overscroll-behavior:none}
 #world{position:fixed;inset:0}
 #world canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab;filter:saturate(1.2) sepia(.3) hue-rotate(-8deg) brightness(1.06) contrast(1.05)}
 /* golden hour: a warm wash over the whole scene, softer at night */
@@ -155,6 +155,11 @@ async function refresh() {
   } catch { $('#liveTag').className = 'live off'; if (!state) $('#now').textContent = "Gino can't be reached right now. Try again in a bit."; }
 }
 await refresh();
+
+// This page is all 3D view: a trackpad pinch or sideways swipe should move the camera, never zoom the browser page,
+// open the tab overview or go back a page. (Keyboard zoom still works for anyone who needs bigger text.)
+for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, e => e.preventDefault());
+document.addEventListener('wheel', e => { if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) e.preventDefault(); }, { passive: false });
 
 // sound: off until the visitor turns it on. Remembered per browser, but never starts by itself.
 const prefs = (() => { try { return JSON.parse(localStorage.getItem('ginoSound') || '{}'); } catch { return {}; } })();

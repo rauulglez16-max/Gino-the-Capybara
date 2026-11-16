@@ -515,6 +515,14 @@ export function createWorld(container, tooltip, opts = {}) {
   }
   const doing = () => state.asleep ? 'sleeping' : R.on && R.label ? (R.arrived ? R.label : 'trotting off somewhere') : state.activity;
   const el = renderer.domElement;
+  // Mac trackpads in Safari: a pinch sends its own gesture events and zooms the whole page (or flips to the tab
+  // overview) unless we take it. Turn the pinch into camera zoom instead. Other browsers send it as ctrl+wheel,
+  // which OrbitControls already handles.
+  let pinch = 1;
+  const pv = new THREE.Vector3(), dolly = k => { const off = pv.copy(camera.position).sub(controls.target), d = THREE.MathUtils.clamp(off.length() * k, controls.minDistance, controls.maxDistance); camera.position.copy(controls.target).add(off.setLength(d)); };
+  el.addEventListener('gesturestart', ev => { ev.preventDefault(); pinch = ev.scale || 1; });
+  el.addEventListener('gesturechange', ev => { ev.preventDefault(); const sc = ev.scale || 1; if (pinch > 0 && sc > 0) dolly(pinch / sc); pinch = sc; });
+  el.addEventListener('gestureend', ev => ev.preventDefault());
   el.addEventListener('pointermove', ev => {
     const nw = performance.now(); if (nw - hoverT < 60) return; hoverT = nw;
     const h = hit(ev); let text = '';
