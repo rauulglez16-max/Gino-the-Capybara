@@ -18,7 +18,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import config, db, public
+from . import config, db, photo, public
 
 log = logging.getLogger("gino.social")
 
@@ -106,13 +106,28 @@ def _facets(text: str) -> list[dict]:
     return out
 
 
-def _send(text: str) -> str:
+def _upload(jpeg: bytes, token: str) -> dict:
+    req = urllib.request.Request(f"{config.BLUESKY_SERVICE.rstrip('/')}/xrpc/com.atproto.repo.uploadBlob",
+                                 data=jpeg, method="POST", headers={"Content-Type": "image/jpeg",
+                                 "User-Agent": "gino-capybara", "Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.loads(r.read())["blob"]
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"Bluesky said {e.code} to the photo") from None
+
+
+def _send(text: str, jpeg: bytes = b"", alt: str = "") -> str:
     s = _login()
     record = {"$type": "app.bsky.feed.post", "text": text, "langs": ["en"],
               "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())}
     facets = _facets(text)
     if facets:
         record["facets"] = facets
+    if jpeg:
+        w, h = photo.SIZE
+        record["embed"] = {"$type": "app.bsky.embed.images", "images": [
+            {"alt": alt, "image": _upload(jpeg, s["accessJwt"]), "aspectRatio": {"width": w, "height": h}}]}
     r = _call("com.atproto.repo.createRecord",
               {"repo": s["did"], "collection": "app.bsky.feed.post", "record": record}, s["accessJwt"])
     return r.get("uri", "")
@@ -126,26 +141,44 @@ def web_link(uri: str) -> str:
 
 # ---------------------------------------------------------------- what Gino calls
 
-def post(text: str) -> str:
-    text = str(text or "").strip()
+DEFAULT_ALT = "A photo from Gino's 3D world: a small brown capybara in his meadow by the lake."
+
+
+def post(text: str, take_photo: str = "", alt: str = "") -> str:
+    """take_photo: '' for text only, 'selfie' (close-up of Gino) or 'wide' (his whole home)."""
+    text, alt = str(text or "").strip(), " ".join(str(alt or "").split())[:900]
     if not configured():
         return "You don't have a Bluesky account switched on right now."
     why = problem(text)
     if why:
         return "Not posted. " + why
+    if take_photo and alt and public.check(alt):
+        return "Not posted. The photo description: " + public.check(alt).replace("public website", "Bluesky account")
+    if take_photo and not photo.available():
+        return "Not posted: your camera isn't set up yet, so you can't add photos. Post without one."
     wait = wait_minutes()
     if wait:
         return (f"Not posted: you can post at most {config.SOCIAL_MAX_PER_DAY} times a day, at least "
                 f"{config.SOCIAL_MIN_GAP_MINUTES} minutes apart. You can post again in about {wait} minutes.")
+    jpeg = b""
+    if take_photo:
+        try:
+            jpeg = photo.take(take_photo)
+        except RuntimeError as e:
+            return f"Not posted: {e}. You could post without a photo instead."
+        alt = alt or DEFAULT_ALT
     try:
-        uri = _send(text)
+        uri = _send(text, jpeg, alt)
     except Exception as e:  # network trouble or Bluesky refusing: tell Gino, never crash his turn
         log.warning("Bluesky post failed: %s", e)
         db.x("INSERT INTO social_posts(ts,text,uri,status) VALUES(?,?,?,?)", (time.time(), text, "", "failed"))
         return "Bluesky didn't take the post (maybe it's down). Try again another time."
-    db.x("INSERT INTO social_posts(ts,text,uri,status) VALUES(?,?,?,?)", (time.time(), text, uri, "posted"))
-    db.event("social", "posted on Bluesky: " + text[:120])
-    return "Posted on Bluesky! 🦋"
+    pid = db.x("INSERT INTO social_posts(ts,text,uri,status,alt) VALUES(?,?,?,?,?)",
+               (time.time(), text, uri, "posted", alt if jpeg else ""))
+    if jpeg:
+        db.x("UPDATE social_posts SET photo=? WHERE id=?", (photo.save(pid, jpeg), pid))
+    db.event("social", ("posted a photo on Bluesky: " if jpeg else "posted on Bluesky: ") + text[:120])
+    return "Posted on Bluesky" + (" with your photo" if jpeg else "") + "! 🦋"
 
 
 def context_lines() -> str:
@@ -156,6 +189,8 @@ def context_lines() -> str:
     wait = wait_minutes()
     lines = [f"\n## Your Bluesky account (@{config.BLUESKY_HANDLE}, public)",
              "You can post now with social_post." if not wait else f"You can post again in about {wait} minutes."]
+    if photo.available():
+        lines.append("Your camera works: social_post can attach a selfie or a wide photo of your home.")
     if last:
         lines.append("Your latest posts: " + " | ".join(
             f"({time.strftime('%d %b %H:%M', time.localtime(p['ts']))}) {p['text'][:140]}" for p in last))
@@ -163,7 +198,8 @@ def context_lines() -> str:
 
 
 def recent_public(n: int = 5) -> list[dict]:
-    return db.q("SELECT ts,text,uri FROM social_posts WHERE status='posted' ORDER BY ts DESC LIMIT ?", (n,))
+    return db.q("SELECT id,ts,text,uri,photo,alt FROM social_posts WHERE status='posted' ORDER BY ts DESC LIMIT ?",
+                (n,))
 
 
 if __name__ == "__main__":  # `python -m gino.social test` checks the login without posting anything

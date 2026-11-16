@@ -57,6 +57,10 @@ def conn() -> sqlite3.Connection:
                              ("size", "REAL NOT NULL DEFAULT 1")):
                 if col not in have:
                     _conn.execute(f"ALTER TABLE habitat ADD COLUMN {col} {ddl}")
+            have = {r["name"] for r in _conn.execute("PRAGMA table_info(social_posts)")}
+            for col, ddl in (("photo", "TEXT NOT NULL DEFAULT ''"), ("alt", "TEXT NOT NULL DEFAULT ''")):
+                if col not in have:
+                    _conn.execute(f"ALTER TABLE social_posts ADD COLUMN {col} {ddl}")
         return _conn
 
 
