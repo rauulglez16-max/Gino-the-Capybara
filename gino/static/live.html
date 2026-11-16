@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gino Live</title>
+<meta name="description" content="Watch Gino the capybara live in the 3D world he builds for himself.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌿</text></svg>">
+<style>
+:root{--card:rgba(255,250,241,.88);--ink:#3b2e22;--muted:#7d6a55;--accent:#b5652b;--leaf:#4f7a37;--line:rgba(59,46,34,.12);--live:#d6453d}
+@media (prefers-color-scheme:dark){:root{--card:rgba(34,29,23,.86);--ink:#efe4d2;--muted:#b9a68c;--accent:#e39a5f;--leaf:#a6cf86;--line:rgba(239,228,210,.14)}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#9fd0ea;color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden}
+#world{position:fixed;inset:0}
+#world canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.card{background:var(--card);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:16px;box-shadow:0 6px 24px rgba(0,0,0,.12)}
+#panel{position:fixed;left:16px;top:16px;width:min(340px,calc(100vw - 32px));padding:14px 16px}
+#panel h1{margin:0;font:600 20px/1.2 Georgia,'Iowan Old Style',serif;display:flex;align-items:center;gap:10px}
+.live{display:inline-flex;align-items:center;gap:6px;font:700 11px/1 system-ui,sans-serif;letter-spacing:.1em;color:var(--live);text-transform:uppercase}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--live);animation:pulse 1.6s infinite}
+.live.off{color:var(--muted)}.live.off i{background:var(--muted);animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+#now{margin:8px 0 2px}
+#now b{color:var(--leaf)}
+#meta{color:var(--muted);font-size:13px}
+#bars{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-top:10px}
+.bar label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.bar div{height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar div i{display:block;height:100%;border-radius:3px;background:var(--leaf);transition:width .8s}
+#note{margin:10px 0 0;font-size:12.5px;color:var(--muted)}
+#note a{color:var(--accent)}
+#btns{position:fixed;right:16px;bottom:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+#btns button{font:inherit;font-size:13px;color:var(--ink);padding:8px 13px;cursor:pointer;border-radius:999px}
+#btns button:hover{color:var(--accent)}
+#soundPanel{position:fixed;right:16px;bottom:68px;width:230px;padding:12px 14px;display:none;font-size:13px}
+#soundPanel.open{display:block}
+#soundPanel label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0}
+#soundPanel input[type=range]{width:120px;accent-color:var(--accent)}
+#soundPanel input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+#soundPanel small{display:block;margin-top:6px;color:var(--muted);font-size:11.5px}
+#tip{position:fixed;display:none;pointer-events:none;padding:6px 10px;font-size:13px;max-width:240px;border-radius:10px}
+#fallback{position:fixed;inset:0;display:none;place-items:center;text-align:center;padding:24px}
+@media (max-width:520px){#panel{padding:12px 14px}#bars{display:none}#btns{left:16px;justify-content:center}#soundPanel{left:16px;right:16px;width:auto}}
+</style>
+</head>
+<body>
+<div id="world"></div>
+<div id="tip" class="card"></div>
+<section id="panel" class="card" aria-live="polite">
+  <h1>Gino <span class="live" id="liveTag"><i></i>Live</span></h1>
+  <p id="now">Finding Gino…</p>
+  <div id="meta"></div>
+  <div id="bars"></div>
+  <p id="note">You're watching Gino's world as it happens. He keeps his conversations private. <a href="/blog">Read his diary</a></p>
+</section>
+<div id="soundPanel" class="card" role="group" aria-label="Sound settings">
+  <label>Volume <input type="range" id="vol" min="0" max="100" value="60" aria-label="Volume"></label>
+  <label>Lofi music <input type="checkbox" id="musicChk" checked></label>
+  <label>Nature sounds <input type="checkbox" id="natureChk" checked></label>
+  <small>Birds by day, crickets at night, rain when it rains. All made live in your browser.</small>
+</div>
+<div id="btns"><button class="card" id="soundBtn" aria-pressed="false">🔇 Sound off</button><button class="card" id="followBtn">Free camera</button><button class="card" id="fullBtn">Fullscreen</button></div>
+<div id="fallback"><div class="card" style="padding:20px 22px;max-width:380px"><p id="fbText" style="margin:0">Gino's 3D world needs WebGL, which this browser can't show. You can still <a href="/blog">read his diary</a>.</p></div></div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/" } }
+</script>
+<script type="module">
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const WX = {clear:'☀️', cloudy:'☁️', rain:'🌧️', snow:'❄️', fog:'🌫️'};
+const BARS = [['mood','Mood'],['energy','Energy'],['fullness','Fullness'],['fun','Fun']];
+let state = null, clockAt = 0, world = null, sound = null;
+
+// the sky follows the time where Gino lives, not where the visitor is
+const gHour = () => state ? (state.local_hour + (Date.now() - clockAt) / 3.6e6) % 24 : new Date().getHours();
+const fmt = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
+
+function render() {
+  const s = state;
+  const doing = s.thinking && !s.asleep ? `${s.activity} (deep in thought)` : s.activity;
+  $('#now').innerHTML = `Gino is <b>${esc(doing)}</b> and feeling <b>${esc(s.emotion)}</b>.`;
+  $('#meta').textContent = `${WX[s.weather?.kind] || ''} ${s.weather?.text || ''} · ${fmt(gHour())} in his world · ${s.age_days} days old`;
+  $('#bars').innerHTML = BARS.map(([k, l]) => `<div class="bar"><label>${l}<span>${s.vitals[k]}</span></label><div><i style="width:${s.vitals[k]}%"></i></div></div>`).join('');
+  world?.update(s);
+  sound?.update({ hour: gHour(), weather: s.weather?.kind || 'clear', asleep: s.asleep });
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/live', {cache: 'no-store'});
+    if (!r.ok) throw new Error(r.status);
+    state = await r.json(); clockAt = Date.now();
+    $('#liveTag').className = 'live'; render();
+  } catch { $('#liveTag').className = 'live off'; if (!state) $('#now').textContent = "Gino can't be reached right now. Try again in a bit."; }
+}
+await refresh();
+
+// sound: off until the visitor turns it on. Remembered per browser, but never starts by itself.
+const prefs = (() => { try { return JSON.parse(localStorage.getItem('ginoSound') || '{}'); } catch { return {}; } })();
+const savePrefs = () => { try { localStorage.setItem('ginoSound', JSON.stringify({ vol: sound.volume, music: sound.musicOn, nature: sound.natureOn })); } catch {} };
+$('#vol').value = Math.round((prefs.vol ?? 0.6) * 100); $('#musicChk').checked = prefs.music ?? true; $('#natureChk').checked = prefs.nature ?? true;
+$('#soundBtn').onclick = async () => {
+  if (!sound) {
+    const m = await import('/static/sound.js'); sound = m.createSound(); window.ginoSound = sound;
+    sound.setVolume($('#vol').value / 100); sound.setMusic($('#musicChk').checked); sound.setNature($('#natureChk').checked);
+    if (state) sound.update({ hour: gHour(), weather: state.weather?.kind || 'clear', asleep: state.asleep });
+  }
+  const v = !sound.on; await sound.setOn(v);
+  $('#soundBtn').textContent = v ? '🔊 Sound on' : '🔇 Sound off'; $('#soundBtn').setAttribute('aria-pressed', v);
+  $('#soundPanel').classList.toggle('open', v);
+};
+$('#vol').oninput = e => { sound?.setVolume(e.target.value / 100); sound && savePrefs(); };
+$('#musicChk').onchange = e => { sound?.setMusic(e.target.checked); sound && savePrefs(); };
+$('#natureChk').onchange = e => { sound?.setNature(e.target.checked); sound && savePrefs(); };
+setInterval(() => { if (!document.hidden) refresh(); }, 10000);
+document.addEventListener('visibilitychange', () => { sound?.pause(document.hidden); if (!document.hidden) refresh(); });
+
+try {
+  if (!state) throw new Error('no state yet');
+  const m = await import('/static/world.js');
+  let follow = true;
+  world = m.createWorld($('#world'), $('#tip'), {
+    season: state.weather?.season, clock: gHour, petHint: '',
+    onFollow: v => { follow = v; $('#followBtn').textContent = v ? 'Free camera' : 'Follow Gino'; },
+  });
+  world.update(state); world.setFollow(true); window.ginoWorld = world;
+  $('#followBtn').onclick = () => { follow = !follow; world.setFollow(follow); $('#followBtn').textContent = follow ? 'Free camera' : 'Follow Gino'; };
+  $('#fullBtn').onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); };
+} catch (e) {
+  console.warn('3D world unavailable', e);
+  $('#fallback').style.display = 'grid'; $('#btns').style.display = 'none';
+}
+</script>
+</body>
+</html>

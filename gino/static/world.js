@@ -259,7 +259,7 @@ export function createWorld(container, tooltip, opts = {}) {
     if (artTex.has(file)) return artTex.get(file);
     const tex = new THREE.CanvasTexture(Object.assign(document.createElement('canvas'), { width: 512, height: 512 })); tex.colorSpace = THREE.SRGBColorSpace;
     artTex.set(file, tex);
-    fetch(`/creations/${file}`, { headers: { 'x-gino-key': env.artKey } }).then(r => r.ok ? r.text() : Promise.reject()).then(svg => {
+    fetch(file.startsWith('/') ? file : `/creations/${file}`, file.startsWith('/') ? {} : { headers: { 'x-gino-key': env.artKey } }).then(r => r.ok ? r.text() : Promise.reject()).then(svg => {
       if (!/<svg[^>]*\swidth=/.test(svg)) svg = svg.replace('<svg', '<svg width="512" height="512"');
       if (!/xmlns=/.test(svg)) svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
       const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })), img = new Image();
@@ -342,7 +342,7 @@ export function createWorld(container, tooltip, opts = {}) {
     timer.update(); const raw = timer.getDelta(), dt = Math.min(raw, 0.1), t = timer.getElapsed(); U.time.value = t;
     if (quality === 'high' && opts.autoQuality !== false && intro >= 1 && ++frames > 30) { slow += raw > 0.045 ? 1 : -0.5; slow = Math.max(0, slow); if (slow > 50) setQuality('low'); }
     const now = new Date();
-    const hour = timeMode === 'day' ? 12.5 : timeMode === 'sunset' ? 17.75 : timeMode === 'night' ? 23 : now.getHours() + now.getMinutes() / 60;
+    const hour = timeMode === 'day' ? 12.5 : timeMode === 'sunset' ? 17.75 : timeMode === 'night' ? 23 : opts.clock ? opts.clock() : now.getHours() + now.getMinutes() / 60;
     const day = applySky(hour, dt);
 
     // camera: fly in once, then idle orbit / follow / focus
@@ -441,7 +441,7 @@ export function createWorld(container, tooltip, opts = {}) {
   el.addEventListener('pointermove', ev => {
     const nw = performance.now(); if (nw - hoverT < 60) return; hoverT = nw;
     const h = hit(ev); let text = '';
-    if (h.gino) text = 'Gino' + (state.activity ? ' · ' + state.activity : '') + ' (click to pet)';
+    if (h.gino) text = 'Gino' + (state.activity ? ' · ' + state.activity : '') + (opts.petHint ?? ' (click to pet)');
     else if (h.item) text = `${h.item.emoji || ''} ${h.item.name}${h.item.description ? ' — ' + h.item.description : ''}`;
     tooltip.textContent = text; tooltip.style.display = text ? 'block' : 'none'; el.style.cursor = h.gino ? 'pointer' : 'grab';
     tooltip.style.left = Math.min(h.r.width - 240, Math.max(8, ev.clientX - h.r.left + 14)) + 'px'; tooltip.style.top = (ev.clientY - h.r.top + 14) + 'px';
