@@ -25,7 +25,14 @@ window.takePhoto = async ({ state, key, shot, maxBytes }) => {
   await frames(4);
   const THREE = await import('three');
   // let him finish walking to where he is, so he's not caught mid-stride somewhere else
-  for (let i = 0; i < 40; i++) { await frames(3); if (gino.userData.lastPos && gino.position.distanceTo(gino.userData.lastPos) < 0.01) break; gino.userData.lastPos = gino.position.clone(); }
+  // (only sideways movement counts: he bobs up and down while swimming)
+  let last = null;
+  for (let i = 0; i < 15; i++) {
+    await frames(2);
+    const p = { x: gino.position.x, z: gino.position.z };
+    if (last && Math.hypot(p.x - last.x, p.z - last.z) < 0.02) break;
+    last = p;
+  }
   if (shot === 'wide') {
     w.setFollow(false); controls.autoRotate = false;
     controls.target.set(gino.position.x * 0.5, 0.6, gino.position.z * 0.5);
