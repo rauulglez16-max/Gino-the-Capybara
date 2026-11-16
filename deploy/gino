@@ -178,6 +178,39 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
       *) echo "usage: gino social [status|setup|on|off]"; exit 1 ;;
     esac
     ;;
+  photos)
+    need_root
+    case "${2:-status}" in
+      on)
+        echo "Installing Gino's camera (a headless browser, about 300 MB). This takes a few minutes..."
+        /opt/gino/venv/bin/pip install -q playwright
+        mkdir -p /opt/gino/browsers
+        PLAYWRIGHT_BROWSERS_PATH=/opt/gino/browsers /opt/gino/venv/bin/python -m playwright install --with-deps --only-shell chromium
+        chmod -R a+rX /opt/gino/browsers
+        set_setting PLAYWRIGHT_BROWSERS_PATH /opt/gino/browsers
+        set_setting GINO_PHOTOS 1
+        systemctl restart gino
+        echo "📸 Camera installed. Test it with: gino photos test"
+        ;;
+      test)
+        sleep 3
+        out=/opt/gino/data/photo-test.jpg
+        # run it exactly like Gino runs: same user, same settings
+        if systemd-run --quiet --wait --pipe --uid=gino --gid=gino -p EnvironmentFile="$ENV_FILE" \
+             -p WorkingDirectory="$APP" -E HOME=/tmp /opt/gino/venv/bin/python -m gino.photo test "$out" "${3:-selfie}"; then
+          echo "Copy it to your computer to look at it:  scp root@$(curl -s -4 ifconfig.me 2>/dev/null || echo YOUR.IP):$out ."
+        fi
+        ;;
+      off)
+        set_setting GINO_PHOTOS 0; systemctl restart gino
+        echo "Photos are OFF. Gino still posts, just without pictures."
+        ;;
+      status)
+        [ "$(setting GINO_PHOTOS)" = "1" ] && echo "📸 Photos are ON" || echo "Photos are OFF (turn on with: gino photos on)"
+        ;;
+      *) echo "usage: gino photos [status|on|test|off]"; exit 1 ;;
+    esac
+    ;;
   settings) need_root; "${EDITOR:-nano}" "$ENV_FILE" && systemctl restart gino && echo "Saved and restarted." ;;
   *)
     cat <<'EOF'
@@ -193,6 +226,7 @@ gino set-key     give him his Claude API key
 gino telegram    connect him to your phone (gino telegram test / gino telegram off)
 gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / template / off)
 gino social      Bluesky posting: gino social setup | on | off | status
+gino photos      photos in his posts: gino photos on | test | off
 gino settings    edit all his settings
 EOF
     ;;

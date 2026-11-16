@@ -80,6 +80,10 @@ BLUESKY_APP_PASSWORD = os.environ.get("GINO_BLUESKY_APP_PASSWORD", "").strip()
 BLUESKY_SERVICE = os.environ.get("GINO_BLUESKY_SERVICE", "https://bsky.social")
 SOCIAL_MAX_PER_DAY = max(1, int(_f("GINO_SOCIAL_MAX_PER_DAY", 3)))
 SOCIAL_MIN_GAP_MINUTES = max(0, int(_f("GINO_SOCIAL_MIN_GAP_MINUTES", 120)))
+# Photos of his 3D world for his posts (needs Playwright + Chromium: `gino photos on` on the server)
+PHOTOS_ON = os.environ.get("GINO_PHOTOS", "0") == "1"
+PHOTO_TIMEOUT = int(_f("GINO_PHOTO_TIMEOUT", 300))  # seconds; no graphics card on the server, so a photo takes a minute or two
+PHOTO_CHROMIUM = os.environ.get("GINO_PHOTO_CHROMIUM", "")  # optional path to a Chromium binary
 PUBLIC_URL = os.environ.get("GINO_PUBLIC_URL", "").strip()  # e.g. https://203-0-113-7.sslip.io, for links to /blog
 
 # USD per million tokens: (input, output, cache_read). Cache writes are billed at 1.25x input.

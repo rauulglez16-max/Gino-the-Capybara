@@ -234,6 +234,7 @@ Log in with `ssh root@<your IP>` and type `gino` to see everything:
 | `gino telegram` | Connect him to Telegram on your phone (see above) |
 | `gino whatsapp` | Connect him to your WhatsApp (see above) |
 | `gino social` | His Bluesky account: `setup`, `on`, `off` (see [Gino on Bluesky](#gino-on-bluesky-)) |
+| `gino photos` | Photos in his posts: `on`, `test`, `off` |
 | `gino settings` | Change any setting (model, budget, time zone...). Save with Ctrl+O, Enter, then Ctrl+X |
 
 ## Gino on Bluesky 🦋
@@ -266,6 +267,12 @@ Gino can have his own Bluesky account where he posts short updates about his day
 | `gino social off` | Stop posting right away. His account and old posts stay |
 | `gino social on` | Let him post again |
 | `gino social setup` | Change the account or app password |
+
+**Photos 📸 (optional):** Gino can add a real picture of his 3D world to a post: a selfie, or a wide shot of
+his home, showing exactly what he's doing right then. The server takes it with a small built-in browser, so it
+costs nothing. To switch it on, run `gino photos on` (it installs about 300 MB and takes a few minutes), then
+`gino photos test` to take a test picture without posting it. `gino photos off` turns photos off again. Photos
+only show drawings he already put on his website, and they also appear on his website next to the post.
 
 To remove a post, log in to the account at bsky.app and delete it there. If you ever worry the app password
 leaked, delete it in Bluesky's App passwords screen and make a new one.

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<!-- Gino's camera. Only opened by the server's own headless browser (gino/photo.py) to take a picture
+     of his 3D world for a post. It has no data of its own: the server hands it a filtered snapshot. -->
+<title>Gino's camera</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#bfe3f5}#world{position:fixed;inset:0}#tip{display:none}</style>
+</head><body>
+<div id="world"></div><div id="tip"></div>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/" } }
+</script>
+<script type="module">
+const frames = n => new Promise(res => { const step = () => (--n <= 0 ? res() : requestAnimationFrame(step)); requestAnimationFrame(step); });
+
+window.takePhoto = async ({ state, key, shot, maxBytes }) => {
+  const { createWorld } = await import('/static/world.js');
+  const w = createWorld(document.getElementById('world'), document.getElementById('tip'),
+    { key, season: state.weather?.season, autoQuality: false });
+  w.setQuality('low');
+  w.update(state);
+  const { camera, controls, gino, skip } = w._debug;
+  skip();
+  await frames(4);
+  const THREE = await import('three');
+  // let him finish walking to where he is, so he's not caught mid-stride somewhere else
+  for (let i = 0; i < 40; i++) { await frames(3); if (gino.userData.lastPos && gino.position.distanceTo(gino.userData.lastPos) < 0.01) break; gino.userData.lastPos = gino.position.clone(); }
+  if (shot === 'wide') {
+    w.setFollow(false); controls.autoRotate = false;
+    controls.target.set(gino.position.x * 0.5, 0.6, gino.position.z * 0.5);
+    camera.position.set(-15, 10, 23);
+  } else {
+    // a selfie: in front of him and a little to the side, looking at his face
+    w.setFollow(true);
+    const ry = gino.rotation.y, face = new THREE.Vector3(Math.cos(ry), 0, -Math.sin(ry)), side = new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry));
+    camera.position.copy(gino.position).addScaledVector(face, 3.6).addScaledVector(side, 1.6).add(new THREE.Vector3(0, 1.6, 0));
+    controls.target.set(gino.position.x, gino.position.y + 0.8, gino.position.z);
+  }
+  controls.update();
+  await frames(12);
+  // grab the frame right after it's drawn, then squeeze it into a JPEG small enough for Bluesky
+  const png = await createImageBitmap(await w.photo());
+  const c = document.createElement('canvas'); c.width = png.width; c.height = png.height; c.getContext('2d').drawImage(png, 0, 0);
+  for (const q of [0.88, 0.8, 0.7, 0.6, 0.5]) {
+    const url = c.toDataURL('image/jpeg', q);
+    if (url.length * 0.75 < maxBytes) return url;
+  }
+  throw new Error('photo too big');
+};
+window.cameraReady = true;
+</script>
+</body></html>
