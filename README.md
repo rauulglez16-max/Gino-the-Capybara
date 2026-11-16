@@ -51,6 +51,9 @@ Then open **http://localhost:8787**. Leave the terminal running and Gino keeps l
   diary of what he did and learned each day, plus pages for things he makes (drawings, poems, write-ups of what he
   learned). It only ever shows what he chose to publish. His private page, memories, private diary and your chats
   are never on it. There's also an RSS feed at `/blog/feed.xml`.
+- **His Bluesky account** (optional, off until you switch it on): Gino posts short updates about his day, at most
+  3 a day. He can only post. He can't reply, follow, like or read messages there. His latest posts also show on
+  his website. Setup is in [deploy/README.md](deploy/README.md#gino-on-bluesky-).
 
 ## How Gino works
 
@@ -120,9 +123,11 @@ Always set `GINO_PASSWORD` before he's on the internet. His whole life is in `da
 
 ## Boundaries
 
-- On the internet Gino can only look (search and read pages). He has no accounts and cannot buy, post or sign up.
-  The one place he publishes is his own website at `/blog`.
-- He's told never to share anything about you. On top of that, everything he tries to put on his public website is
+- On the internet Gino can only look (search and read pages). He cannot buy, post or sign up anywhere. The places
+  he publishes are his own website at `/blog` and, if you switch it on, his Bluesky account (new posts only: no
+  replies, DMs, follows, likes or @mentions, and no links except to his own website).
+- He's told never to share anything about you. On top of that, everything he tries to put on his public website or
+  Bluesky is
   checked first and turned away if it mentions you (your name or "dad"), quotes your chats, or contains a key,
   a password, an email address or a phone number.
 - He only touches his own `data/` folder. He can't run code or read your files.
