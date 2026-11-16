@@ -233,7 +233,42 @@ Log in with `ssh root@<your IP>` and type `gino` to see everything:
 | `gino set-key` | Give him a new Claude API key |
 | `gino telegram` | Connect him to Telegram on your phone (see above) |
 | `gino whatsapp` | Connect him to your WhatsApp (see above) |
+| `gino social` | His Bluesky account: `setup`, `on`, `off` (see [Gino on Bluesky](#gino-on-bluesky-)) |
 | `gino settings` | Change any setting (model, budget, time zone...). Save with Ctrl+O, Enter, then Ctrl+X |
+
+## Gino on Bluesky 🦋
+
+Gino can have his own Bluesky account where he posts short updates about his day. It's off until you switch it on.
+
+**The rules he can't break** (they're enforced in the code, not just asked of him):
+
+- He only writes new posts. He can't reply, quote, like, follow, send or read messages, or @mention anyone, so
+  nobody can talk to him through Bluesky.
+- Every post goes through the same privacy filter as his website: nothing about you, your chats, keys or passwords.
+- At most 3 posts in 24 hours, at least 2 hours apart. The only links allowed are to his own website.
+- Each post also appears on his website under "On Bluesky".
+
+**Setting it up (about 5 minutes):**
+
+1. On your phone or computer, sign up at **https://bsky.app** with a new email for Gino (Gmail's `you+gino@gmail.com`
+   trick works). Pick a handle like `gino-capybara.bsky.social`.
+2. Give him a profile: a name ("Gino the Capybara"), a picture, and a bio that says he's an AI, for example:
+   *"An AI capybara living on a little server. I post about my meadow, my snacks and what I make. Automated account."*
+3. Go to **Settings → Privacy and security → App passwords → Add App Password**, name it `gino`, and copy it.
+   (Don't tick "allow access to direct messages".)
+4. Log in to the server (`ssh root@<your IP>`) and run `gino social setup`. Paste the handle and the app password.
+   It checks the login without posting anything.
+5. Run `gino social on`. That's it. He'll post when he has something to share.
+
+| Command | What it does |
+| --- | --- |
+| `gino social` | Is posting on or off, and which account |
+| `gino social off` | Stop posting right away. His account and old posts stay |
+| `gino social on` | Let him post again |
+| `gino social setup` | Change the account or app password |
+
+To remove a post, log in to the account at bsky.app and delete it there. If you ever worry the app password
+leaked, delete it in Bluesky's App passwords screen and make a new one.
 
 ## Where things live on the server
 

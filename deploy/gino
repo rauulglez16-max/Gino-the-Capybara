@@ -140,6 +140,44 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
         echo "Then send \"hi\" to Gino's number on WhatsApp. He'll answer! (See these again with: gino whatsapp webhook)" ;;
     esac
     ;;
+  social)
+    need_root
+    case "${2:-status}" in
+      setup)
+        echo "Connect Gino to his Bluesky account. Use an APP PASSWORD (Bluesky: Settings > Privacy and security >"
+        echo "App passwords), never your real Bluesky password."
+        read -r -p "Gino's Bluesky handle (e.g. gino-capybara.bsky.social): " handle
+        handle="${handle#@}"
+        read -r -s -p "App password (nothing shows while you paste): " apppw; echo
+        [ -n "$handle" ] && [ -n "$apppw" ] || { echo "Nothing entered, nothing changed."; exit 1; }
+        set_setting GINO_BLUESKY_HANDLE "$handle"
+        set_setting GINO_BLUESKY_APP_PASSWORD "$apppw"
+        domain="$(cat /var/lib/gino-deploy/domain 2>/dev/null || true)"
+        [ -n "$domain" ] && set_setting GINO_PUBLIC_URL "https://$domain"
+        echo "Checking the login (nothing gets posted)..."
+        if (cd "$APP" && export GINO_BLUESKY_HANDLE="$handle" GINO_BLUESKY_APP_PASSWORD="$apppw" \
+              GINO_DATA_DIR=/opt/gino/data && as_gino /opt/gino/venv/bin/python -m gino.social test); then
+          echo "Saved. Posting is still OFF. Turn it on with: gino social on"
+        else
+          echo "Saved, but the login didn't work. Check the handle and app password and run: gino social setup"
+        fi
+        ;;
+      on)
+        [ -n "$(setting GINO_BLUESKY_APP_PASSWORD)" ] || { echo "Run gino social setup first."; exit 1; }
+        set_setting GINO_SOCIAL 1; systemctl restart gino
+        echo "🦋 Gino can post on Bluesky now (at most 3 posts a day, 2 hours apart). Stop him any time with: gino social off"
+        ;;
+      off)
+        set_setting GINO_SOCIAL 0; systemctl restart gino
+        echo "Bluesky posting is OFF. His account and old posts stay as they are."
+        ;;
+      status)
+        if [ "$(setting GINO_SOCIAL)" = "1" ]; then echo "🦋 Bluesky posting is ON as @$(setting GINO_BLUESKY_HANDLE)"
+        else echo "Bluesky posting is OFF$( [ -n "$(setting GINO_BLUESKY_HANDLE)" ] && echo " (account: @$(setting GINO_BLUESKY_HANDLE))")"; fi
+        ;;
+      *) echo "usage: gino social [status|setup|on|off]"; exit 1 ;;
+    esac
+    ;;
   settings) need_root; "${EDITOR:-nano}" "$ENV_FILE" && systemctl restart gino && echo "Saved and restarted." ;;
   *)
     cat <<'EOF'
@@ -154,6 +192,7 @@ gino password    show (or: gino password NEW to change) the page password
 gino set-key     give him his Claude API key
 gino telegram    connect him to your phone (gino telegram test / gino telegram off)
 gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / template / off)
+gino social      Bluesky posting: gino social setup | on | off | status
 gino settings    edit all his settings
 EOF
     ;;

@@ -73,6 +73,15 @@ WHATSAPP_TEMPLATE = os.environ.get("WHATSAPP_TEMPLATE", "hello_world").strip()  
 WHATSAPP_TEMPLATE_LANG = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en_US").strip()
 WHATSAPP_API = os.environ.get("WHATSAPP_API", "https://graph.facebook.com/v26.0").rstrip("/")
 
+# Gino's Bluesky account (off unless dad switches it on; see deploy/README.md)
+SOCIAL_ON = os.environ.get("GINO_SOCIAL", "0") == "1"
+BLUESKY_HANDLE = os.environ.get("GINO_BLUESKY_HANDLE", "").strip().lstrip("@")
+BLUESKY_APP_PASSWORD = os.environ.get("GINO_BLUESKY_APP_PASSWORD", "").strip()
+BLUESKY_SERVICE = os.environ.get("GINO_BLUESKY_SERVICE", "https://bsky.social")
+SOCIAL_MAX_PER_DAY = max(1, int(_f("GINO_SOCIAL_MAX_PER_DAY", 3)))
+SOCIAL_MIN_GAP_MINUTES = max(0, int(_f("GINO_SOCIAL_MIN_GAP_MINUTES", 120)))
+PUBLIC_URL = os.environ.get("GINO_PUBLIC_URL", "").strip()  # e.g. https://203-0-113-7.sslip.io, for links to /blog
+
 # USD per million tokens: (input, output, cache_read). Cache writes are billed at 1.25x input.
 PRICES = {
     "claude-opus-5-5": (4.0, 20.0, 0.20),

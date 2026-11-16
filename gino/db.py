@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS posts (
   kind TEXT NOT NULL CHECK (kind IN ('diary','page')), slug TEXT NOT NULL, title TEXT NOT NULL,
   body TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', creation_id INTEGER REFERENCES creations(id),
   UNIQUE (kind, slug));
+CREATE TABLE IF NOT EXISTS social_posts (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, text TEXT NOT NULL, uri TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK (status IN ('posted','failed')));
 CREATE INDEX IF NOT EXISTS spend_day ON spend(day);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 """
