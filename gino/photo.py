@@ -22,7 +22,7 @@ from . import config, db, public, vitals
 
 log = logging.getLogger("gino.photo")
 MAX_BYTES = 950_000  # Bluesky refuses images over 1,000,000 bytes
-SIZE = (1200, 900)
+SIZE = (1000, 750)
 _lock = threading.Lock()  # one photo at a time: Chromium is heavy on a small server
 
 
@@ -72,6 +72,9 @@ def take(shot: str = "selfie") -> bytes:
                                env={**os.environ, "HOME": os.environ.get("TMPDIR", "/tmp")})
         except subprocess.TimeoutExpired:
             raise RuntimeError("the camera took too long") from None
+    for line in r.stderr.decode(errors="replace").splitlines():
+        if line.startswith("photo:"):
+            log.info(line)
     if r.returncode != 0 or not r.stdout.startswith(b"\xff\xd8"):
         log.warning("photo failed: %s", r.stderr.decode(errors="replace")[-800:])
         raise RuntimeError("the camera didn't work this time")
@@ -99,6 +102,7 @@ def _shoot(job: dict) -> bytes:
         try:
             page = browser.new_page(viewport={"width": SIZE[0], "height": SIZE[1]}, device_scale_factor=1,
                                     timezone_id=config.TIMEZONE or None)
+            page.on("console", lambda m: print(m.text, file=sys.stderr) if m.text.startswith("photo:") else None)
             local = os.environ.get("GINO_THREE_DIR")  # for offline testing: serve three.js from a local copy
             if local:
                 page.route("https://cdn.jsdelivr.net/npm/three@*/**", lambda route: route.fulfill(
