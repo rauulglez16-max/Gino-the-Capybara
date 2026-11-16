@@ -22,14 +22,15 @@ SLUG_RE = re.compile(r"[a-z0-9][a-z0-9\-]{0,59}")
 # ---------------------------------------------------------------- safety
 
 _FAMILY = re.compile(r"\b(dad|dads|daddy|dada|father|fathers|papa|pops)\b", re.I)
-_SECRETY = re.compile(r"sk-ant-|anthropic_api_key|gino_password|x-gino-key|api[\s_-]?key|password|passcode", re.I)
+_SECRETY = re.compile(r"sk-ant-|anthropic_api_key|gino_password|app[\s_-]?password|x-gino-key|api[\s_-]?key|password|passcode", re.I)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"\+\d[\d\s\-()]{7,}\d")
 
 
 def _secrets() -> list[str]:
     import os
-    vals = [os.environ.get("ANTHROPIC_API_KEY", ""), os.environ.get("ANTHROPIC_AUTH_TOKEN", ""), config.PASSWORD]
+    vals = [os.environ.get("ANTHROPIC_API_KEY", ""), os.environ.get("ANTHROPIC_AUTH_TOKEN", ""), config.PASSWORD,
+            config.BLUESKY_APP_PASSWORD]
     return [v for v in vals if v and len(v) >= 4]
 
 
@@ -382,6 +383,19 @@ def home():
                          f'<span class="meta">{_when(p["ts"])}</span>'
                          f'<p class="meta">{E(p["summary"] or _excerpt(p["body"], 110))}</p></a>')
         parts.append("</div>")
+    from . import social  # imported late: social imports this file
+    posts = social.recent_public(5)
+    if posts:
+        parts.append(f'<h2 class="sec">On Bluesky</h2>')
+        for sp in posts:
+            link = social.web_link(sp["uri"])
+            when = dt.datetime.fromtimestamp(sp["ts"]).strftime("%d %b %Y, %H:%M")
+            parts.append(f'<div class="post"><p class="ex" style="margin:0">{E(sp["text"])}</p><div class="meta">'
+                         + (f'<a href="{E(link)}" rel="nofollow noopener">{when}</a>' if link else when)
+                         + "</div></div>")
+        if social.profile_url():
+            parts.append(f'<p class="meta"><a href="{E(social.profile_url())}" rel="nofollow noopener">'
+                         f'Follow Gino on Bluesky</a></p>')
     return _page("Gino's Burrow", "\n".join(parts))
 
 
