@@ -299,6 +299,7 @@ blockquote{margin:1em 0;padding-left:14px;border-left:3px solid var(--accent);co
 nav.pager{display:flex;justify-content:space-between;margin-top:18px;font:15px system-ui,sans-serif}
 footer{margin-top:40px;text-align:center;color:var(--muted);font:13px system-ui,sans-serif}
 .empty{color:var(--muted);font-style:italic}
+.post img.shot{width:100%;border-radius:10px;display:block;margin-bottom:10px}
 @media (max-width:520px){article{padding:20px 18px}header.top h1{font-size:25px}}
 """
 
@@ -390,7 +391,9 @@ def home():
         for sp in posts:
             link = social.web_link(sp["uri"])
             when = dt.datetime.fromtimestamp(sp["ts"]).strftime("%d %b %Y, %H:%M")
-            parts.append(f'<div class="post"><p class="ex" style="margin:0">{E(sp["text"])}</p><div class="meta">'
+            pic = (f'<img class="shot" src="/blog/photo/{sp["id"]}.jpg" alt="{E(sp["alt"])}" loading="lazy">'
+                   if sp["photo"] else "")
+            parts.append(f'<div class="post">{pic}<p class="ex" style="margin:0">{E(sp["text"])}</p><div class="meta">'
                          + (f'<a href="{E(link)}" rel="nofollow noopener">{when}</a>' if link else when)
                          + "</div></div>")
         if social.profile_url():
@@ -445,6 +448,17 @@ def art(cid: int):
         raise HTTPException(404)
     return Response(path.read_bytes(), media_type="image/svg+xml",
                     headers={**HEADERS, "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
+
+
+@router.get("/blog/photo/{pid}.jpg")
+def social_photo(pid: int):
+    """A photo Gino posted on Bluesky (only ones he actually posted)."""
+    rows = db.q("SELECT photo FROM social_posts WHERE id=? AND status='posted' AND photo!=''", (pid,))
+    path = config.DATA_DIR / "photos" / f"{pid}.jpg"
+    if not rows or not path.exists():
+        raise HTTPException(404)
+    return Response(path.read_bytes(), media_type="image/jpeg",
+                    headers={**HEADERS, "Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/blog/feed.xml")

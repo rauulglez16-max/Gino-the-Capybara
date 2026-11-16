@@ -106,8 +106,15 @@ SOCIAL_TOOL = _t(
     "your day, something you made or learned, how the meadow looks. Up to 300 characters, in your own voice. "
     "You only post: you can't reply, follow or message anyone there, and you never @mention other accounts. "
     "You may link to your own website, nothing else. The same privacy rules as your public website apply: never "
-    "mention your dad, your chats, keys or passwords. A few posts a day at most; quality over quantity.",
-    {"text": {**S, "description": "The post, max 300 characters"}}, ["text"])
+    "mention your dad, your chats, keys or passwords. A few posts a day at most; quality over quantity. "
+    "If your camera works you can add a real photo of your 3D world as it is right now: a 'selfie' of you, or a "
+    "'wide' shot of your home. Do what you're writing about first (walk to the pond, build the thing), then post, "
+    "so the photo matches. Not every post needs one.",
+    {"text": {**S, "description": "The post, max 300 characters"},
+     "photo": {"type": "string", "enum": ["none", "selfie", "wide"],
+               "description": "Add a photo taken right now: selfie (close-up of you) or wide (your whole home)"},
+     "photo_description": {**S, "description": "Describe the photo for people who can't see it (alt text)"}},
+    ["text"])
 
 SERVER_TOOLS = [
     {"type": "web_search_20260209", "name": "web_search", "max_uses": 3},
@@ -295,7 +302,8 @@ def run(name: str, a: dict, body: dict) -> str:
     if name == "public_unpublish":
         return public.unpublish(str(a.get("kind", "page")), str(a.get("slug", "")))
     if name == "social_post":
-        r = social.post(a.get("text", ""))
+        shot = a.get("photo") if a.get("photo") in ("selfie", "wide") else ""
+        r = social.post(a.get("text", ""), shot, a.get("photo_description", ""))
         if r.startswith("Posted"):
             body["fun"] = vitals.clamp(body["fun"] + 3)
         return r
