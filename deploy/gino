@@ -8,11 +8,16 @@ ENV_FILE=/etc/gino/gino.env
 APP=/opt/gino/app
 
 need_root() { [ "$(id -u)" -eq 0 ] || { echo "Please run this as root (or with sudo)."; exit 1; }; }
-setting() { grep -m1 "^$1=" "$ENV_FILE" | cut -d= -f2-; }
+setting() { { grep -m1 "^$1=" "$ENV_FILE" || true; } | cut -d= -f2-; }
 set_setting() {  # set_setting NAME value
   local tmp; tmp="$(mktemp)"
   grep -v "^$1=" "$ENV_FILE" > "$tmp" || true
   printf '%s=%s\n' "$1" "$2" >> "$tmp"
+  cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
+}
+unset_setting() {  # unset_setting NAME
+  local tmp; tmp="$(mktemp)"
+  grep -v "^$1=" "$ENV_FILE" > "$tmp" || true
   cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
 }
 
@@ -24,6 +29,8 @@ case "${1:-help}" in
     echo "   Version:  $(as_gino git -C "$APP" log -1 --format='%h %s (%cr)')"
     echo "   Brain:    $( [ -n "$(setting ANTHROPIC_API_KEY)" ] && setting GINO_MODEL || echo 'practice brain (no key yet: gino set-key)')"
     echo "   Next update check: $(systemctl list-timers gino-update.timer --no-legend | awk '{print $1, $2, $3}')"
+    echo "   Telegram: $( [ -n "$(setting TELEGRAM_CHAT_ID)" ] && echo 'connected 📱' || echo 'not connected (gino telegram)')"
+    echo "   WhatsApp: $( [ -n "$(setting WHATSAPP_TOKEN)" ] && echo "connected 📱 (nudge template: $(setting WHATSAPP_TEMPLATE))" || echo 'not connected (gino whatsapp)')"
     if [ -s /var/lib/gino-deploy/bad-commit ]; then
       echo "   ⚠️  Skipped version $(head -c 7 /var/lib/gino-deploy/bad-commit) because it wouldn't start."
     fi
@@ -46,6 +53,92 @@ case "${1:-help}" in
     [ -n "$key" ] || { echo "Nothing pasted, nothing changed."; exit 1; }
     set_setting ANTHROPIC_API_KEY "$key"; systemctl restart gino
     echo "Gino has his real brain now. 🧠"
+    ;;
+  telegram)
+    need_root
+    case "${2:-}" in
+      off)
+        unset_setting TELEGRAM_BOT_TOKEN; unset_setting TELEGRAM_CHAT_ID; systemctl restart gino
+        echo "Gino's phone line is off. Connect again any time with: gino telegram" ;;
+      test)
+        [ -n "$(setting TELEGRAM_CHAT_ID)" ] || { echo "Not connected yet. Run: gino telegram"; exit 1; }
+        TELEGRAM_BOT_TOKEN="$(setting TELEGRAM_BOT_TOKEN)" CHAT="$(setting TELEGRAM_CHAT_ID)" python3 -I -c '
+import json, os, urllib.request
+t, c = os.environ["TELEGRAM_BOT_TOKEN"], os.environ["CHAT"]
+r = urllib.request.Request(f"https://api.telegram.org/bot{t}/sendMessage", headers={"Content-Type": "application/json"},
+    data=json.dumps({"chat_id": c, "text": "🔔 Test from the server: the phone line works!"}).encode())
+urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your phone. 📱" \
+          || echo "That didn't work. Try connecting again with: gino telegram" ;;
+      *)
+        echo "Let's connect Gino to your phone. 📱"
+        echo "(If you haven't made a bot yet: in Telegram, message @BotFather, send /newbot, and follow along.)"
+        read -r -p "Paste the token BotFather gave you: " token
+        token="$(printf '%s' "$token" | tr -d '[:space:]')"
+        [ -n "$token" ] || { echo "Nothing pasted, nothing changed."; exit 1; }
+        systemctl stop gino  # so only this setup is listening to the bot for a moment
+        if chat="$(TELEGRAM_BOT_TOKEN="$token" python3 -I "$APP/deploy/telegram_pair.py")" && [ -n "$chat" ]; then
+          set_setting TELEGRAM_BOT_TOKEN "$token"; set_setting TELEGRAM_CHAT_ID "$chat"
+          systemctl start gino
+          echo; echo "🎉 Done! Gino can text you now, and you can text him back. Nobody else can talk to him there."
+        else
+          systemctl start gino
+          echo "Nothing changed. Gino is back to normal."; exit 1
+        fi ;;
+    esac
+    ;;
+  whatsapp)
+    need_root
+    wa_env() { WHATSAPP_TOKEN="$(setting WHATSAPP_TOKEN)" WHATSAPP_PHONE_ID="$(setting WHATSAPP_PHONE_ID)" \
+      WHATSAPP_TO="$(setting WHATSAPP_TO)" WHATSAPP_TEMPLATE="$(setting WHATSAPP_TEMPLATE)" \
+      WHATSAPP_TEMPLATE_LANG="$(setting WHATSAPP_TEMPLATE_LANG)" "$@"; }
+    case "${2:-}" in
+      off)
+        for k in WHATSAPP_TOKEN WHATSAPP_PHONE_ID WHATSAPP_TO WHATSAPP_APP_SECRET WHATSAPP_VERIFY_TOKEN \
+                 WHATSAPP_TEMPLATE WHATSAPP_TEMPLATE_LANG; do unset_setting "$k"; done
+        systemctl restart gino
+        echo "Gino's WhatsApp line is off. Connect again any time with: gino whatsapp" ;;
+      test)
+        [ -n "$(setting WHATSAPP_TOKEN)" ] || { echo "Not connected yet. Run: gino whatsapp"; exit 1; }
+        wa_env python3 -I "$APP/deploy/whatsapp_setup.py" test ;;
+      webhook)
+        [ -n "$(setting WHATSAPP_VERIFY_TOKEN)" ] || { echo "Not connected yet. Run: gino whatsapp"; exit 1; }
+        echo "   Callback URL:  https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)/whatsapp/webhook"
+        echo "   Verify token:  $(setting WHATSAPP_VERIFY_TOKEN)" ;;
+      template)
+        [ -n "${3:-}" ] || { echo "Usage: gino whatsapp template NAME [LANGUAGE]   e.g. gino whatsapp template gino_nudge en_GB"; exit 1; }
+        set_setting WHATSAPP_TEMPLATE "$3"; set_setting WHATSAPP_TEMPLATE_LANG "${4:-en_GB}"; systemctl restart gino
+        echo "Gino's nudge is now the \"$3\" template (${4:-en_GB}). Try it with: gino whatsapp test" ;;
+      *)
+        echo "Let's connect Gino to your WhatsApp. 📱  (Do steps 1-4 of the WhatsApp guide first; it tells you"
+        echo "where each of these is: https://github.com/rauulglez16-max/Gino-the-Capybara/blob/main/deploy/README.md )"
+        echo
+        read -r -p "1/4  Phone number ID: " phone_id
+        read -r -p "2/4  Permanent access token: " token
+        read -r -p "3/4  App secret: " secret
+        read -r -p "4/4  Your own WhatsApp number, with country code (like 447700900123): " to
+        phone_id="$(printf '%s' "$phone_id" | tr -dc '0-9')"; token="$(printf '%s' "$token" | tr -d '[:space:]')"
+        secret="$(printf '%s' "$secret" | tr -d '[:space:]')"; to="$(printf '%s' "$to" | tr -dc '0-9')"
+        to="${to#00}"
+        { [ -n "$phone_id" ] && [ -n "$token" ] && [ -n "$secret" ] && [ -n "$to" ]; } \
+          || { echo "Something was left empty, nothing changed."; exit 1; }
+        WHATSAPP_TOKEN="$token" WHATSAPP_PHONE_ID="$phone_id" WHATSAPP_TO="$to" \
+          python3 -I "$APP/deploy/whatsapp_setup.py" check || { echo "Nothing changed."; exit 1; }
+        verify="$(setting WHATSAPP_VERIFY_TOKEN)"
+        [ -n "$verify" ] || verify="$(tr -dc 'a-z0-9' </dev/urandom | head -c 24 || true)"
+        set_setting WHATSAPP_PHONE_ID "$phone_id"; set_setting WHATSAPP_TOKEN "$token"
+        set_setting WHATSAPP_APP_SECRET "$secret"; set_setting WHATSAPP_TO "$to"
+        set_setting WHATSAPP_VERIFY_TOKEN "$verify"
+        [ -n "$(setting WHATSAPP_TEMPLATE)" ] || { set_setting WHATSAPP_TEMPLATE hello_world; set_setting WHATSAPP_TEMPLATE_LANG en_US; }
+        systemctl restart gino
+        echo
+        echo "Saved. 🎉 Last step: back in Meta, go to WhatsApp > Configuration > Webhook > Edit, and paste:"
+        echo
+        echo "   Callback URL:  https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)/whatsapp/webhook"
+        echo "   Verify token:  $verify"
+        echo
+        echo "Click \"Verify and save\", then next to \"messages\" click Subscribe."
+        echo "Then send \"hi\" to Gino's number on WhatsApp. He'll answer! (See these again with: gino whatsapp webhook)" ;;
+    esac
     ;;
   social)
     need_root
@@ -97,6 +190,8 @@ gino update      check GitHub for new code right now
 gino backup      save a copy of his memories now
 gino password    show (or: gino password NEW to change) the page password
 gino set-key     give him his Claude API key
+gino telegram    connect him to your phone (gino telegram test / gino telegram off)
+gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / template / off)
 gino social      Bluesky posting: gino social setup | on | off | status
 gino settings    edit all his settings
 EOF

@@ -58,6 +58,21 @@ HOST = os.environ.get("GINO_HOST", "127.0.0.1")
 PORT = int(_f("GINO_PORT", 8787))
 PASSWORD = os.environ.get("GINO_PASSWORD", "")  # set this before putting Gino on the internet
 
+# Phone (Telegram). Set up on the server with `gino telegram`. The bot only talks to this one chat.
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+TELEGRAM_API = os.environ.get("TELEGRAM_API", "https://api.telegram.org").rstrip("/")
+
+# Phone (WhatsApp, Meta's official Cloud API). Set up on the server with `gino whatsapp`.
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "").strip()  # permanent system-user token
+WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "").strip()  # Gino's number's "Phone number ID"
+WHATSAPP_TO = "".join(c for c in os.environ.get("WHATSAPP_TO", "") if c.isdigit())  # dad's number, country code first
+WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "").strip()  # checks that webhooks really come from Meta
+WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "").strip()
+WHATSAPP_TEMPLATE = os.environ.get("WHATSAPP_TEMPLATE", "hello_world").strip()  # nudge sent outside the 24h window
+WHATSAPP_TEMPLATE_LANG = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en_US").strip()
+WHATSAPP_API = os.environ.get("WHATSAPP_API", "https://graph.facebook.com/v26.0").rstrip("/")
+
 # Gino's Bluesky account (off unless dad switches it on; see deploy/README.md)
 SOCIAL_ON = os.environ.get("GINO_SOCIAL", "0") == "1"
 BLUESKY_HANDLE = os.environ.get("GINO_BLUESKY_HANDLE", "").strip().lstrip("@")
