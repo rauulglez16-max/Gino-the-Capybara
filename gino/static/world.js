@@ -75,7 +75,7 @@ export function createWorld(container, tooltip, opts = {}) {
         c.rgb += (1.0 - l) * vec3(-0.006, 0.0, 0.016);                       // cool shadows
         vec2 d = vUv - 0.5; c.rgb *= 1.0 - vig * smoothstep(0.25, 0.95, dot(d, d) * 2.2);
         gl_FragColor = vec4(clamp(c.rgb, 0.0, 1.0), c.a); }` };
-  try {
+  if (!opts.lite) try {  // lite: no post-processing (the server's camera has no graphics card)
     const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: small ? 2 : 4 });
     composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
@@ -462,6 +462,7 @@ export function createWorld(container, tooltip, opts = {}) {
     setWeather(w) { weatherOverride = w; weather = w || state.weather?.kind || 'clear'; },
     photo() { return new Promise(res => { snapshot = res; }); },
     pet() { hop = 1; heartT = timer.getElapsed(); },
-    _debug: { scene, camera, controls, gino, skip() { intro = 1; camera.position.copy(HOME); } },
+    _debug: { scene, camera, controls, gino, skip() { intro = 1; camera.position.copy(HOME); },
+      snap() { gino.position.set(target.x, groundY(target.x, target.z), target.z); } },
   };
 }
