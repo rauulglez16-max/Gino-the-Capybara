@@ -22,7 +22,7 @@ SLUG_RE = re.compile(r"[a-z0-9][a-z0-9\-]{0,59}")
 # ---------------------------------------------------------------- safety
 
 _FAMILY = re.compile(r"\b(dad|dads|daddy|dada|father|fathers|papa|pops)\b", re.I)
-_SECRETY = re.compile(r"sk-ant-|anthropic_api_key|gino_password|app[\s_-]?password|x-gino-key|api[\s_-]?key|password|passcode", re.I)
+_SECRETY = re.compile(r"sk-ant-|\b[sr]k_(?:live|test)_|anthropic_api_key|gino_password|app[\s_-]?password|x-gino-key|api[\s_-]?key|password|passcode", re.I)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"\+\d[\d\s\-()]{7,}\d")
 
@@ -30,7 +30,7 @@ _PHONE = re.compile(r"\+\d[\d\s\-()]{7,}\d")
 def _secrets() -> list[str]:
     import os
     vals = [os.environ.get("ANTHROPIC_API_KEY", ""), os.environ.get("ANTHROPIC_AUTH_TOKEN", ""), config.PASSWORD,
-            config.BLUESKY_APP_PASSWORD]
+            config.BLUESKY_APP_PASSWORD, config.STRIPE_KEY]
     return [v for v in vals if v and len(v) >= 4]
 
 
@@ -369,7 +369,11 @@ def home():
     diary = db.q("SELECT slug,title,body,ts FROM posts WHERE kind='diary' ORDER BY slug DESC LIMIT 30")
     pages = db.q("SELECT p.slug,p.title,p.summary,p.body,p.ts,p.creation_id,c.kind AS ckind FROM posts p "
                  "LEFT JOIN creations c ON c.id=p.creation_id WHERE p.kind='page' ORDER BY p.ts DESC LIMIT 60")
-    parts = [_now_line(), '<h2 class="sec">Diary</h2>']
+    parts = [_now_line()]
+    from . import shop  # imported late: shop imports this file
+    if shop.configured():
+        parts.append('<div class="now">🛒 Gino has a shop! <a href="/blog/shop">See the drawings he\'s selling</a></div>')
+    parts.append('<h2 class="sec">Diary</h2>')
     if diary:
         for d in diary:
             parts.append(f'<div class="post"><h3><a href="/blog/diary/{d["slug"]}">{E(d["title"])}</a></h3>'

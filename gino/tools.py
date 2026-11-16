@@ -2,7 +2,7 @@
 import re
 import time
 
-from . import config, db, public, social, telegram, vitals, whatsapp
+from . import config, db, public, shop, social, telegram, vitals, whatsapp
 
 GRID_W, GRID_H = 16, 10
 
@@ -116,6 +116,22 @@ SOCIAL_TOOL = _t(
      "photo_description": {**S, "description": "Describe the photo for people who can't see it (alt text)"}},
     ["text"])
 
+SHOP_TOOLS = [
+    _t("shop_list", "Put one of your drawings up for sale in your PUBLIC shop as a digital download. You choose "
+       "which drawing, its name, a short description for buyers and the price. Anyone on the internet can see and "
+       "buy it. The money goes to dad, who looks after it. Same privacy rules as your website: never mention your "
+       "dad, chats, keys or passwords. Only sell things you're proud of; a few good things beat lots of filler.",
+       {"creation_id": {**I, "description": "Id of one of your drawings (an svg creation)"},
+        "title": {**S, "description": "Name buyers see"},
+        "description": {**S, "description": "One or two sentences about it, in your own voice"},
+        "price": {"type": "number", "description": "Price in pounds, e.g. 3 or 4.50"}},
+       ["creation_id", "title", "description", "price"]),
+    _t("shop_update", "Change the price, name or description of something in your shop.",
+       {"item_id": I, "price": {"type": "number", "description": "New price in pounds (optional)"},
+        "title": S, "description": S}, ["item_id"]),
+    _t("shop_unlist", "Take something out of your shop.", {"item_id": I}, ["item_id"]),
+]
+
 SERVER_TOOLS = [
     {"type": "web_search_20260209", "name": "web_search", "max_uses": 3},
     {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 3, "max_content_tokens": 8000},
@@ -123,7 +139,8 @@ SERVER_TOOLS = [
 
 
 def all_tools() -> list[dict]:
-    return TOOLS + ([SOCIAL_TOOL] if social.configured() else []) + (SERVER_TOOLS if config.WEB_ACCESS else [])
+    return (TOOLS + ([SOCIAL_TOOL] if social.configured() else []) + (SHOP_TOOLS if shop.configured() else [])
+            + (SERVER_TOOLS if config.WEB_ACCESS else []))
 
 
 def _slug(s: str) -> str:
@@ -307,6 +324,18 @@ def run(name: str, a: dict, body: dict) -> str:
         if r.startswith("Posted"):
             body["fun"] = vitals.clamp(body["fun"] + 3)
         return r
+    if name in ("shop_list", "shop_update", "shop_unlist") and not shop.configured():
+        return "Your shop is closed right now."
+    if name == "shop_list":
+        r = shop.list_item(a.get("creation_id"), a.get("title", ""), a.get("description", ""), a.get("price"))
+        if "is for sale" in r:
+            body["fun"] = vitals.clamp(body["fun"] + 5)
+            body["activity"] = "putting a drawing up for sale in his shop"
+        return r
+    if name == "shop_update":
+        return shop.update_item(a.get("item_id"), a.get("price"), a.get("title", ""), a.get("description", ""))
+    if name == "shop_unlist":
+        return shop.unlist(a.get("item_id"))
     if name == "set_next_wake":
         m = max(config.MIN_WAKE_MINUTES, min(int(a.get("minutes", 60) or 60), config.MAX_WAKE_MINUTES))
         body["next_wake"] = now + m * 60

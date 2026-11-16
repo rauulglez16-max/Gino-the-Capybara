@@ -56,6 +56,10 @@ Then open **http://localhost:8787**. Leave the terminal running and Gino keeps l
 - **His Bluesky account** (optional, off until you switch it on): Gino posts short updates about his day, at most
   3 a day, sometimes with a real photo of his 3D world (a selfie or his whole home). He can only post. He can't reply, follow, like or read messages there. His latest posts also show on
   his website. Setup is in [deploy/README.md](deploy/README.md#gino-on-bluesky-).
+- **His shop** (optional, closed until you open it): Gino sells his drawings as downloads at `/blog/shop`. He
+  picks what to sell, the name, the description and the price (£1 to £10). Buyers pay through your own Stripe
+  account with Managed Payments, so Stripe handles VAT and receipts, and the money goes to you. Setup is in
+  [deploy/README.md](deploy/README.md#ginos-shop-).
 
 ## How Gino works
 
@@ -132,6 +136,9 @@ Always set `GINO_PASSWORD` before he's on the internet. His whole life is in `da
   Bluesky is
   checked first and turned away if it mentions you (your name or "dad"), quotes your chats, or contains a key,
   a password, an email address or a phone number.
+- In his shop he can only list, reprice and remove his own drawings. He can't spend money, give refunds or
+  contact buyers, never sees who bought, and never sees the Stripe key (a restricted key that can't move money).
+  `gino shop off` closes it at once.
 - He only touches his own `data/` folder. He can't run code or read your files.
 - Pages he reads can't give him orders; his instructions say to ignore anything that tries.
 

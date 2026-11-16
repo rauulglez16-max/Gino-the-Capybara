@@ -213,6 +213,55 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
       *) echo "usage: gino photos [status|on|test|off]"; exit 1 ;;
     esac
     ;;
+  shop)
+    need_root
+    shop_py() { systemd-run --quiet --wait --pipe --uid=gino --gid=gino -p EnvironmentFile="$ENV_FILE" \
+      -p WorkingDirectory="$APP" -E HOME=/tmp /opt/gino/venv/bin/python -m gino.shop "$@"; }
+    case "${2:-status}" in
+      setup)
+        echo "Connect Gino's shop to YOUR Stripe account. 🛒"
+        echo "Paste a RESTRICTED key (it starts with rk_live_). Never paste your secret key (sk_live_...)."
+        echo "The guide shows how to make one: https://github.com/rauulglez16-max/Gino-the-Capybara/blob/main/deploy/README.md"
+        read -r -s -p "Restricted key (nothing shows while you paste): " key; echo
+        key="$(printf '%s' "$key" | tr -d '[:space:]')"
+        case "$key" in
+          rk_live_*|rk_test_*) ;;
+          sk_*) echo "❌ That's a SECRET key, which can do anything with your money. Make a restricted key instead. Nothing changed."; exit 1 ;;
+          *) echo "❌ That doesn't look like a restricted key (rk_live_...). Nothing changed."; exit 1 ;;
+        esac
+        set_setting GINO_STRIPE_KEY "$key"
+        domain="$(cat /var/lib/gino-deploy/domain 2>/dev/null || true)"
+        [ -n "$domain" ] && set_setting GINO_PUBLIC_URL "https://$domain"
+        echo "Checking the key (nothing is sold or charged)..."
+        if shop_py test; then echo "Saved. The shop is still CLOSED. Open it with: gino shop on"
+        else echo "Saved, but the check failed. Look at the message above, fix the key in Stripe, and run: gino shop setup"; fi
+        ;;
+      on)
+        [ -n "$(setting GINO_STRIPE_KEY)" ] || { echo "Run gino shop setup first."; exit 1; }
+        set_setting GINO_SHOP 1; systemctl restart gino
+        shop_py reopen >/dev/null 2>&1 || true
+        echo "🛒 Gino's shop is OPEN at https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)/blog/shop"
+        echo "   He decides what to sell. Close it any time with: gino shop off"
+        ;;
+      off)
+        set_setting GINO_SHOP 0; systemctl restart gino
+        echo "🔒 The shop is CLOSED. Nobody can buy anything now."
+        [ -n "$(setting GINO_STRIPE_KEY)" ] && { shop_py close || true; }
+        echo "   People who already bought can still download what they paid for."
+        ;;
+      sales)
+        [ -n "$(setting GINO_STRIPE_KEY)" ] || { echo "The shop isn't set up yet (gino shop setup)."; exit 1; }
+        shop_py sales
+        echo "   Your money, fees and payouts: https://dashboard.stripe.com/payments"
+        ;;
+      test) shop_py test ;;
+      status)
+        if [ "$(setting GINO_SHOP)" = "1" ]; then echo "🛒 The shop is OPEN: https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)/blog/shop"
+        else echo "The shop is CLOSED$( [ -n "$(setting GINO_STRIPE_KEY)" ] && echo ' (set up, open it with: gino shop on)' || echo ' (not set up yet: gino shop setup)')"; fi
+        ;;
+      *) echo "usage: gino shop [status|setup|on|off|sales|test]"; exit 1 ;;
+    esac
+    ;;
   settings) need_root; "${EDITOR:-nano}" "$ENV_FILE" && systemctl restart gino && echo "Saved and restarted." ;;
   *)
     cat <<'EOF'
@@ -229,6 +278,7 @@ gino telegram    connect him to your phone (gino telegram test / gino telegram o
 gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / template / off)
 gino social      Bluesky posting: gino social setup | on | off | status
 gino photos      photos in his posts: gino photos on | test | off
+gino shop        his shop: gino shop setup | on | off | sales | status
 gino settings    edit all his settings
 EOF
     ;;
