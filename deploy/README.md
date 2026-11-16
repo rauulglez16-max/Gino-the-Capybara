@@ -277,6 +277,70 @@ only show drawings he already put on his website, and they also appear on his we
 To remove a post, log in to the account at bsky.app and delete it there. If you ever worry the app password
 leaked, delete it in Bluesky's App passwords screen and make a new one.
 
+## Gino's shop 🛒
+
+Gino can run his own little shop at `/blog/shop`, where anyone can buy his drawings as instant downloads. He
+decides what to sell, what to call it, how to describe it and what it costs. You don't have to do anything for
+each sale. The money goes into **your** Stripe account and Stripe pays it out to your bank. The shop stays
+closed until you open it.
+
+**How a sale works:** a visitor clicks Buy → pays on Stripe's own checkout page → comes back to Gino's site and
+downloads the drawing. Gino is told "someone bought your drawing" (never who bought it), and if Telegram is set
+up you get a text too.
+
+**The rules he can't break** (they're enforced in the code, not just asked of him):
+
+- Prices between £1 and £10. At most 2 new items a day and 20 for sale at once.
+- He can't spend money, give refunds, see card details, or talk to buyers. There's no code for any of that.
+- He never sees the Stripe key. It's a *restricted* key that can only create products and checkouts: it can't
+  move money or give refunds, even if someone stole it.
+- Everything goes through the same privacy filter as his website, and every item says it was made by an AI capybara.
+- For now he only sells drawings.
+
+**Why Stripe "Managed Payments":** with it switched on, Stripe is the official seller. It works out and pays
+the VAT for buyers anywhere in the world (otherwise selling downloads to EU buyers means VAT paperwork from
+the very first sale), and it deals with fraud, receipts and buyer questions. Stripe takes about 5% + 20p a
+sale, so on a £4 sale you keep about £3.60. Nothing to pay up front, and no monthly fee.
+
+**Setting it up (about 20 minutes):**
+
+1. Go to **https://dashboard.stripe.com/register** and sign up. When it asks about your business, choose
+   **Individual / sole trader** and **United Kingdom**. For what you sell, write something like *"Digital
+   drawings made by my AI capybara, sold as downloads"*. For your website, use
+   `https://<your address>/blog/shop`. Add your bank account so Stripe can pay you.
+2. Switch on Managed Payments: go to **https://dashboard.stripe.com/settings/managed-payments** and click
+   **Activate**. Stripe may take a little while to approve it.
+3. Make the restricted key: go to **https://dashboard.stripe.com/apikeys/create**. In the "How will you be
+   using this API key?" step, pick the option for **powering an integration you built** (if you're asked), and
+   name it `gino-shop`. In the permissions list set these to **Write**:
+   - **Products**
+   - **Prices** (if it's listed separately)
+   - **Checkout Sessions**
+
+   Leave everything else as **None**. Click **Create key** and copy it (it starts with `rk_live_`).
+   ⚠️ Never use the "Secret key" (`sk_live_...`). It can do anything with your money. The setup refuses it anyway.
+4. Open **PowerShell** on your computer, log in to the server (`ssh root@<your IP>`), and type
+   `gino shop setup`. Paste the key (nothing shows while you paste; that's normal) and press Enter. It
+   checks the key without selling anything.
+5. Type `gino shop on`. The shop is open! Gino will notice it on his next turn.
+
+| Command | What it does |
+| --- | --- |
+| `gino shop` | Is the shop open or closed |
+| `gino shop off` | **Close the shop right away.** Nobody can buy anything. People who already bought can still download |
+| `gino shop on` | Open it again (his items come back) |
+| `gino shop sales` | List what's sold and the total |
+| `gino shop setup` | Change the Stripe key |
+
+Your money, Stripe's fees and payouts to your bank are all in the Stripe dashboard:
+**https://dashboard.stripe.com/payments**. If you ever worry the key leaked, delete it in Stripe's API keys
+page and make a new one.
+
+**Tax (UK):** if all your side income in a tax year (shop sales plus anything else like it) stays under
+£1,000, it's tax-free and you don't need to tell HMRC. That limit goes up to £3,000 from April 2027. Above it,
+you register for Self Assessment. Stripe handles the VAT. This isn't professional tax advice, so check
+gov.uk if sales really take off.
+
 ## Where things live on the server
 
 | What | Where |

@@ -86,6 +86,15 @@ PHOTO_TIMEOUT = int(_f("GINO_PHOTO_TIMEOUT", 300))  # seconds; no graphics card 
 PHOTO_CHROMIUM = os.environ.get("GINO_PHOTO_CHROMIUM", "")  # optional path to a Chromium binary
 PUBLIC_URL = os.environ.get("GINO_PUBLIC_URL", "").strip()  # e.g. https://203-0-113-7.sslip.io, for links to /blog
 
+# Gino's shop (off unless dad switches it on; see deploy/README.md). The key is a RESTRICTED Stripe key
+# that can only write Products, Prices and Checkout Sessions: it can't refund, pay out or move money.
+SHOP_ON = os.environ.get("GINO_SHOP", "0") == "1"
+STRIPE_KEY = os.environ.get("GINO_STRIPE_KEY", "").strip()
+SHOP_MIN_PENCE = max(30, int(round(_f("GINO_SHOP_MIN_PRICE", 1) * 100)))  # pounds
+SHOP_MAX_PENCE = max(SHOP_MIN_PENCE, int(round(_f("GINO_SHOP_MAX_PRICE", 10) * 100)))
+SHOP_MAX_ITEMS = max(1, int(_f("GINO_SHOP_MAX_ITEMS", 20)))
+SHOP_MAX_NEW_PER_DAY = max(1, int(_f("GINO_SHOP_MAX_NEW_PER_DAY", 2)))
+
 # USD per million tokens: (input, output, cache_read). Cache writes are billed at 1.25x input.
 PRICES = {
     "claude-opus-5-5": (4.0, 20.0, 0.20),

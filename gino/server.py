@@ -11,16 +11,40 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import brain, config, db, live, public, telegram, vitals, whatsapp
+from . import brain, config, db, live, public, shop, telegram, vitals, whatsapp
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
 
 
+def shop_news() -> None:
+    """Every few minutes, ask Stripe about new sales and tell Gino (and dad's phone) about them."""
+    if not config.STRIPE_KEY:
+        return
+    shop.check_sales()
+    with brain.mind_lock:
+        sold = shop.news_for_gino()
+        if not sold:
+            return
+        body = vitals.load()
+        body["fun"] = vitals.clamp(body["fun"] + min(30, 10 * len(sold)))
+        body["social"] = vitals.clamp(body["social"] + 5)
+        vitals.save(body)
+    telegram.send("🛒 Gino's shop: someone bought " + ", ".join(f"'{t}'" for t in sold)
+                  + ". The money is in your Stripe account.")
+
+
 async def life_loop():
     """Gino's heartbeat: keeps his body ticking and gives him turns when he wants them."""
     await asyncio.sleep(2)
+    last_shop = 0.0
     while True:
+        try:
+            if time.time() - last_shop > 600 and not brain.mind_lock.locked():
+                last_shop = time.time()
+                await asyncio.to_thread(shop_news)
+        except Exception:
+            log.exception("Checking the shop's sales failed; trying again later")
         try:
             if not brain.mind_lock.locked():
                 body = vitals.tick(vitals.load())
@@ -56,6 +80,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Gino", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 app.include_router(public.router)  # Gino's public website at /blog: no password, only what he chose to publish
+app.include_router(shop.router)  # /blog/shop: Gino's drawings for sale; payments happen on Stripe's own checkout
 app.include_router(live.router)  # /live: anyone can watch his 3D world, nobody can talk to him there
 app.include_router(whatsapp.router)  # WhatsApp webhook: only signed requests from Meta, only dad's number
 

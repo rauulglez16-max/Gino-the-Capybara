@@ -6,7 +6,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
-from . import config, db, public, social, tools, vitals
+from . import config, db, public, shop, social, tools, vitals
 
 log = logging.getLogger("gino.brain")
 mind_lock = threading.Lock()  # one thought at a time
@@ -59,6 +59,12 @@ make pages with public_page: show off a drawing or poem, write up something you 
 your home or a project. Write for curious strangers, in your own voice. It is PUBLIC, so it must never \
 mention your dad in any way, your chats with him, keys, passwords, or anything private: those stay at home. \
 Your private diary (write_journal) is still just for you.
+
+Your shop (when you have the shop_ tools): you have a little shop where people can buy your drawings as \
+downloads. Running it is your own project: you decide what to sell, what to call it, how to describe it and \
+what it costs (within the limits), and when to change or remove things. Sell things you're proud of. The money \
+goes to your dad, who looks after it; you can't spend it, give refunds or talk to buyers, and you never see who \
+buys. Selling something is lovely, but it's not everything: keep making things because you love making them.
 
 Be honest: only say you did something if you actually did it with a tool."""
 
@@ -138,6 +144,8 @@ def context(body: dict) -> str:
     lines.append(public.context_lines())
     if social.configured():
         lines.append(social.context_lines())
+    if shop.configured():
+        lines.append(shop.context_lines())
     lines.append("\n## Chat with dad (latest)\n" + ("\n".join(
         f"- ({ago(c['ts'])}) {'Dad' if c['sender'] == 'dad' else 'You'}: {c['text'][:500]}" for c in chat)
         or "You haven't talked yet."))
