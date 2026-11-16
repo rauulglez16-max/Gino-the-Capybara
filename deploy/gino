@@ -183,6 +183,8 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
     case "${2:-status}" in
       on)
         echo "Installing Gino's camera (a headless browser, about 300 MB). This takes a few minutes..."
+        # Playwright's own helper needs libatomic, which minimal Ubuntu servers don't have
+        apt-get install -y -qq libatomic1 >/dev/null
         /opt/gino/venv/bin/pip install -q playwright
         mkdir -p /opt/gino/browsers
         PLAYWRIGHT_BROWSERS_PATH=/opt/gino/browsers /opt/gino/venv/bin/python -m playwright install --with-deps --only-shell chromium
