@@ -15,24 +15,16 @@
 const frames = n => new Promise(res => { const step = () => (--n <= 0 ? res() : requestAnimationFrame(step)); requestAnimationFrame(step); });
 
 window.takePhoto = async ({ state, key, shot, maxBytes }) => {
+  const t0 = performance.now(), mark = what => console.log(`photo: ${what} at ${Math.round(performance.now() - t0)} ms`);
   const { createWorld } = await import('/static/world.js');
   const w = createWorld(document.getElementById('world'), document.getElementById('tip'),
-    { key, season: state.weather?.season, autoQuality: false });
+    { key, season: state.weather?.season, autoQuality: false, lite: true });
   w.setQuality('low');
-  w.update(state);
-  const { camera, controls, gino, skip } = w._debug;
-  skip();
-  await frames(4);
+  w.update(state); mark('world built');
+  const { camera, controls, gino, skip, snap } = w._debug;
+  skip(); snap();  // no fly-in, and he's already standing where he is
+  await frames(2); mark('first frames');
   const THREE = await import('three');
-  // let him finish walking to where he is, so he's not caught mid-stride somewhere else
-  // (only sideways movement counts: he bobs up and down while swimming)
-  let last = null;
-  for (let i = 0; i < 15; i++) {
-    await frames(2);
-    const p = { x: gino.position.x, z: gino.position.z };
-    if (last && Math.hypot(p.x - last.x, p.z - last.z) < 0.02) break;
-    last = p;
-  }
   if (shot === 'wide') {
     w.setFollow(false); controls.autoRotate = false;
     controls.target.set(gino.position.x * 0.5, 0.6, gino.position.z * 0.5);
@@ -44,10 +36,10 @@ window.takePhoto = async ({ state, key, shot, maxBytes }) => {
     camera.position.copy(gino.position).addScaledVector(face, 3.6).addScaledVector(side, 1.6).add(new THREE.Vector3(0, 1.6, 0));
     controls.target.set(gino.position.x, gino.position.y + 0.8, gino.position.z);
   }
-  controls.update();
-  await frames(12);
+  controls.update(); mark('camera placed');
+  await frames(3);
   // grab the frame right after it's drawn, then squeeze it into a JPEG small enough for Bluesky
-  const png = await createImageBitmap(await w.photo());
+  const png = await createImageBitmap(await w.photo()); mark('photo taken');
   const c = document.createElement('canvas'); c.width = png.width; c.height = png.height; c.getContext('2d').drawImage(png, 0, 0);
   for (const q of [0.88, 0.8, 0.7, 0.6, 0.5]) {
     const url = c.toDataURL('image/jpeg', q);
