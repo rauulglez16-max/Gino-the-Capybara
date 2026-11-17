@@ -61,7 +61,7 @@ export function createWorld(container, tooltip, opts = {}) {
   controls.maxPolarAngle = Math.PI / 2 - 0.06; controls.minDistance = 4; controls.maxDistance = 90;
   controls.autoRotate = false; controls.autoRotateSpeed = 0.3;
   let idleAt = Infinity, intro = 0, focus = null;
-  controls.addEventListener('start', () => { controls.autoRotate = false; idleAt = Infinity; intro = 1; focus = null; });
+  controls.addEventListener('start', () => { controls.autoRotate = false; idleAt = Infinity; intro = 1; focus = null; camGoal = null; });
   controls.addEventListener('end', () => { idleAt = performance.now() + 25000; });
 
   // post-processing: ambient shading in creases, soft glow on lights, then a gentle colour grade
@@ -256,7 +256,7 @@ export function createWorld(container, tooltip, opts = {}) {
     tent: ['sit', 'sitting outside the'], house: ['sit', 'sitting outside the'], hammock: ['nap', 'dozing by the'], bed: ['nap', 'having a quick doze on the'], flowers: ['sniff', 'sniffing the'],
     mushroom: ['sniff', 'sniffing the'], bush: ['sniff', 'sniffing the'], beehive: ['sniff', 'carefully sniffing the'], garden: ['graze', 'nibbling in the'], pumpkins: ['graze', 'nibbling at the'],
     fruit_tree: ['graze', 'munching under the'], tree: ['scratch', 'scratching his back on the'], pine: ['scratch', 'scratching his back on the'], rock: ['scratch', 'scratching his back on the'],
-    well: ['look', 'peering into the'], piano: ['dance', 'dancing by the'], swing: ['hops', 'bouncing around the'], fountain: ['hops', 'splashing about by the'] };
+    well: ['look', 'peering into the'], board: ['look', 'admiring'], piano: ['dance', 'dancing by the'], swing: ['hops', 'bouncing around the'], fountain: ['hops', 'splashing about by the'] };
   const FREE = [['roll', 'rolling in the grass'], ['graze', 'grazing'], ['zoom', 'having the zoomies'], ['sit', 'sitting in the sun'], ['stretch', 'having a big stretch'], ['look', 'watching the birds'], ['hops', 'hopping about'], ['nap', 'dozing in the grass'], ['roll', 'rolling in the grass']];
   const BIG = { house: 2.0, tent: 1.7, fountain: 1.6, garden: 1.5, picnic: 1.4, windmill: 1.4, gallery: 1.4, bed: 1.3, piano: 1.3, pumpkins: 1.2, campfire: 1.2 };
   const any = a => a[Math.floor(Math.random() * a.length)];
@@ -279,7 +279,7 @@ export function createWorld(container, tooltip, opts = {}) {
   function pickNext() {
     R.sincePond++;
     if (++R.n % 4 === 0) return goHome(22);
-    const spots = [...itemObjs.values()].filter(o => !R.last.includes(o) && (o.userData.kind !== 'pond' || R.sincePond > 3));
+    const spots = [...itemObjs.values(), ...(board ? [board] : [])].filter(o => !R.last.includes(o) && (o.userData.kind !== 'pond' || R.sincePond > 3));
     R.face = null; R.pond = null; R.arrived = false;
     if (!spots.length || Math.random() < 0.38) {
       target.set((Math.random() - 0.5) * 30, 0, (Math.random() - 0.5) * 18);
@@ -288,6 +288,7 @@ export function createWorld(container, tooltip, opts = {}) {
       const o = any(spots), kind = o.userData.kind, [act, words] = ACT[kind] || ['look', 'admiring the'], sc = o.userData.grow || 1;
       R.last = [o, ...R.last].slice(0, 3);
       if (kind === 'pond') { target.set(o.position.x, 0, o.position.z); R.pond = o; R.sincePond = 0; }
+      else if (kind === 'board') { target.copy(boardFront()).add(v3.set((Math.random() - 0.5) * 1.6, 0, 0)); R.face = o.position; }
       else { const a = Math.random() * 6.283, r = (BIG[kind] || 1.05) * sc + 0.35; target.set(o.position.x + Math.cos(a) * r, 0, o.position.z + Math.sin(a) * r); R.face = o.position; }
       R.next = act; R.label = `${words} ${o.userData.item?.name || kind}`; R.hold = 10 + Math.random() * 10;
     }
@@ -320,6 +321,103 @@ export function createWorld(container, tooltip, opts = {}) {
       o.traverse(m => { if (m.userData.artSlot === undefined) return; const f = env.art[(base + m.userData.artSlot) % Math.max(1, env.art.length)]; const t = f ? loadArt(f) : null; if (m.material.map !== t) { m.material.map = t; m.material.needsUpdate = true; } });
     }
   }
+
+  // ---------------------------------------------------------------- Gino's creations board (the live page turns it on)
+  // A little wooden notice board at the back of his meadow where his drawings and poems hang. Visitors can look
+  // and read; nothing here sends anything to Gino.
+  const BOARD_AT = new THREE.Vector3(-5, 0, -12.2), BW = 1024, BH = 640;
+  let board = null, boardFace = null, boardTex = null, boardItems = [], boardRects = [], boardSig = '';
+  const boardImg = new Map();
+  function buildBoard() {
+    const g = new THREE.Group(); g.userData = { kind: 'board', item: { name: 'his creations board' } };
+    g.position.set(BOARD_AT.x, groundY(BOARD_AT.x, BOARD_AT.z), BOARD_AT.z); g.rotation.y = 0.18;
+    for (const x of [-2.15, 2.15]) { part(g, 'cyl', '#6e4a2c', [0.2, 3.7, 0.2], [x, 1.85, 0]); part(g, 'sphere', '#6e4a2c', [0.26, 0.26, 0.26], [x, 3.72, 0]); }
+    part(g, 'box', '#8a5e37', [4.5, 2.75, 0.16], [0, 2.2, -0.04]);                                   // frame
+    for (const s of [-1, 1]) part(g, 'box', '#9c4a32', [2.55, 0.12, 0.85], [s * 1.12, 3.86, 0.05], [0, 0, -s * 0.36]);   // little roof
+    part(g, 'box', '#7a5230', [4.1, 0.1, 0.32], [0, 0.78, 0.14]);                                     // ledge
+    for (const [x, c] of [[-1.6, '#e8a33d'], [-1.25, '#d6453d'], [1.4, '#9b6fd1'], [1.75, '#e8a33d']]) { part(g, 'cyl', '#5d8c3a', [0.04, 0.5, 0.04], [x, 0.25, 0.4]); part(g, 'sphere', c, [0.18, 0.12, 0.18], [x, 0.52, 0.4]); }
+    const cv = Object.assign(document.createElement('canvas'), { width: BW, height: BH });
+    boardTex = new THREE.CanvasTexture(cv); boardTex.colorSpace = THREE.SRGBColorSpace; boardTex.anisotropy = 8;
+    boardFace = new THREE.Mesh(new THREE.PlaneGeometry(4.15, 4.15 * BH / BW), new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.95 }));
+    boardFace.position.set(0, 2.2, 0.05); boardFace.receiveShadow = true; boardFace.userData.noAO = true; g.add(boardFace);
+    g.traverse(n => { if (n.isMesh) n.castShadow = true; });
+    scene.add(g); return g;
+  }
+  function wrap(x, text, w) {   // split text into lines that fit
+    const out = [];
+    for (const para of String(text).split('\n')) {
+      let line = '';
+      for (const word of para.split(/\s+/)) { const t = line ? line + ' ' + word : word; if (x.measureText(t).width > w && line) { out.push(line); line = word; } else line = t; }
+      out.push(line);
+    }
+    return out;
+  }
+  function drawBoard() {
+    const x = boardTex.image.getContext('2d'), r = rng(7);
+    x.fillStyle = '#c8935a'; x.fillRect(0, 0, BW, BH);                                     // cork
+    for (let i = 0; i < 2600; i++) { x.fillStyle = r() < 0.5 ? 'rgba(120,70,30,.18)' : 'rgba(255,230,190,.16)'; x.fillRect(r() * BW, r() * BH, 2 + r() * 4, 2 + r() * 3); }
+    x.font = 'bold 40px Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillStyle = '#fff7e8'; x.strokeStyle = '#5b4a38'; x.lineWidth = 4;
+    x.beginPath(); x.roundRect(BW / 2 - 200, 14, 400, 60, 12); x.fill(); x.stroke();
+    x.fillStyle = '#3b2e22'; x.fillText("Gino's creations", BW / 2, 46);
+    boardRects = [];
+    const items = boardItems.slice(0, 8), n = items.length;
+    if (!n) {
+      x.save(); x.translate(BW / 2, BH / 2 + 40); x.rotate(-0.03); x.fillStyle = '#fffdf6'; x.shadowColor = 'rgba(0,0,0,.3)'; x.shadowOffsetY = 6; x.shadowBlur = 8; x.fillRect(-260, -90, 520, 180); x.shadowColor = 'transparent';
+      x.fillStyle = '#3b2e22'; x.font = 'italic 34px Georgia, serif'; x.fillText('Nothing pinned up yet.', 0, -24); x.font = 'italic 28px Georgia, serif'; x.fillStyle = '#7d6a55'; x.fillText('His drawings and poems will hang here.', 0, 28);
+      x.fillStyle = '#d6453d'; x.beginPath(); x.arc(0, -82, 11, 0, 7); x.fill(); x.restore();
+      boardTex.needsUpdate = true; return;
+    }
+    const cols = n <= 3 ? n : 4, rows = Math.ceil(n / cols), cw = (BW - 60) / cols, ch = (BH - 110) / rows;
+    items.forEach((it, i) => {
+      const c = i % cols, rw = Math.floor(i / cols), cx = 30 + cw * (c + 0.5), cy = 100 + ch * (rw + 0.5);
+      const w = Math.min(cw - 34, rows > 1 ? 210 : 270), h = Math.min(ch - 26, rows > 1 ? 232 : 330), a = (r() - 0.5) * 0.09;
+      x.save(); x.translate(cx, cy); x.rotate(a);
+      x.shadowColor = 'rgba(40,20,5,.35)'; x.shadowOffsetX = 4; x.shadowOffsetY = 7; x.shadowBlur = 10;
+      if (it.img) {
+        x.fillStyle = '#fffdf6'; x.fillRect(-w / 2, -h / 2, w, h); x.shadowColor = 'transparent';
+        const im = boardImg.get(it.img), s = w - 20, ih = h - 56;
+        if (im?.complete && im.naturalWidth) { const k = Math.min(s / im.naturalWidth, ih / im.naturalHeight), dw = im.naturalWidth * k, dh = im.naturalHeight * k; x.drawImage(im, -dw / 2, -h / 2 + 10 + (ih - dh) / 2, dw, dh); }
+        else { x.fillStyle = '#efe6d4'; x.fillRect(-s / 2, -h / 2 + 10, s, ih); }
+        x.fillStyle = '#3b2e22'; x.font = 'italic 22px Georgia, serif'; x.textAlign = 'center';
+        x.fillText(fit(x, it.title, w - 16), 0, h / 2 - 22);
+      } else {
+        x.fillStyle = it.kind === 'song' ? '#e9f1ff' : '#fff4c9'; x.fillRect(-w / 2, -h / 2, w, h); x.shadowColor = 'transparent';
+        x.strokeStyle = 'rgba(80,120,190,.25)'; x.lineWidth = 2; for (let y = -h / 2 + 64; y < h / 2 - 8; y += 24) { x.beginPath(); x.moveTo(-w / 2 + 10, y); x.lineTo(w / 2 - 10, y); x.stroke(); }
+        x.fillStyle = '#3b2e22'; x.textAlign = 'left'; x.font = 'bold 22px Georgia, serif';
+        x.fillText(fit(x, (it.kind === 'song' ? '♪ ' : '') + it.title, w - 28), -w / 2 + 14, -h / 2 + 34);
+        x.font = 'italic 17px Georgia, serif'; x.fillStyle = '#5b4a38';
+        const lines = wrap(x, it.text || '', w - 28), max = Math.floor((h - 70) / 24);
+        lines.slice(0, max).forEach((l, j) => x.fillText(j === max - 1 && lines.length > max ? '…' : l, -w / 2 + 14, -h / 2 + 60 + j * 24));
+      }
+      x.fillStyle = ['#d6453d', '#3f7fd6', '#e8a33d', '#4f9a3f'][i % 4]; x.beginPath(); x.arc(0, -h / 2 + 4, 10, 0, 7); x.fill();
+      x.fillStyle = 'rgba(255,255,255,.6)'; x.beginPath(); x.arc(-3, -h / 2 + 1, 3.5, 0, 7); x.fill();
+      x.restore();
+      boardRects.push({ x0: cx - w / 2, y0: cy - h / 2, x1: cx + w / 2, y1: cy + h / 2, it });
+    });
+    boardTex.needsUpdate = true;
+  }
+  function fit(x, t, w) { t = String(t); while (t.length > 3 && x.measureText(t).width > w) t = t.slice(0, -2).trimEnd() + '…'; return t; }
+  function setBoard(items) {
+    items = (items || []).filter(i => i && i.title); const sig = JSON.stringify(items.map(i => [i.id, i.title, i.img, i.text]));
+    if (!board) board = buildBoard();
+    if (sig === boardSig) return; boardSig = sig; boardItems = items;
+    for (const it of items) if (it.img && !boardImg.has(it.img)) {
+      const im = new Image(); boardImg.set(it.img, im);
+      fetch(it.img).then(r => r.ok ? r.text() : Promise.reject()).then(svg => {     // SVGs need a size before a canvas will draw them
+        if (!/<svg[^>]*\swidth=/.test(svg)) svg = svg.replace('<svg', '<svg width="512" height="512"');
+        if (!/xmlns=/.test(svg)) svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+        im.onload = drawBoard; im.src = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      }).catch(() => {});
+    }
+    drawBoard();
+  }
+  function boardHit(h) {   // which drawing or poem on the board the pointer is over
+    if (!h?.uv) return null; const px = h.uv.x * BW, py = (1 - h.uv.y) * BH;
+    return boardRects.find(b => px >= b.x0 && px <= b.x1 && py >= b.y0 && py <= b.y1)?.it || null;
+  }
+  const boardFront = () => board.localToWorld(new THREE.Vector3(0, 0, 2.2)).setY(0);
+  let camGoal = null;
 
   function update(s) {
     state = s; weather = weatherOverride || s.weather?.kind || 'clear'; env.art = s.art || [];
@@ -398,6 +496,7 @@ export function createWorld(container, tooltip, opts = {}) {
     if (intro < 1) { intro = Math.min(1, intro + dt / 4.5); const k = 1 - Math.pow(1 - intro, 3); camera.position.lerpVectors(v3.set(-70, 60, 95), HOME, k); if (intro >= 1) idleAt = performance.now() + 12000; }
     if (follow) controls.target.lerp(v3.set(gino.position.x, gino.position.y + 0.9, gino.position.z), Math.min(1, dt * 3));
     else if (focus) { controls.target.lerp(focus, Math.min(1, dt * 4)); if (controls.target.distanceTo(focus) < 0.05) focus = null; }
+    if (camGoal) { camera.position.lerp(camGoal, Math.min(1, dt * 2.2)); if (camera.position.distanceTo(camGoal) < 0.05) camGoal = null; }
     if (performance.now() > idleAt && !follow) controls.autoRotate = true;
 
     // Gino
@@ -511,6 +610,8 @@ export function createWorld(container, tooltip, opts = {}) {
     ray.setFromCamera(ptr, camera);
     const gh = ray.intersectObject(gino, true).find(h => !h.object.isSprite), ih = ray.intersectObjects(itemsGroup.children, true)[0];
     if (gh && (!ih || gh.distance < ih.distance)) return { gino: true, r };
+    const bh = board && ray.intersectObject(board, true)[0];
+    if (bh && (!ih || bh.distance < ih.distance)) return { board: true, piece: bh.object === boardFace ? boardHit(bh) : null, r };
     return { item: ih?.object.userData.item, obj: ih?.object, r };
   }
   const doing = () => state.asleep ? 'sleeping' : R.on && R.label ? (R.arrived ? R.label : 'trotting off somewhere') : state.activity;
@@ -527,20 +628,34 @@ export function createWorld(container, tooltip, opts = {}) {
     const nw = performance.now(); if (nw - hoverT < 60) return; hoverT = nw;
     const h = hit(ev); let text = '';
     if (h.gino) text = 'Gino' + (doing() ? ' · ' + doing() : '') + (opts.petHint ?? ' (click to pet)');
+    else if (h.piece) text = `${h.piece.img ? '🎨' : '📝'} “${h.piece.title}”, ${h.piece.img ? 'a drawing' : 'a ' + h.piece.kind} by Gino · click to ${h.piece.img ? 'look' : 'read'}`;
+    else if (h.board) text = "📌 Gino's creations board";
     else if (h.item) text = `${h.item.emoji || ''} ${h.item.name}${h.item.description ? ' — ' + h.item.description : ''}`;
-    tooltip.textContent = text; tooltip.style.display = text ? 'block' : 'none'; el.style.cursor = h.gino ? 'pointer' : 'grab';
+    tooltip.textContent = text; tooltip.style.display = text ? 'block' : 'none'; el.style.cursor = h.gino || h.piece ? 'pointer' : 'grab';
     tooltip.style.left = Math.min(h.r.width - 240, Math.max(8, ev.clientX - h.r.left + 14)) + 'px'; tooltip.style.top = (ev.clientY - h.r.top + 14) + 'px';
   });
   el.addEventListener('pointerleave', () => { tooltip.style.display = 'none'; });
   el.addEventListener('pointerdown', ev => { downAt = [ev.clientX, ev.clientY]; });
   el.addEventListener('pointerup', ev => {
     if (!downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 6) return;
-    if (hit(ev).gino) { hop = 1; heartT = timer.getElapsed(); opts.onPet?.(); }
+    const h = hit(ev);
+    if (h.gino) { hop = 1; heartT = timer.getElapsed(); opts.onPet?.(); }
+    else if (h.piece) opts.onPiece?.(h.piece);
   });
-  el.addEventListener('dblclick', ev => { const h = hit(ev); if (h.gino) return; if (h.item) { const o = itemObjs.get(h.item.id); if (o) { focus = o.position.clone().setY(o.position.y + 1); follow = false; opts.onFollow?.(false); } } });
+  el.addEventListener('dblclick', ev => { const h = hit(ev); if (h.gino) return; if (h.board) { api.showBoard(); return; } if (h.item) { const o = itemObjs.get(h.item.id); if (o) { focus = o.position.clone().setY(o.position.y + 1); follow = false; opts.onFollow?.(false); } } });
 
-  return {
+  const api = {
     update,
+    setBoard,
+    showBoard() {   // walk the camera up to the board so its pieces can be read
+      if (!board) return; follow = false; opts.onFollow?.(false); controls.autoRotate = false; idleAt = performance.now() + 40000; intro = 1;
+      focus = board.localToWorld(new THREE.Vector3(0, 2.1, 0)); camGoal = board.localToWorld(new THREE.Vector3(0.8, 2.8, 8.4));
+    },
+    lookAt(gx, gy) {   // point the camera at a spot of his home, in grid squares
+      const x = cellX(gx), z = cellZ(gy); follow = false; opts.onFollow?.(false); controls.autoRotate = false; idleAt = performance.now() + 40000; intro = 1;
+      focus = new THREE.Vector3(x, groundY(x, z) + 0.8, z); camGoal = null;
+    },
+    get boardAt() { return [BOARD_AT.x / CELL + (GW - 1) / 2, BOARD_AT.z / CELL + (GH - 1) / 2]; },
     setFollow(v) { follow = v; focus = null; controls.autoRotate = false; idleAt = v ? Infinity : performance.now() + 25000; if (!v) focus = new THREE.Vector3(0, 0.6, 0); },
     setTime(m) { timeMode = m; },
     setQuality, get quality() { return quality; },
@@ -552,4 +667,5 @@ export function createWorld(container, tooltip, opts = {}) {
     _debug: { scene, camera, controls, gino, roam: R, skip() { intro = 1; camera.position.copy(HOME); },
       snap() { target.copy(anchor); gino.position.set(target.x, groundY(target.x, target.z), target.z); R.arrived = true; } },
   };
+  return api;
 }
