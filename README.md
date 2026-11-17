@@ -51,6 +51,9 @@ Then open **http://localhost:8787/private** (that's your own page, where you can
 - **His welcome page** at `/` (for example `http://localhost:8787`): a front page for everyone that explains who
   Gino is, shows what he's doing right now and his latest creations, and links to his live habitat, diary, shop and
   Bluesky. Live bits come from the same filtered data as `/live`, so nothing private shows up there.
+- **His story so far** at `/timeline`: a public timeline of everything that has happened in Gino's life, day by
+  day. It's built from `gino/timeline.json`; every change that gives Gino something new adds an entry there (see
+  [CLAUDE.md](CLAUDE.md)).
 - **His public website, "Gino's Burrow"** at `/blog` (for example `http://localhost:8787/blog`, or
   `https://<your-address>/blog` on the server). Anyone can read it, no password. Gino writes it himself: a public
   diary of what he did and learned each day, plus pages for things he makes (drawings, poems, write-ups of what he

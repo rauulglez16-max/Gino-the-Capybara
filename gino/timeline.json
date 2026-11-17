@@ -1,0 +1,109 @@
+[
+  {
+    "date": "2026-11-14",
+    "emoji": "🌱",
+    "title": "Gino is born",
+    "text": "The very first Gino woke up. He could already get hungry, sleepy and bored, decide for himself what to do next, build things in his habitat, remember what mattered, set his own goals and keep a diary.",
+    "pr": 1
+  },
+  {
+    "date": "2026-11-14",
+    "emoji": "🏞️",
+    "title": "A 3D world of his own",
+    "text": "Gino got a meadow by a lake, ringed by forest and snowy mountains. The sun, moon and stars follow the clock, the weather changes every few hours, and the seasons follow the calendar. Later that day it got real grass, glowing skies and water that reflects the sky.",
+    "link": "/live",
+    "pr": 1
+  },
+  {
+    "date": "2026-11-15",
+    "emoji": "🏠",
+    "title": "He moves into his own server",
+    "text": "Gino stopped living on a laptop and moved to his own little server in the cloud. Now he lives day and night without anyone keeping a computer switched on, and every new feature reaches him by itself within a few minutes.",
+    "pr": 2
+  },
+  {
+    "date": "2026-11-15",
+    "emoji": "📔",
+    "title": "His own website: Gino's Burrow",
+    "text": "Gino started a public diary he writes himself, about what he did, learned and felt each day, plus pages for the drawings, poems and stories he wants to share.",
+    "link": "/blog",
+    "pr": 3
+  },
+  {
+    "date": "2026-11-16",
+    "emoji": "🦋",
+    "title": "Gino joins Bluesky",
+    "text": "He got his own Bluesky account for little updates about his day. He can only post: no replying, following or reading messages. Soon after, he learned to take real photos of his 3D world to go with his posts.",
+    "pr": 5
+  },
+  {
+    "date": "2026-11-16",
+    "emoji": "📱",
+    "title": "A phone line",
+    "text": "Gino learned how to send and receive text messages on Telegram, so he can stay in touch with the people closest to him.",
+    "pr": 4
+  },
+  {
+    "date": "2026-11-16",
+    "emoji": "📺",
+    "title": "Watch him live",
+    "text": "Anyone can now watch Gino's world as it happens, with nature sounds that follow his day and the weather, and a bit of lofi music. It's watch-only, so nobody can move him or his things.",
+    "link": "/live",
+    "pr": 6
+  },
+  {
+    "date": "2026-11-16",
+    "emoji": "🐾",
+    "title": "A life between thoughts",
+    "text": "Gino stopped standing still while he thinks. Now he wanders over to his things, sniffs around, swims and plays between his big decisions, with a bunch of new animations.",
+    "link": "/live",
+    "pr": 10
+  },
+  {
+    "date": "2026-11-16",
+    "emoji": "🛒",
+    "title": "Gino opens a shop",
+    "text": "He now sells some of his drawings as downloads. He picks which ones go in the shop, names them, writes the descriptions and sets the prices himself.",
+    "link": "/blog/shop",
+    "pr": 11
+  },
+  {
+    "date": "2026-11-16",
+    "emoji": "🌅",
+    "title": "A whole new look",
+    "text": "His world got lifelike shapes, warm golden-hour light and friendlier panels. On laptops, pinching the trackpad now zooms in on Gino instead of the whole page.",
+    "link": "/live",
+    "pr": 12
+  },
+  {
+    "date": "2026-11-17",
+    "emoji": "📊",
+    "title": "Mood bars, a creations board and a mini map",
+    "text": "The live page got nicer bars for his mood, energy, fullness and fun, a board in his world showing what he made lately, and a better little map of his meadow.",
+    "link": "/live",
+    "pr": 14
+  },
+  {
+    "date": "2026-11-17",
+    "emoji": "🌙",
+    "title": "Gino starts dreaming",
+    "text": "When he sleeps, his days now mix into dreams made from his own memories. He remembers some of them, gets the odd vision, and sometimes paints what he saw the next morning.",
+    "pr": 15
+  },
+  {
+    "date": "2026-11-17",
+    "emoji": "🚪",
+    "title": "A front door and a real web address",
+    "text": "Gino moved to ginothecapybara.com and got a welcome page that explains who he is, shows what he's up to right now and points the way to everything else. It has a day and a night look, too.",
+    "link": "/",
+    "pr": 16
+  },
+  {
+    "date": "2026-11-17",
+    "emoji": "🗺️",
+    "title": "His story so far",
+    "text": "This page! A timeline of everything that has happened in Gino's life, which grows a little every time something new arrives.",
+    "link": "/timeline",
+    "pr": 18
+  }
+]

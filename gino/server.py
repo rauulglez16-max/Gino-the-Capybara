@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import brain, config, db, dreams, live, public, shop, telegram, vitals, welcome, whatsapp
+from . import brain, config, db, dreams, live, public, shop, telegram, timeline, vitals, welcome, whatsapp
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -82,6 +82,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Gino", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 app.include_router(welcome.router)  # /: the welcome page that introduces Gino to everyone
+app.include_router(timeline.router)  # /timeline: Gino's story so far, from gino/timeline.json
 app.include_router(public.router)  # Gino's public website at /blog: no password, only what he chose to publish
 app.include_router(shop.router)  # /blog/shop: Gino's drawings for sale; payments happen on Stripe's own checkout
 app.include_router(live.router)  # /live: anyone can watch his 3D world, nobody can talk to him there
