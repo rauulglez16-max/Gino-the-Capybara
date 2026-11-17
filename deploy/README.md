@@ -235,6 +235,7 @@ Log in with `ssh root@<your IP>` and type `gino` to see everything:
 | `gino whatsapp` | Connect him to your WhatsApp (see above) |
 | `gino social` | His Bluesky account: `setup`, `on`, `off` (see [Gino on Bluesky](#gino-on-bluesky-)) |
 | `gino photos` | Photos in his posts: `on`, `test`, `off` |
+| `gino dreams` | His dreams at night: `on`, `off` (they're on to begin with) |
 | `gino settings` | Change any setting (model, budget, time zone...). Save with Ctrl+O, Enter, then Ctrl+X |
 
 ## Gino on Bluesky 🦋
@@ -340,6 +341,21 @@ page and make a new one.
 £1,000, it's tax-free and you don't need to tell HMRC. That limit goes up to £3,000 from April 2027. Above it,
 you register for Self Assessment. Stripe handles the VAT. This isn't professional tax advice, so check
 gov.uk if sales really take off.
+
+## Gino's dreams 🌙
+
+When Gino sleeps for two hours or more, he has one dream part-way through. It's made from his own memories,
+his day, his goals and how his body feels, mixed up the way dreams are. Most nights are ordinary or a bit odd;
+now and then he has a *vision*, a really strange, surreal one.
+
+- The dream changes how he feels when he wakes up, and he remembers it.
+- His first turn after waking starts with the dream. He decides what to do with it: often he paints it, and he
+  might write about it, put the painting on his website, tell you, or let it give him a new goal or passion.
+- Read his dreams (and see the paintings) in the **Dreams** tab on his page.
+- On the live page he shows as "dreaming" while asleep after a dream, and dream paintings he publishes get a 🌙
+  on his creations board.
+- A dream costs about 5 US cents and counts towards his daily budget. No dreams once the budget is used up.
+- Turn them off with `gino dreams off` (and back on with `gino dreams on`).
 
 ## Where things live on the server
 

@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import brain, config, db, live, public, shop, telegram, vitals, whatsapp
+from . import brain, config, db, dreams, live, public, shop, telegram, vitals, whatsapp
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -50,7 +50,9 @@ async def life_loop():
                 body = vitals.tick(vitals.load())
                 vitals.save(body)
                 now = time.time()
-                if not vitals.is_asleep(body, now) and now >= body.get("next_wake", 0):
+                if dreams.due(body, now):
+                    await asyncio.to_thread(dreams.dream_now)
+                elif not vitals.is_asleep(body, now) and now >= body.get("next_wake", 0):
                     await asyncio.to_thread(brain.take_turn)
         except Exception:
             log.exception("Gino's turn failed; trying again in a few minutes")
@@ -131,10 +133,12 @@ def feed(kind: str = "events", limit: int = 60):
         "memories": "SELECT ts,text,importance,tags FROM memories",
         "creations": "SELECT id,ts,kind,title,filename,note FROM creations",
         "chat": "SELECT id,ts,sender,text FROM chat",
+        "dreams": "SELECT d.id,d.ts,d.title,d.story,d.symbols,d.feeling,d.longing,d.strangeness,c.filename "
+                  "FROM dreams d LEFT JOIN creations c ON c.id=d.creation_id",
     }
     if kind not in tables:
         raise HTTPException(404)
-    rows = db.q(tables[kind] + " ORDER BY ts DESC LIMIT ?", (limit,))
+    rows = db.q(tables[kind] + (" ORDER BY d.ts" if kind == "dreams" else " ORDER BY ts") + " DESC LIMIT ?", (limit,))
     return list(reversed(rows)) if kind == "chat" else rows
 
 

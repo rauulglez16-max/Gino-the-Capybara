@@ -349,7 +349,8 @@ def _art(c: dict | None) -> str:
     if not c:
         return ""
     if c["kind"] == "svg":
-        return f'<img class="art" src="/blog/art/{c["id"]}.svg" alt="{E(c["title"])}">'
+        dream = '<div class="meta">🌙 Painted from a dream</div>' if c.get("dream_id") else ""
+        return f'<img class="art" src="/blog/art/{c["id"]}.svg" alt="{E(c["title"])}">{dream}'
     path = config.DATA_DIR / "creations" / c["filename"]
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     if c["kind"] == "code":
@@ -360,7 +361,7 @@ def _art(c: dict | None) -> str:
 def _creation(cid) -> dict | None:
     if not cid:
         return None
-    rows = db.q("SELECT id,kind,title,filename FROM creations WHERE id=?", (cid,))
+    rows = db.q("SELECT id,kind,title,filename,dream_id FROM creations WHERE id=?", (cid,))
     return rows[0] if rows else None
 
 

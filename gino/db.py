@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS posts (
 CREATE TABLE IF NOT EXISTS social_posts (
   id INTEGER PRIMARY KEY, ts REAL NOT NULL, text TEXT NOT NULL, uri TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL CHECK (status IN ('posted','failed')));
+CREATE TABLE IF NOT EXISTS dreams (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, title TEXT NOT NULL, story TEXT NOT NULL,
+  symbols TEXT NOT NULL DEFAULT '[]', colours TEXT NOT NULL DEFAULT '', feeling TEXT NOT NULL DEFAULT '',
+  intensity INTEGER NOT NULL DEFAULT 3, longing TEXT NOT NULL DEFAULT '', sources TEXT NOT NULL DEFAULT '',
+  strangeness INTEGER NOT NULL DEFAULT 2 CHECK (strangeness BETWEEN 1 AND 5),
+  creation_id INTEGER REFERENCES creations(id));
 CREATE INDEX IF NOT EXISTS spend_day ON spend(day);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 """
@@ -57,6 +63,9 @@ def conn() -> sqlite3.Connection:
                              ("size", "REAL NOT NULL DEFAULT 1")):
                 if col not in have:
                     _conn.execute(f"ALTER TABLE habitat ADD COLUMN {col} {ddl}")
+            have = {r["name"] for r in _conn.execute("PRAGMA table_info(creations)")}
+            if "dream_id" not in have:  # a painting of one of his dreams
+                _conn.execute("ALTER TABLE creations ADD COLUMN dream_id INTEGER")
             have = {r["name"] for r in _conn.execute("PRAGMA table_info(social_posts)")}
             for col, ddl in (("photo", "TEXT NOT NULL DEFAULT ''"), ("alt", "TEXT NOT NULL DEFAULT ''")):
                 if col not in have:

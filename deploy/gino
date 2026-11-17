@@ -262,6 +262,14 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
       *) echo "usage: gino shop [status|setup|on|off|sales|test]"; exit 1 ;;
     esac
     ;;
+  dreams)
+    case "${2:-status}" in
+      on)  need_root; unset_setting GINO_DREAMS; systemctl restart gino; echo "🌙 Gino will dream when he sleeps." ;;
+      off) need_root; set_setting GINO_DREAMS 0; systemctl restart gino; echo "Dreams are off. Gino sleeps soundly." ;;
+      status) [ "$(setting GINO_DREAMS)" = "0" ] && echo "Dreams are OFF (turn on with: gino dreams on)" || echo "🌙 Dreams are ON" ;;
+      *) echo "usage: gino dreams [status|on|off]"; exit 1 ;;
+    esac
+    ;;
   settings) need_root; "${EDITOR:-nano}" "$ENV_FILE" && systemctl restart gino && echo "Saved and restarted." ;;
   *)
     cat <<'EOF'
@@ -279,6 +287,7 @@ gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / te
 gino social      Bluesky posting: gino social setup | on | off | status
 gino photos      photos in his posts: gino photos on | test | off
 gino shop        his shop: gino shop setup | on | off | sales | status
+gino dreams      his dreams at night: gino dreams on | off | status
 gino settings    edit all his settings
 EOF
     ;;

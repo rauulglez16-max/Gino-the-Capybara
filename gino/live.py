@@ -71,13 +71,14 @@ def _diary_line() -> str:
 def _board() -> list[dict]:
     """Gino's creations board: drawings and poems he already put on public pages. Look, don't touch."""
     out = []
-    for r in db.q("SELECT c.id, c.kind, c.title, c.filename, c.ts, MIN(p.slug) AS slug FROM creations c "
+    for r in db.q("SELECT c.id, c.kind, c.title, c.filename, c.ts, c.dream_id, MIN(p.slug) AS slug FROM creations c "
                   "JOIN posts p ON p.creation_id=c.id WHERE p.kind='page' AND c.kind IN ('svg','poem','song','story') "
                   "GROUP BY c.id ORDER BY c.ts DESC LIMIT 8"):
         title = _clean(r["title"], 80)
         if not title:
             continue
-        item = {"id": r["id"], "kind": "drawing" if r["kind"] == "svg" else r["kind"], "title": title,
+        item = {"id": r["id"], "kind": ("dream" if r["dream_id"] else "drawing") if r["kind"] == "svg" else r["kind"],
+                "title": title,
                 "page": f"/blog/page/{r['slug']}"}
         if r["kind"] == "svg":
             item["img"] = f"/blog/art/{r['id']}.svg"
@@ -125,7 +126,8 @@ def build() -> dict:
         "pos": [int(pos[0]), int(pos[1])],
         "asleep": asleep,
         "thinking": mind_lock.locked(),
-        "activity": "napping" if asleep else _clean(body.get("activity"), 80, "pottering about"),
+        "activity": (("dreaming" if body.get("last_dream_ts", 0) >= body.get("slept_at", now) else "napping")
+                     if asleep else _clean(body.get("activity"), 80, "pottering about")),
         "emotion": _clean(body.get("emotion"), 30, "calm"),
         "vitals": vitals.snapshot(body),
         "weather": vitals.weather(local),
