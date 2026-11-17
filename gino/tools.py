@@ -2,7 +2,7 @@
 import re
 import time
 
-from . import config, db, public, shop, social, telegram, vitals, whatsapp
+from . import config, db, dreams, public, shop, social, telegram, vitals, whatsapp
 
 GRID_W, GRID_H = 16, 10
 
@@ -59,7 +59,9 @@ TOOLS = [
     _t("create", "Make something of your own: a poem, story, song lyrics, essay, recipe, idea, code, or a drawing. "
        "For a drawing use kind 'svg' and put a complete <svg> document (viewBox 0 0 400 400) in content.",
        {"kind": {"type": "string", "enum": ["poem", "story", "song", "essay", "recipe", "idea", "code", "svg"]},
-        "title": S, "content": S, "note": {**S, "description": "Why you made it / how you feel about it"}},
+        "title": S, "content": S, "note": {**S, "description": "Why you made it / how you feel about it"},
+        "dream_id": {**I, "description": "Optional: if this is a painting (or poem...) of one of your dreams, "
+                     "that dream's number"}},
        ["kind", "title", "content"]),
     _t("write_journal", "Write in your private diary.", {"entry": S}, ["entry"]),
     _t("remember", "Save something to long-term memory so future you knows it.",
@@ -240,13 +242,14 @@ def run(name: str, a: dict, body: dict) -> str:
             ext = {"code": "txt"}.get(kind, "md")
         fname = f"{int(now)}-{_slug(title)}.{ext}"
         (config.DATA_DIR / "creations" / fname).write_text(content, encoding="utf-8")
-        db.x("INSERT INTO creations(ts,kind,title,filename,note) VALUES(?,?,?,?,?)",
-             (now, kind, title, fname, str(a.get("note", ""))[:500]))
+        cid = db.x("INSERT INTO creations(ts,kind,title,filename,note) VALUES(?,?,?,?,?)",
+                   (now, kind, title, fname, str(a.get("note", ""))[:500]))
         body["fun"] = vitals.clamp(body["fun"] + 12)
         body["energy"] = vitals.clamp(body["energy"] - 3)
-        body["activity"] = f"creating a {kind}: {title}"
+        dreamt = dreams.link_painting(a["dream_id"], cid) if a.get("dream_id") not in (None, "", 0) else ""
+        body["activity"] = (f"painting a dream: {title}" if dreamt and kind == "svg" else f"creating a {kind}: {title}")
         db.event("create", f"made a {kind}: {title}")
-        return f"Saved your {kind} '{title}'. It feels good to make things."
+        return f"Saved your {kind} '{title}' (creation #{cid}).{dreamt} It feels good to make things."
     if name == "write_journal":
         db.x("INSERT INTO journal(ts,text,emotion) VALUES(?,?,?)",
              (now, str(a.get("entry", ""))[:5000], body.get("emotion")))
@@ -264,6 +267,9 @@ def run(name: str, a: dict, body: dict) -> str:
         args = tuple(v for w in words for v in (f"%{w}%", f"%{w}%"))
         rows = db.q(f"SELECT id,ts,text,importance FROM memories WHERE {where} "
                     "ORDER BY importance DESC, ts DESC LIMIT 12", args)
+        where_d = " OR ".join("lower(title) LIKE ? OR lower(story) LIKE ?" for _ in words)
+        for d in db.q(f"SELECT id,ts,title,story FROM dreams WHERE {where_d} ORDER BY ts DESC LIMIT 4", args):
+            rows.append({"ts": d["ts"], "text": f"(dream #{d['id']}) {d['title']}: {d['story'][:300]}"})
         if not rows:
             return "No memories about that."
         return "\n".join(f"- [{time.strftime('%Y-%m-%d', time.localtime(r['ts']))}] {r['text']}" for r in rows)

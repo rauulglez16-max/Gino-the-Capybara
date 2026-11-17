@@ -48,6 +48,11 @@ MIN_WAKE_MINUTES = int(_f("GINO_MIN_WAKE_MINUTES", 15))
 MAX_WAKE_MINUTES = int(_f("GINO_MAX_WAKE_MINUTES", 360))
 TIME_SCALE = _f("GINO_TIME_SCALE", 1.0)  # >1 makes needs change faster (testing)
 
+# Dreams: when he sleeps 2+ hours he has one dream (about 5 US cents, inside the daily budget)
+DREAMS_ON = os.environ.get("GINO_DREAMS", "1") == "1"
+DREAM_MODEL = os.environ.get("GINO_DREAM_MODEL", MODEL)
+DREAM_MIN_SLEEP_HOURS = _f("GINO_DREAM_MIN_SLEEP_HOURS", 2.0)
+
 # Who is who
 DAD_NAME = os.environ.get("GINO_DAD_NAME", "Raul")
 HEMISPHERE = os.environ.get("GINO_HEMISPHERE", "north").lower()  # north or south, for seasons

@@ -6,7 +6,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
-from . import config, db, public, shop, social, tools, vitals
+from . import config, db, dreams, public, shop, social, tools, vitals
 
 log = logging.getLogger("gino.brain")
 mind_lock = threading.Lock()  # one thought at a time
@@ -34,6 +34,9 @@ Who you are:
   dad told you, plans, lessons) must go in remember(), your journal, or your goals. Keep goals real and \
   achievable with your tools, and make visible progress on them.
 - You make things. Creating gives you joy. Your creations are kept forever in your gallery.
+- When you sleep through the night you dream. Dreams are made from your own memories, bent into strange \
+  shapes; some are visions that feel almost real. They're yours: paint them, wonder about them, and let \
+  them change what you want if they feel true. Dreams can be a source of new passions and goals.
 
 Using your tools:
 - Act with tools; your plain text is only private murmuring. To talk to dad, use message_dad (during \
@@ -141,6 +144,8 @@ def context(body: dict) -> str:
     lines.append(f"\n## Your creations ({n_creations} total, latest)\n"
                  + ("\n".join(f"- #{c['id']} {c['kind']}: {c['title']} ({ago(c['ts'])})" for c in creations)
                     or "none yet"))
+    if dreams.enabled():
+        lines.append(dreams.context_lines(body))
     lines.append(public.context_lines())
     if social.configured():
         lines.append(social.context_lines())
@@ -184,9 +189,9 @@ def record_spend(purpose: str, resp, fallback_model: str) -> float:
     return usd
 
 
-def call(model: str, messages: list, tool_list: list):
+def call(model: str, messages: list, tool_list: list, max_tokens: int = 16000):
     kwargs = dict(
-        model=model, max_tokens=16000,
+        model=model, max_tokens=max_tokens,
         system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
         tools=tool_list, messages=messages,
         output_config={"effort": config.EFFORT},
@@ -252,12 +257,15 @@ def take_turn() -> None:
             db.event("mind", "Gino used up today's thinking budget and is just vibing until tomorrow.")
             return
         body["next_wake"] = time.time() + 60 * 60  # default if he forgets to choose
+        body.pop("dream_due", None)  # woke up before the dream came
+        fresh = body.pop("fresh_dream", None)
         vitals.save(body)
         db.event("turn", "Gino's turn began.")
-        prompt = (context(body) + "\n\n---\nIt's your turn. Nobody is asking anything of you. "
+        waking = ("\n\n" + dreams.waking_lines(fresh)) if fresh else ""
+        prompt = (context(body) + waking + "\n\n---\nIt's your turn. Nobody is asking anything of you. "
                   "Check in with yourself and do what you want. End with set_next_wake or sleep.")
         if config.FAKE_BRAIN:
-            fake_turn(body)
+            fake_turn(body, fresh)
         else:
             murmur = run_loop("turn", config.MODEL, prompt, body, tools.all_tools())
             if murmur:
@@ -305,8 +313,17 @@ def _do(body, tool, **a):
         return str(e)
 
 
-def fake_turn(body: dict) -> None:
+def fake_turn(body: dict, fresh_dream: int | None = None) -> None:
     """A simple rule-based Gino so the whole system can run without an API key."""
+    d = dreams.get(fresh_dream) if fresh_dream else None
+    if d:  # paint last night's dream before it fades
+        hue = random.randint(180, 300)
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><filter id="b">'
+               f'<feGaussianBlur stdDeviation="6"/></filter></defs><rect width="400" height="400" '
+               f'fill="hsl({hue},45%,22%)"/><circle cx="200" cy="170" r="110" fill="hsl({(hue + 150) % 360},70%,70%)" '
+               f'filter="url(#b)" opacity=".8"/><ellipse cx="200" cy="330" rx="170" ry="30" fill="hsl({hue},40%,40%)"/></svg>')
+        _do(body, "create", kind="svg", title=d["title"], content=svg, dream_id=d["id"],
+            note="I painted my dream before it faded.")
     if body["energy"] < 25:
         _do(body, "feel", emotion="tired", intensity=3, reason="My eyes keep closing.")
         _do(body, "sleep", hours=3)

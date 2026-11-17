@@ -628,7 +628,7 @@ export function createWorld(container, tooltip, opts = {}) {
     const nw = performance.now(); if (nw - hoverT < 60) return; hoverT = nw;
     const h = hit(ev); let text = '';
     if (h.gino) text = 'Gino' + (doing() ? ' · ' + doing() : '') + (opts.petHint ?? ' (click to pet)');
-    else if (h.piece) text = `${h.piece.img ? '🎨' : '📝'} “${h.piece.title}”, ${h.piece.img ? 'a drawing' : 'a ' + h.piece.kind} by Gino · click to ${h.piece.img ? 'look' : 'read'}`;
+    else if (h.piece) text = `${h.piece.kind === 'dream' ? '🌙' : h.piece.img ? '🎨' : '📝'} “${h.piece.title}”, ${h.piece.kind === 'dream' ? 'a painting of a dream' : h.piece.img ? 'a drawing' : 'a ' + h.piece.kind} by Gino · click to ${h.piece.img ? 'look' : 'read'}`;
     else if (h.board) text = "📌 Gino's creations board";
     else if (h.item) text = `${h.item.emoji || ''} ${h.item.name}${h.item.description ? ' — ' + h.item.description : ''}`;
     tooltip.textContent = text; tooltip.style.display = text ? 'block' : 'none'; el.style.cursor = h.gino || h.piece ? 'pointer' : 'grab';

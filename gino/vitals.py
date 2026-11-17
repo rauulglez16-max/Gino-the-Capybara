@@ -142,8 +142,11 @@ def sleep(s: dict, hours: float) -> str:
     hours = max(0.25, min(hours, 10))
     s["asleep_until"] = time.time() + hours * 3600 / config.TIME_SCALE
     s["next_wake"] = s["asleep_until"]
+    s["slept_at"] = time.time()
     s["activity"] = "sleeping"
-    return f"Going to sleep for {hours:g} hours. Zzz."
+    from . import dreams  # late import: dreams imports this module
+    dreams.plan(s, hours)
+    return f"Going to sleep for {hours:g} hours. Zzz." + (" Maybe you'll dream." if s.get("dream_due") else "")
 
 
 def snapshot(s: dict) -> dict:

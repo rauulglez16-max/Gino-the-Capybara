@@ -195,7 +195,7 @@ $('#chatForm').onsubmit = async e => {
 };
 $('#giftBtn').onclick = async () => { await api('/api/gift', {method: 'POST', body: JSON.stringify({food: $('#food').value})}); refresh(); };
 
-const TABS = [['events','Activity'],['journal','Diary'],['creations','Creations'],['goals','Goals'],['memories','Memories'],['about','About Gino']];
+const TABS = [['events','Activity'],['journal','Diary'],['creations','Creations'],['dreams','Dreams'],['goals','Goals'],['memories','Memories'],['about','About Gino']];
 let tab = 'events';
 $('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('');
 $('#tabs').onclick = e => { const k = e.target.dataset.k; if (k) { tab = k; renderTab(); } };
@@ -223,6 +223,18 @@ async function renderTab() {
       else { const r = await fetch(`/creations/${el.dataset.f}`, {headers: {'x-gino-key': key()}}); $('#dlgBody').innerHTML = `<pre>${esc(await r.text())}</pre>`; }
       $('#dlg').showModal(); });
     if (!rows.length) P.innerHTML = '<p class="muted">Gino hasn\'t made anything yet.</p>';
+    return;
+  }
+  if (tab === 'dreams') {
+    const strange = ['', 'calm', 'a bit odd', 'dreamlike', 'very strange', 'a vision'];
+    P.innerHTML = `<div class="feed">${rows.map(r => { let sy = []; try { sy = JSON.parse(r.symbols || '[]'); } catch (e) {}
+      return `<div class="item dream"><time>${when(r.ts)}</time><span class="pill">🌙 ${esc(strange[r.strangeness] || '')}</span><span class="pill">woke up ${esc(r.feeling)}</span>`
+        + `<h4 style="margin:6px 0">${esc(r.title)}</h4>`
+        + (r.filename ? `<img alt="Gino's painting of this dream" style="width:min(100%,320px);display:block;border-radius:10px;margin:6px 0" src="/creations/${esc(r.filename)}?key=${encodeURIComponent(key())}">` : '')
+        + `<div style="white-space:pre-wrap;font-style:italic">${esc(r.story)}</div>`
+        + (sy.length ? `<div class="muted" style="font-size:13px;margin-top:4px">Images: ${sy.map(esc).join(' · ')}</div>` : '')
+        + (r.longing && r.longing.toLowerCase() !== 'nothing' ? `<div style="font-size:13px;margin-top:4px">💭 ${esc(r.longing)}</div>` : '')
+        + `</div>`; }).join('') || '<p class="muted">No dreams yet. Gino dreams when he sleeps for a couple of hours or more.</p>'}</div>`;
     return;
   }
   const line = r => tab === 'journal' ? `<div class="item"><time>${when(r.ts)}</time>${r.emotion ? `<span class="pill">${esc(r.emotion)}</span>` : ''}<div style="white-space:pre-wrap">${esc(r.text)}</div></div>`
