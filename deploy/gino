@@ -21,11 +21,45 @@ unset_setting() {  # unset_setting NAME
   cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
 }
 
+server_ip() {
+  local ip
+  ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") print $(i+1)}' | head -1)"
+  [ -n "$ip" ] || ip="$(curl -4 -fsS --max-time 5 https://api.ipify.org || true)"
+  printf '%s' "$ip"
+}
+points_here() {  # points_here NAME IP: does NAME's address (A record) lead to this server?
+  getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}' | grep -qx "$2"
+}
+write_caddyfile() {  # write_caddyfile MAIN [OTHER-ADDRESSES...]: MAIN serves Gino, the others send visitors to MAIN
+  local main="$1"; shift
+  local tmp; tmp="$(mktemp)"
+  {
+    echo "# Gino's front door. Caddy gets and renews the https certificates by itself."
+    echo "# Written by: gino domain"
+    printf '%s {\n\tencode gzip\n\treverse_proxy 127.0.0.1:8787\n}\n' "$main"
+    for other in "$@"; do
+      printf '\n%s {\n\tredir https://%s{uri} 308\n}\n' "$other" "$main"
+    done
+  } > "$tmp"
+  if ! caddy validate --config "$tmp" --adapter caddyfile >/dev/null 2>&1; then
+    rm -f "$tmp"; echo "❌ Something went wrong writing the web server settings. Nothing changed."; exit 1
+  fi
+  cp /etc/caddy/Caddyfile /var/lib/gino-deploy/Caddyfile.before-domain 2>/dev/null || true
+  cat "$tmp" > /etc/caddy/Caddyfile; rm -f "$tmp"
+  systemctl reload caddy || systemctl restart caddy
+}
+use_address() {  # use_address NAME: remember NAME as Gino's main address everywhere
+  printf '%s\n' "$1" > /var/lib/gino-deploy/domain
+  if [ -n "$(setting GINO_PUBLIC_URL)" ]; then set_setting GINO_PUBLIC_URL "https://$1"; fi
+  systemctl restart gino
+}
+
 case "${1:-help}" in
   status)
     systemctl is-active --quiet gino && echo "🌿 Gino is running." || echo "😴 Gino is NOT running (try: gino restart, then gino logs)."
-    echo "   Address:  https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)   (private, needs the password)"
-    echo "   Public website: https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)/blog   (anyone can read it)"
+    echo "   Welcome page:  https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)   (for everyone)"
+    echo "   Your private page:  https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)/private   (needs the password)"
+    echo "   His diary: https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)/blog   Live: https://$(cat /var/lib/gino-deploy/domain 2>/dev/null)/live"
     echo "   Version:  $(as_gino git -C "$APP" log -1 --format='%h %s (%cr)')"
     echo "   Brain:    $( [ -n "$(setting ANTHROPIC_API_KEY)" ] && setting GINO_MODEL || echo 'practice brain (no key yet: gino set-key)')"
     echo "   Next update check: $(systemctl list-timers gino-update.timer --no-legend | awk '{print $1, $2, $3}')"
@@ -270,6 +304,57 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
       *) echo "usage: gino dreams [status|on|off]"; exit 1 ;;
     esac
     ;;
+  domain)
+    need_root
+    ip="$(server_ip)"; [ -n "$ip" ] || { echo "Couldn't work out this server's IP address. Nothing changed."; exit 1; }
+    free="${ip//./-}.sslip.io"
+    current="$(cat /var/lib/gino-deploy/domain 2>/dev/null || echo "$free")"
+    case "${2:-}" in
+      "")
+        echo "Gino's address: https://$current"
+        [ "$current" = "$free" ] && echo "To use your own name (like ginothecapybara.com), point it at $ip and run: gino domain yourname.com"
+        ;;
+      off)
+        write_caddyfile "$free"
+        use_address "$free"
+        echo "Back to the free address: https://$free" ;;
+      *)
+        name="$(printf '%s' "$2" | tr 'A-Z' 'a-z' | sed -E 's#^https?://##; s#/.*$##; s#^www\.##')"
+        if ! printf '%s' "$name" | grep -Eq '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$'; then
+          echo "❌ \"$2\" doesn't look like a web address. Type it like this: gino domain ginothecapybara.com"; exit 1
+        fi
+        echo "Checking that $name points at this server ($ip)..."
+        if ! points_here "$name" "$ip"; then
+          found="$(getent ahostsv4 "$name" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ')"
+          echo "❌ Not yet: $name points at ${found:-nothing yet}, not $ip."
+          echo "   In your domain shop's DNS settings, add an A record: host @ (blank), answer $ip."
+          echo "   New records usually work within 10 to 30 minutes (sometimes a few hours). Then run this again."
+          echo "   Nothing changed. Gino is still at https://$current"
+          exit 1
+        fi
+        others=("$free")
+        if points_here "www.$name" "$ip"; then others=("www.$name" "${others[@]}"); www=1; else www=""; fi
+        [ "$current" != "$free" ] && [ "$current" != "$name" ] && others+=("$current")
+        write_caddyfile "$name" "${others[@]}"
+        use_address "$name"
+        echo "Getting the padlock (https certificate) for $name. This takes up to a minute..."
+        ok=""
+        for _ in $(seq 1 30); do
+          if curl -fsS -o /dev/null --max-time 5 "https://$name/"; then ok=1; break; fi
+          sleep 3
+        done
+        if [ -n "$ok" ]; then
+          echo; echo "🎉 Done! Gino lives at https://$name"
+          echo "   Your private page: https://$name/private"
+          echo "   The old address (https://$free) now sends visitors to the new one."
+        else
+          echo; echo "⏳ Almost: the settings are saved, but the padlock isn't ready yet. Try https://$name in a few minutes."
+          echo "   If it still doesn't work in an hour, run: gino logs   (or go back with: gino domain off)"
+        fi
+        [ -z "$www" ] && echo "   Tip: to make www.$name work too, add a CNAME record: host www, answer $name. Then run this again."
+        ;;
+    esac
+    ;;
   settings) need_root; "${EDITOR:-nano}" "$ENV_FILE" && systemctl restart gino && echo "Saved and restarted." ;;
   *)
     cat <<'EOF'
@@ -280,7 +365,8 @@ gino restart     restart him
 gino stop/start  pause him / wake him up again
 gino update      check GitHub for new code right now
 gino backup      save a copy of his memories now
-gino password    show (or: gino password NEW to change) the page password
+gino password    show (or: gino password NEW to change) the private page's password
+gino domain      use your own web address: gino domain ginothecapybara.com (or: gino domain off)
 gino set-key     give him his Claude API key
 gino telegram    connect him to your phone (gino telegram test / gino telegram off)
 gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / template / off)
