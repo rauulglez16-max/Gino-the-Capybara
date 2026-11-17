@@ -14,7 +14,8 @@ import pytest  # noqa: E402
 
 from gino import config, db  # noqa: E402
 
-TABLES = ("memories", "journal", "goals", "habitat", "creations", "chat", "events", "spend", "posts", "dreams", "kv")
+TABLES = ("memories", "journal", "goals", "habitat", "creations", "chat", "events", "spend", "posts", "dreams", "kv",
+          "inventions", "art_periods", "capsules")
 
 
 @pytest.fixture(autouse=True)

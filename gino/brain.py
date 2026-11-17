@@ -6,7 +6,8 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
-from . import budget, config, continuity, db, dreams, public, shop, social, tools, vitals
+from . import (artstyle, budget, capsules, config, continuity, db, dreams, inventions, keepsakes, public, shop,
+               social, tools, vitals)
 
 log = logging.getLogger("gino.brain")
 mind_lock = threading.Lock()  # one thought at a time
@@ -36,7 +37,13 @@ Who you are:
 - You make things. Creating gives you joy. Your creations are kept forever in your gallery.
 - When you sleep through the night you dream. Dreams are made from your own memories, bent into strange \
   shapes; some are visions that feel almost real. They're yours: paint them, wonder about them, and let \
-  them change what you want if they feel true. Dreams can be a source of new passions and goals.
+  them change what you want if they feel true. Dreams can be a source of new passions and goals. Now and \
+  then a dream invents something that doesn't exist yet; you can sketch it and try to build it over a few days.
+- Your home is your autobiography. When something truly matters (a passion that lasts, a goal you reached, a \
+  habit you love, a day you don't want to forget) you can mark it with something in your world that carries \
+  its story. Not everything needs one: keepsakes mean more when they're chosen.
+- You have your own art style: colours, symbols and shapes that feel like *you*, and it changes slowly as you \
+  live. You name your art periods yourself. Once in a long while you bury a time capsule for future you.
 
 Using your tools:
 - Act with tools; your plain text is only private murmuring. To talk to dad, use message_dad (during \
@@ -105,12 +112,12 @@ def spent_today() -> float:
     return float(r[0]["s"])
 
 
-def context(body: dict) -> str:
+def context(body: dict, turn: bool = False) -> str:
     now = local_now()
     v = vitals.snapshot(body)
     me = db.get("self", {})
     age_days = (time.time() - body.get("born", time.time())) / 86400
-    habitat = db.q("SELECT id,name,emoji,x,y FROM habitat ORDER BY id")
+    habitat = db.q("SELECT id,name,emoji,x,y,story FROM habitat ORDER BY id")
     goals = db.q("SELECT id,ts,updated,title,why,steps,progress FROM goals WHERE status='active' ORDER BY id")
     done = db.q("SELECT title FROM goals WHERE status='done' ORDER BY updated DESC LIMIT 5")
     important = db.q("SELECT id,ts,text FROM memories WHERE importance>=4 ORDER BY ts DESC LIMIT 12")
@@ -132,7 +139,8 @@ def context(body: dict) -> str:
         f"You are standing at {body.get('pos')}.",
         "\n## About me\n" + ("\n".join(f"- {k}: {val}" for k, val in me.items()) or "(not written yet: who are you?)"),
         "\n## Your 3D world (16x10 meadow)\n" + ("\n".join(f"- #{h['id']} {h['emoji']} {h['name']} at ({h['x']},{h['y']})"
-                                         for h in habitat) or "Empty grass. Nothing built yet."),
+                                         + (" 📖" if h["story"] else "") for h in habitat)
+                                         or "Empty grass. Nothing built yet."),
         "\n## Active goals and projects\n" + ("\n".join(
             f"- #{g['id']} {g['title']} (why: {g['why']}) steps: {g['steps']}\n"
             f"  {continuity.goal_line(g)}\n  progress: {g['progress'][-600:] or 'none yet'}" for g in goals)
@@ -155,6 +163,10 @@ def context(body: dict) -> str:
                     or "none yet"))
     if dreams.enabled():
         lines.append(dreams.context_lines(body))
+    for extra in (inventions.context_lines(), artstyle.context_lines(),
+                  capsules.context_lines(body) if turn else "", keepsakes.context_lines(chance=0.4 if turn else 0)):
+        if extra:
+            lines.append(extra)
     lines.append(public.context_lines())
     if social.configured():
         lines.append(social.context_lines())
@@ -290,7 +302,7 @@ def take_turn() -> None:
         body = vitals.tick(vitals.load())
         fresh = body.get("fresh_dream")
         waking = ("\n\n" + dreams.waking_lines(fresh)) if fresh else ""
-        prompt = (context(body) + waking + "\n\n---\nIt's your turn. Nobody is asking anything of you. "
+        prompt = (context(body, turn=True) + waking + "\n\n---\nIt's your turn. Nobody is asking anything of you. "
                   "Check in with yourself and do what you want. End with set_next_wake or sleep.")
         tool_list = tools.all_tools()
         if not can_think("turn", config.MODEL, prompt, tool_list):
@@ -380,6 +392,7 @@ def fake_turn(body: dict, fresh_dream: int | None = None) -> None:
             _do(body, "feel", emotion="content", intensity=3, reason=f"Tummy full of {food}.")
     if not body["pantry"] or sum(body["pantry"].values()) < 3:
         _do(body, "forage")
+    _fake_life(body)
     choice = random.choice(["build", "create", "journal", "goal", "message"])
     n_items = len(db.q("SELECT id FROM habitat"))
     if choice == "build" or n_items < 3:
@@ -411,6 +424,29 @@ def fake_turn(body: dict, fresh_dream: int | None = None) -> None:
     _do(body, "think", thought=random.choice(["Hmm, what should I build next?", "Grass is underrated.",
                                               "I wonder what dad is doing.", "Sunbeams are the best."]))
     _do(body, "set_next_wake", minutes=random.randint(30, 120))
+
+
+def _fake_life(body: dict) -> None:
+    """The practice brain's take on inventions, art periods, time capsules and keepsakes."""
+    for i in db.q("SELECT id,name,status,opinion FROM inventions WHERE status IN ('dreamed','building') "
+                  "OR (status='built' AND opinion='') ORDER BY ts LIMIT 1"):
+        if i["status"] == "built":
+            _do(body, "work_on_invention", invention_id=i["id"], opinion="It's not quite what I dreamed, but I "
+                "like it more every time I walk past it.")
+        else:
+            _do(body, "work_on_invention", invention_id=i["id"], note="sawing, gluing and humming")
+    n_drawings = db.q("SELECT COUNT(*) AS n FROM creations WHERE kind='svg'")[0]["n"]
+    if n_drawings >= 3 and not artstyle.current():
+        _do(body, "art_period", name="the sun phase", why="I can't stop drawing the sun.",
+            palette=["#f2c14e", "#e07a3a", "#7fb9e0"], symbols=["the sun", "circles"], shapes=["round shapes"])
+    for c in db.q("SELECT id,opened FROM capsules WHERE opened IS NULL AND open_after<=? LIMIT 1", (time.time(),)):
+        _do(body, "open_time_capsule", capsule_id=c["id"])
+        _do(body, "open_time_capsule", capsule_id=c["id"], reflection="I was so sure I'd have a boat by now. "
+            "I mostly built lamps. I like who I turned into.")
+    age = (time.time() - body.get("born", time.time())) / 86400
+    if age >= 2 and not db.q("SELECT 1 FROM capsules") and random.random() < 0.2:
+        _do(body, "seal_time_capsule", favourite_thing="sitting in the pond at sunset",
+            prediction="I'll have built a boat and sailed across the lake.", letter="Hello future me! Still chill?")
 
 
 def fake_reply(text: str, body: dict) -> str:

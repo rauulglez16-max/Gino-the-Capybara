@@ -370,6 +370,18 @@ export const B = {
     part(g, 'box', '#8a6642', [0.1, 1.1, 0.1], [0, 0.55, 0]); part(g, 'box', o.color || '#e8d3a8', [0.95, 0.5, 0.08], [0, 1.05, 0.04]);
     for (let i = 0; i < 3; i++) part(g, 'box', '#6b4a2f', [0.6 - i * 0.12, 0.04, 0.02], [0, 1.17 - i * 0.12, 0.09]);
   },
+  capsule(g, o) {   // a time capsule: a little mound of fresh earth with a marker stake; dug up, an open tin
+    const opened = /opened/.test(o.name);
+    part(g, 'smooth', '#7a5a3a', [1.5, 0.42, 1.3], [0, 0.04, 0]); part(g, 'smooth', '#8d6b47', [0.95, 0.3, 0.85], [0.08, 0.16, -0.05]);
+    for (let i = 0; i < 5; i++) part(g, 'rock', '#9b978f', [0.16, 0.12, 0.14], [Math.cos(i * 1.3) * 0.72, 0.08, Math.sin(i * 1.3) * 0.6], [i, i * 2, 0]);
+    part(g, 'box', '#a07a4f', [0.08, 1.15, 0.08], [0.42, 0.62, 0.12]);
+    part(g, 'box', o.color || '#e0705a', [0.34, 0.2, 0.03], [0.6, 1.02, 0.12]);
+    if (opened) {
+      part(g, 'cyl', '#c9b27a', [0.42, 0.34, 0.42], [-0.42, 0.3, 0.3], null, { metalness: 0.5, roughness: 0.4 });
+      part(g, 'cyl', '#d8c58c', [0.46, 0.05, 0.46], [-0.82, 0.2, 0.56], [0.25, 0, 1.25], { metalness: 0.5, roughness: 0.4 });
+      part(g, 'box', '#f6efdc', [0.32, 0.02, 0.24], [-0.4, 0.5, 0.3], [0.25, 0.5, 0]);
+    } else part(g, 'smooth', '#f6c833', [0.13, 0.13, 0.13], [0.42, 1.22, 0.12], null, { emissive: '#f6c833', emissiveIntensity: 0.6 });
+  },
   mailbox(g, o) {
     part(g, 'box', '#8a6642', [0.1, 1.0, 0.1], [0, 0.5, 0]); part(g, 'box', o.color || '#d9534f', [0.6, 0.35, 0.35], [0, 1.1, 0]);
     part(g, 'cyl', o.color || '#d9534f', [0.35, 0.6, 0.35], [0, 1.27, 0], [0, 0, Math.PI / 2]); part(g, 'box', '#f6c833', [0.04, 0.3, 0.12], [0.2, 1.35, 0.2]);
@@ -488,6 +500,7 @@ export const B = {
 };
 export const KINDS = Object.keys(B);
 const KEYWORDS = [
+  [/time capsule|capsule/, 'capsule'],
   [/fountain/, 'fountain'], [/\bwell\b/, 'well'], [/pond|pool|lake|water|spring|bath|puddle|onsen/, 'pond'], [/pumpkin/, 'pumpkins'],
   [/garden|vegetable|veggie|crop|farm/, 'garden'], [/hammock/, 'hammock'], [/swing/, 'swing'], [/fire\b|bonfire/, 'campfire'],
   [/\bbed|nest|pillow|cushion|blanket/, 'bed'], [/book|library|shelf/, 'bookshelf'], [/gallery|art wall|museum|exhibit/, 'gallery'],

@@ -405,6 +405,9 @@ def home():
     from . import shop  # imported late: shop imports this file
     if shop.configured():
         parts.append('<div class="now">🛒 Gino has a shop! <a href="/blog/shop">See the drawings he\'s selling</a></div>')
+    if db.q("SELECT 1 FROM art_periods LIMIT 1"):
+        parts.append('<div class="now">🎨 Gino\'s art goes through phases. <a href="/blog/periods">See his art, '
+                     'period by period</a></div>')
     parts.append('<h2 class="sec">Diary</h2>')
     if diary:
         for d in diary:

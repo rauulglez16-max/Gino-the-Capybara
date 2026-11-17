@@ -105,5 +105,37 @@
     "text": "This page! A timeline of everything that has happened in Gino's life, which grows a little every time something new arrives.",
     "link": "/timeline",
     "pr": 18
+  },
+  {
+    "date": "2026-11-17",
+    "emoji": "📖",
+    "title": "A home that remembers",
+    "text": "Things in Gino's meadow can now carry a story. When something really matters to him, like a passion that lasts or a day he doesn't want to forget, he may build something to mark it. Look for the little open book floating above it and click to read why it's there.",
+    "link": "/live",
+    "pr": 19
+  },
+  {
+    "date": "2026-11-17",
+    "emoji": "💡",
+    "title": "Dreams that invent things",
+    "text": "Some nights Gino's dreams mix familiar things into something brand new, like a mushroom lantern or a telescope that looks underwater. He sketches the idea, then spends a few days trying to build it. It doesn't always come out the way he dreamed, and he has opinions about that.",
+    "link": "/live",
+    "pr": 19
+  },
+  {
+    "date": "2026-11-17",
+    "emoji": "🎨",
+    "title": "Gino's own art style",
+    "text": "Gino's drawings now have a style of their own: favourite colours, shapes and symbols that slowly change as he lives. He names his art periods himself, and you can browse them, from one phase to the next.",
+    "link": "/blog/periods",
+    "pr": 19
+  },
+  {
+    "date": "2026-11-17",
+    "emoji": "🕰️",
+    "title": "Letters to future Gino",
+    "text": "Once in a while Gino buries a time capsule in his meadow: his favourite thing, a guess about who he'll become and a note to his future self. Weeks later he digs it up and finds out how much he has changed.",
+    "link": "/live",
+    "pr": 19
   }
 ]

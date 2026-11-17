@@ -11,7 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import brain, config, db, dreams, live, public, shop, telegram, timeline, vitals, welcome, whatsapp
+from . import (artstyle, brain, config, db, dreams, live, public, shop, telegram, timeline, vitals, welcome,
+               whatsapp)
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -86,6 +87,7 @@ app.include_router(welcome.router)  # /: the welcome page that introduces Gino t
 app.include_router(timeline.router)  # /timeline: Gino's story so far, from gino/timeline.json
 app.include_router(public.router)  # Gino's public website at /blog: no password, only what he chose to publish
 app.include_router(shop.router)  # /blog/shop: Gino's drawings for sale; payments happen on Stripe's own checkout
+app.include_router(artstyle.router)  # /blog/periods: his art periods, with drawings he already made public
 app.include_router(live.router)  # /live: anyone can watch his 3D world, nobody can talk to him there
 app.include_router(whatsapp.router)  # WhatsApp webhook: only signed requests from Meta, only dad's number
 
@@ -118,7 +120,7 @@ def state():
         "pantry": body.get("pantry", {}), "pos": body.get("pos", [7, 5]),
         "age_days": round((now - body.get("born", now)) / 86400, 2),
         "self": db.get("self", {}),
-        "habitat": db.q("SELECT id,name,emoji,x,y,description,kind,color,size FROM habitat ORDER BY id"),
+        "habitat": db.q("SELECT id,ts,name,emoji,x,y,description,kind,color,size,story,origin FROM habitat ORDER BY id"),
         "goals": db.q("SELECT id,title,why,steps,progress,status FROM goals ORDER BY status='active' DESC, updated DESC LIMIT 30"),
         "brain": "practice" if config.FAKE_BRAIN else config.MODEL,
         "spent_today": round(brain.spent_today(), 3), "budget": config.DAILY_BUDGET_USD,
@@ -132,6 +134,25 @@ def state():
 def since_last_visit():
     """'Since your last visit...': what Gino did while dad was away (free: built from his own records)."""
     return recap.for_dad()
+
+
+@app.get("/api/life", dependencies=[Depends(auth)])
+def life():
+    """Keepsakes with stories, dream inventions, time capsules and art periods, for dad's private page.
+    A capsule's contents stay sealed (even from dad) until Gino digs it up."""
+    caps = []
+    for c in db.q("SELECT * FROM capsules ORDER BY ts DESC"):
+        sealed = c["opened"] is None
+        caps.append({"id": c["id"], "ts": c["ts"], "open_after": c["open_after"], "opened": c["opened"],
+                     **({} if sealed else {k: c[k] for k in ("favourite", "prediction", "letter", "reflection")})})
+    return {
+        "keepsakes": db.q("SELECT id,ts,name,emoji,story,origin FROM habitat WHERE story!='' ORDER BY ts DESC"),
+        "inventions": db.q("SELECT i.id,i.ts,i.name,i.idea,i.emoji,i.status,i.sessions,i.needed,i.twist,i.opinion,"
+                           "i.log,c.filename AS sketch FROM inventions i LEFT JOIN creations c ON c.id=i.sketch_id "
+                           "ORDER BY i.ts DESC"),
+        "capsules": caps,
+        "periods": artstyle.overview(public_only=False),
+    }
 
 
 @app.get("/api/feed", dependencies=[Depends(auth)])

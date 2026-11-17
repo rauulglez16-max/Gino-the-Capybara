@@ -45,6 +45,20 @@ CREATE TABLE IF NOT EXISTS dreams (
   intensity INTEGER NOT NULL DEFAULT 3, longing TEXT NOT NULL DEFAULT '', sources TEXT NOT NULL DEFAULT '',
   strangeness INTEGER NOT NULL DEFAULT 2 CHECK (strangeness BETWEEN 1 AND 5),
   creation_id INTEGER REFERENCES creations(id));
+CREATE TABLE IF NOT EXISTS inventions (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, updated REAL NOT NULL, dream_id INTEGER REFERENCES dreams(id),
+  name TEXT NOT NULL, idea TEXT NOT NULL, made_from TEXT NOT NULL DEFAULT '[]', kind TEXT NOT NULL DEFAULT '',
+  emoji TEXT NOT NULL DEFAULT '✨', sketch_id INTEGER REFERENCES creations(id), sessions INTEGER NOT NULL DEFAULT 0,
+  needed INTEGER NOT NULL DEFAULT 3, last_session REAL, log TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'dreamed' CHECK (status IN ('dreamed','building','built','abandoned')),
+  twist TEXT NOT NULL DEFAULT '', opinion TEXT NOT NULL DEFAULT '', item_id INTEGER);
+CREATE TABLE IF NOT EXISTS art_periods (
+  id INTEGER PRIMARY KEY, started REAL NOT NULL, ended REAL, name TEXT NOT NULL, why TEXT NOT NULL DEFAULT '',
+  palette TEXT NOT NULL DEFAULT '[]', symbols TEXT NOT NULL DEFAULT '[]', shapes TEXT NOT NULL DEFAULT '[]');
+CREATE TABLE IF NOT EXISTS capsules (
+  id INTEGER PRIMARY KEY, ts REAL NOT NULL, open_after REAL NOT NULL, creation_id INTEGER REFERENCES creations(id),
+  favourite TEXT NOT NULL, prediction TEXT NOT NULL, letter TEXT NOT NULL DEFAULT '', snapshot TEXT NOT NULL DEFAULT '{}',
+  item_id INTEGER, opened REAL, reflection TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS spend_day ON spend(day);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 """
@@ -59,13 +73,16 @@ def conn() -> sqlite3.Connection:
             _conn.execute("PRAGMA journal_mode=WAL")
             _conn.executescript(SCHEMA)
             have = {r["name"] for r in _conn.execute("PRAGMA table_info(habitat)")}
+            # story: the memory behind a keepsake; origin: where it came from ('memory', 'invention:3', 'capsule:2')
             for col, ddl in (("kind", "TEXT NOT NULL DEFAULT ''"), ("color", "TEXT NOT NULL DEFAULT ''"),
-                             ("size", "REAL NOT NULL DEFAULT 1")):
+                             ("size", "REAL NOT NULL DEFAULT 1"), ("story", "TEXT NOT NULL DEFAULT ''"),
+                             ("origin", "TEXT NOT NULL DEFAULT ''")):
                 if col not in have:
                     _conn.execute(f"ALTER TABLE habitat ADD COLUMN {col} {ddl}")
             have = {r["name"] for r in _conn.execute("PRAGMA table_info(creations)")}
-            if "dream_id" not in have:  # a painting of one of his dreams
-                _conn.execute("ALTER TABLE creations ADD COLUMN dream_id INTEGER")
+            for col in ("dream_id", "period_id", "invention_id"):  # a dream painting / his art period / a sketch
+                if col not in have:
+                    _conn.execute(f"ALTER TABLE creations ADD COLUMN {col} INTEGER")
             have = {r["name"] for r in _conn.execute("PRAGMA table_info(social_posts)")}
             for col, ddl in (("photo", "TEXT NOT NULL DEFAULT ''"), ("alt", "TEXT NOT NULL DEFAULT ''")):
                 if col not in have:

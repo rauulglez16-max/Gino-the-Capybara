@@ -7,7 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { U, env, B, mat, geos, part, rng, windy, buildItem, buildGino, waterMat as sharedWater, ripples } from './kit.js';
+import { U, env, B, mat, geos, part, rng, windy, buildItem, buildGino, textSprite, waterMat as sharedWater, ripples } from './kit.js';
 
 const CELL = 2, GW = 16, GH = 10, WATER_Y = -0.3;
 const LAKE = { x: 7, z: -29, r: 13 };
@@ -419,15 +419,23 @@ export function createWorld(container, tooltip, opts = {}) {
   const boardFront = () => board.localToWorld(new THREE.Vector3(0, 0, 2.2)).setY(0);
   let camGoal = null;
 
+  // a little open book floats over things that have a story, so visitors know they can click them
+  function keepsakeMark(o) {
+    const s = textSprite('📖', 84); s.scale.set(0.55, 0.55, 1); s.renderOrder = 2; s.userData.bob = true; s.userData.noAO = true;
+    const box = new THREE.Box3().setFromObject(o); s.userData.bobY = Math.min(Math.max(box.max.y, 0.8), 4.5) + 0.45; s.position.set(0, s.userData.bobY, 0);
+    s.traverse(n => { n.userData.item = o.userData.item; }); o.add(s);
+  }
+
   function update(s) {
     state = s; weather = weatherOverride || s.weather?.kind || 'clear'; env.art = s.art || [];
     const seen = new Set();
     for (const it of s.habitat) {
       seen.add(it.id);
-      const sig = [it.name, it.emoji, it.kind, it.color, it.size].join('|');
+      const sig = [it.name, it.emoji, it.kind, it.color, it.size, !!it.story].join('|');
       let o = itemObjs.get(it.id);
       if (o && o.userData.sig !== sig) { itemsGroup.remove(o); dispose(o); o = null; }
-      if (!o) { o = buildItem(it); o.userData.sig = sig; itemsGroup.add(o); itemObjs.set(it.id, o); o.scale.setScalar(placed ? 0.01 : Math.min(2.5, Math.max(0.4, it.size || 1))); o.userData.grow = Math.min(2.5, Math.max(0.4, it.size || 1)); }
+      if (o) o.traverse(n => { n.userData.item = it; });   // a story can change without the shape changing
+      if (!o) { o = buildItem(it); o.userData.sig = sig; if (it.story) keepsakeMark(o); itemsGroup.add(o); itemObjs.set(it.id, o); o.scale.setScalar(placed ? 0.01 : Math.min(2.5, Math.max(0.4, it.size || 1))); o.userData.grow = Math.min(2.5, Math.max(0.4, it.size || 1)); }
       const x = cellX(it.x), z = cellZ(it.y); o.position.set(x, groundY(x, z) + (o.userData.kind === 'boat' ? 0 : 0), z);
     }
     for (const [id, o] of itemObjs) if (!seen.has(id)) { itemsGroup.remove(o); dispose(o); itemObjs.delete(id); }
@@ -557,7 +565,7 @@ export function createWorld(container, tooltip, opts = {}) {
     itemsGroup.traverse(nd => {
       const u = nd.userData;
       if (u.flame) { nd.scale.y = u.flame * (0.9 + Math.sin(t * 13 + u.flame * 9) * 0.14 + Math.sin(t * 7.3) * 0.08); nd.rotation.y = t * 2; }
-      else if (u.bob) nd.position.y = 1.05 + Math.sin(t * 1.4 + nd.id) * 0.08;
+      else if (u.bob) nd.position.y = (u.bobY ?? 1.05) + Math.sin(t * 1.4 + nd.id) * 0.08;
       else if (u.spin) nd.rotation.z = t * u.spin;
       else if (u.swing) nd.rotation[u.axis || 'x'] = Math.sin(t * 1.3 + nd.id) * u.swing;
       else if (u.wobble !== undefined) nd.rotation.z = Math.sin(t * 1.6 + u.wobble) * 0.09;
@@ -630,8 +638,8 @@ export function createWorld(container, tooltip, opts = {}) {
     if (h.gino) text = 'Gino' + (doing() ? ' · ' + doing() : '') + (opts.petHint ?? ' (click to pet)');
     else if (h.piece) text = `${h.piece.kind === 'dream' ? '🌙' : h.piece.img ? '🎨' : '📝'} “${h.piece.title}”, ${h.piece.kind === 'dream' ? 'a painting of a dream' : h.piece.img ? 'a drawing' : 'a ' + h.piece.kind} by Gino · click to ${h.piece.img ? 'look' : 'read'}`;
     else if (h.board) text = "📌 Gino's creations board";
-    else if (h.item) text = `${h.item.emoji || ''} ${h.item.name}${h.item.description ? ' — ' + h.item.description : ''}`;
-    tooltip.textContent = text; tooltip.style.display = text ? 'block' : 'none'; el.style.cursor = h.gino || h.piece ? 'pointer' : 'grab';
+    else if (h.item) text = `${h.item.emoji || ''} ${h.item.name}${h.item.description ? ' — ' + h.item.description : ''}${h.item.story && opts.onItem ? ' · 📖 click for its story' : ''}`;
+    tooltip.textContent = text; tooltip.style.display = text ? 'block' : 'none'; el.style.cursor = h.gino || h.piece || (h.item?.story && opts.onItem) ? 'pointer' : 'grab';
     tooltip.style.left = Math.min(h.r.width - 240, Math.max(8, ev.clientX - h.r.left + 14)) + 'px'; tooltip.style.top = (ev.clientY - h.r.top + 14) + 'px';
   });
   el.addEventListener('pointerleave', () => { tooltip.style.display = 'none'; });
@@ -641,6 +649,7 @@ export function createWorld(container, tooltip, opts = {}) {
     const h = hit(ev);
     if (h.gino) { hop = 1; heartT = timer.getElapsed(); opts.onPet?.(); }
     else if (h.piece) opts.onPiece?.(h.piece);
+    else if (h.item?.story) opts.onItem?.(h.item);
   });
   el.addEventListener('dblclick', ev => { const h = hit(ev); if (h.gino) return; if (h.board) { api.showBoard(); return; } if (h.item) { const o = itemObjs.get(h.item.id); if (o) { focus = o.position.clone().setY(o.position.y + 1); follow = false; opts.onFollow?.(false); } } });
 
