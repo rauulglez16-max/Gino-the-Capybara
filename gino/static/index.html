@@ -78,6 +78,9 @@ dialog pre{white-space:pre-wrap;font:inherit}
 #recap h4{margin:10px 0 2px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 #recap ul{margin:0;padding-left:18px}
 #recap .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.period .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.period .thumbs img{width:88px;height:88px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--line)}
+.swatch{display:flex;height:14px;max-width:280px;border-radius:7px;overflow:hidden;margin:6px 0}.swatch i{flex:1}
+.fam-red{background:#d9463e}.fam-orange{background:#f08a2c}.fam-yellow{background:#f2c94c}.fam-green{background:#5aa86b}.fam-teal{background:#2fa3a0}.fam-blue{background:#3f7fd6}.fam-purple{background:#8a5cc9}.fam-pink{background:#e276a8}.fam-brown{background:#8a5a33}.fam-white{background:#f6f1e6}.fam-black{background:#2a2420}.fam-grey{background:#9a948c}
 #recap .thumbs img{width:88px;height:88px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--line)}
 #recap blockquote{margin:6px 0 0;padding-left:12px;border-left:3px solid var(--accent);white-space:pre-wrap;font-style:italic}
 </style>
@@ -204,7 +207,7 @@ $('#chatForm').onsubmit = async e => {
 };
 $('#giftBtn').onclick = async () => { await api('/api/gift', {method: 'POST', body: JSON.stringify({food: $('#food').value})}); refresh(); };
 
-const TABS = [['events','Activity'],['journal','Diary'],['creations','Creations'],['dreams','Dreams'],['goals','Goals'],['memories','Memories'],['about','About Gino']];
+const TABS = [['events','Activity'],['journal','Diary'],['creations','Creations'],['art','Art periods'],['dreams','Dreams'],['keepsakes','Keepsakes'],['goals','Goals'],['memories','Memories'],['about','About Gino']];
 let tab = 'events';
 $('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('');
 $('#tabs').onclick = e => { const k = e.target.dataset.k; if (k) { tab = k; renderTab(); } };
@@ -222,6 +225,7 @@ async function renderTab() {
     P.innerHTML = Object.keys(me).length ? Object.entries(me).map(([k, v]) => `<p><strong>${esc(k.replace('_', ' '))}:</strong> ${esc(v)}</p>`).join('') : '<p class="muted">Gino hasn\'t described himself yet.</p>';
     return;
   }
+  if (tab === 'keepsakes' || tab === 'art') { renderLife(P, await api('/api/life')); return; }
   const rows = await api(`/api/feed?kind=${tab}&limit=100`);
   if (tab === 'creations') {
     P.innerHTML = `<div class="gallery">${rows.map(r => `<div class="art" data-f="${esc(r.filename)}" data-t="${esc(r.title)}" data-n="${esc(r.note)}" data-k="${esc(r.kind)}">${r.kind === 'svg' ? `<img alt="${esc(r.title)}" src="/creations/${esc(r.filename)}?key=${encodeURIComponent(key())}">` : `<div class="txt" data-load="${esc(r.filename)}"></div>`}<strong>${esc(r.title)}</strong><div class="muted" style="font-size:12px">${esc(r.kind)} · ${when(r.ts)}</div></div>`).join('')}</div>` || '<p class="muted">Nothing yet.</p>';
@@ -250,6 +254,40 @@ async function renderTab() {
     : tab === 'memories' ? `<div class="item"><time>${when(r.ts)}</time>${'★'.repeat(r.importance)} ${esc(r.text)}</div>`
     : `<div class="item"><time>${when(r.ts)}</time>${esc(r.text)}</div>`;
   P.innerHTML = `<div class="feed">${rows.map(line).join('') || '<p class="muted">Nothing here yet.</p>'}</div>`;
+}
+
+// Keepsakes (things with stories, dream inventions, time capsules) and his art periods
+const img = f => `/creations/${encodeURIComponent(f)}?key=${encodeURIComponent(key())}`;
+const day = ts => new Date(ts * 1000).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'});
+function renderLife(P, L) {
+  if (tab === 'art') {
+    P.innerHTML = L.periods.map(p => `<div class="item period"><h4 style="margin:0 0 2px">🎨 ${esc(p.name)}</h4>
+      <div class="muted" style="font-size:13px">${day(p.started)} – ${p.ended ? day(p.ended) : 'now'} · ${p.count} drawing${p.count === 1 ? '' : 's'}</div>
+      <div class="swatch">${(p.palette.length ? p.palette.map(c => `<i style="background:${/^#[0-9a-f]{6}$/i.test(c) ? c : '#ccc'}"></i>`) : p.colours.map(([k]) => `<i title="${esc(k)}" class="fam-${esc(k)}"></i>`)).join('')}</div>
+      ${p.why ? `<div>${esc(p.why)}</div>` : ''}
+      ${p.colours.length ? `<div class="muted" style="font-size:13px">What his drawings actually use: ${p.colours.map(([k, v]) => `${esc(k)} ${Math.round(v * 100)}%`).join(', ')}</div>` : ''}
+      ${p.symbols.length ? `<div class="muted" style="font-size:13px">Symbols: ${p.symbols.map(esc).join(', ')}</div>` : ''}
+      <div class="thumbs">${p.drawings.map(d => `<img alt="${esc(d.title)}" title="${esc(d.title)}" src="${img(d.filename)}">`).join('')}</div></div>`).join('')
+      || '<p class="muted">No art periods yet. Once Gino has a few drawings he\'ll name his first one himself.</p>';
+    return;
+  }
+  const status = {dreamed: '💭 just an idea', building: '🔨 being built', built: '✅ built', abandoned: '🍂 let go'};
+  const inv = L.inventions.map(i => `<div class="item"><time>${when(i.ts)}</time><span class="pill">${status[i.status] || ''}</span>
+    <h4 style="margin:6px 0">${esc(i.emoji)} ${esc(i.name)} <span class="muted" style="font-weight:400">(${i.sessions} of ~${i.needed} sessions)</span></h4>
+    ${i.sketch ? `<img alt="Gino's sketch" style="width:min(100%,220px);display:block;border-radius:10px;margin:6px 0;background:#fff" src="${img(i.sketch)}">` : ''}
+    <div style="font-style:italic">${esc(i.idea)}</div>${i.twist ? `<div style="font-size:13px">🌀 It came out different: ${esc(i.twist)}</div>` : ''}
+    ${i.opinion ? `<div style="font-size:13px">💬 ${esc(i.opinion)}</div>` : ''}${i.log ? `<pre>${esc(i.log)}</pre>` : ''}</div>`).join('');
+  const caps = L.capsules.map(c => `<div class="item"><time>${when(c.ts)}</time>${c.opened
+    ? `<span class="pill">📜 opened ${day(c.opened)}</span><div>Favourite thing: ${esc(c.favourite)}</div><div>Prediction: “${esc(c.prediction)}”</div>${c.letter ? `<div>Letter: “${esc(c.letter)}”</div>` : ''}${c.reflection ? `<div>💭 When he opened it: “${esc(c.reflection)}”</div>` : ''}`
+    : `<span class="pill">🕰️ sealed</span> Opens ${day(c.open_after)}. Even you can't peek until then.`}</div>`).join('');
+  const keep = L.keepsakes.filter(k => !/^(capsule|invention):/.test(k.origin)).map(k => `<div class="item"><time>${when(k.ts)}</time><strong>${esc(k.emoji)} ${esc(k.name)}</strong><div style="font-style:italic">${esc(k.story)}</div></div>`).join('');
+  P.innerHTML = `<h4>📖 Keepsakes in his home</h4><div class="feed">${keep || '<p class="muted">Nothing yet. When something matters to Gino, he may build something to remember it by.</p>'}</div>
+    <h4>💭 Dream inventions</h4><div class="feed">${inv || '<p class="muted">No inventions yet. Now and then a dream invents something new.</p>'}</div>
+    <h4>🕰️ Time capsules</h4><div class="feed">${caps || '<p class="muted">No time capsules yet.</p>'}</div>`;
+}
+function showKeepsake(it) {
+  $('#dlgTitle').textContent = `${it.emoji || ''} ${it.name}`; $('#dlgNote').textContent = '';
+  $('#dlgBody').innerHTML = `<p style="font-style:italic;white-space:pre-wrap">${esc(it.story)}</p>`; $('#dlg').showModal();
 }
 
 // "Since your last visit": what Gino did while you were away
@@ -297,6 +335,7 @@ setInterval(() => { if (!document.hidden) { refresh(); loadChat(); } }, 30000);
     const w = m.createWorld($('#world'), $('#tip'), {
       season: new URLSearchParams(location.search).get('season') || lastState.weather?.season, key: key(),
       onPet: () => api('/api/pet', {method: 'POST'}).then(refresh).catch(() => {}),
+      onItem: it => showKeepsake(it),
       autoQuality: !new URLSearchParams(location.search).has('hq'),
       onQuality: q => { $('#qBtn').textContent = 'Quality: ' + q; },
       onFollow: v => { f = v; $('#followBtn').textContent = f ? 'Free camera' : 'Follow Gino'; },

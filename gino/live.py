@@ -1,7 +1,7 @@
 """Gino's live habitat: anyone can watch him in his 3D world at /live, nobody can talk to him there.
 
 Visitors only ever see a small, filtered slice of his state: where he is, what he's doing, how he feels,
-his habitat, the drawings and poems he already put on his public website and the newest line of his public diary. No chats, no thoughts, no memories,
+his habitat (and the stories behind his keepsakes), the drawings and poems he already put on his public website and the newest line of his public diary. No chats, no thoughts, no memories,
 no journal, nothing about dad. Every bit of text Gino wrote goes through public.check() first, the same
 filter his public website uses. There are no write endpoints here: chatting, gifts and petting stay
 behind the password on the private page.
@@ -13,7 +13,7 @@ import time
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from . import config, db, public, vitals
+from . import config, db, keepsakes, public, vitals
 
 router = APIRouter()
 STATIC = config.ROOT / "gino" / "static"
@@ -107,7 +107,7 @@ def build() -> dict:
     now = time.time()
     asleep = vitals.is_asleep(body, now)
     habitat = []
-    for it in db.q("SELECT id,name,emoji,x,y,description,kind,color,size FROM habitat ORDER BY id"):
+    for it in db.q("SELECT id,ts,name,emoji,x,y,description,kind,color,size,story,origin FROM habitat ORDER BY id"):
         kind = it["kind"] or ""
         habitat.append({
             "id": it["id"], "x": it["x"], "y": it["y"], "kind": kind, "size": it["size"],
@@ -115,6 +115,8 @@ def build() -> dict:
             "emoji": _clean(it["emoji"], 8),
             "color": it["color"] if re.fullmatch(r"#[0-9a-fA-F]{6}", it["color"] or "") else "",
             "description": _clean(it["description"], 200),
+            # a keepsake's story (the memory behind it), checked by the same privacy filter as his website
+            **({"story": keepsakes.public_story(it), "since": keepsakes.when(it["ts"])} if it["story"] else {}),
         })
     # only drawings he already chose to show on a public page (served by /blog/art/<id>.svg)
     art = [f"/blog/art/{r['id']}.svg" for r in db.q(

@@ -2,7 +2,7 @@
 import re
 import time
 
-from . import config, db, dreams, public, shop, social, telegram, vitals, whatsapp
+from . import artstyle, capsules, config, db, dreams, inventions, public, shop, social, telegram, vitals, whatsapp
 
 GRID_W, GRID_H = 16, 10
 
@@ -45,14 +45,20 @@ TOOLS = [
        "hills and forest, and dad can fly around it and see everything you make. Costs energy. Pick a 'kind' to "
        "choose its 3D shape; anything else you invent appears as its emoji on a little plinth. You can swim in a "
        "pond by walking onto it. Lamps, campfires and house windows glow at night. An easel or gallery shows "
-       "your latest drawings. A garden makes foraging better.",
+       "your latest drawings. A garden makes foraging better. If it marks something that matters to you (a memory, "
+       "a habit, a passion, a day you don't want to forget) give it a 'story': visitors can click it and read why "
+       "it's there.",
        {"name": S, "emoji": {**S, "description": "One emoji that looks like it"}, "x": I, "y": I,
         "kind": {"type": "string", "enum": KINDS, "description": "3D shape. 'auto' guesses from the name."},
         "color": {**S, "description": "Optional main colour as hex, e.g. #e0705a"},
         "size": {"type": "number", "description": "Optional scale, 0.5 (small) to 2.5 (huge). Default 1."},
-        "description": S}, ["name", "emoji", "x", "y"]),
-    _t("restyle_item", "Change the look of something you built: its 3D kind, colour or size.",
-       {"item_id": I, "kind": {"type": "string", "enum": KINDS}, "color": S, "size": {"type": "number"}}, ["item_id"]),
+        "description": S,
+        "story": {**S, "description": "Optional: the memory or meaning behind it, in a few sentences of your own. "
+                  "Shown to anyone who clicks it in your world, so no private things (no dad, no chats)."}},
+       ["name", "emoji", "x", "y"]),
+    _t("restyle_item", "Change something you built: its 3D kind, colour, size, or the story behind it.",
+       {"item_id": I, "kind": {"type": "string", "enum": KINDS}, "color": S, "size": {"type": "number"},
+        "story": {**S, "description": "The memory or meaning behind it (replaces its old story)"}}, ["item_id"]),
     _t("move_item", "Move something in your habitat.", {"item_id": I, "x": I, "y": I}, ["item_id", "x", "y"]),
     _t("remove_item", "Take something out of your habitat.", {"item_id": I}, ["item_id"]),
     _t("walk_to", "Walk to a spot in your habitat.", {"x": I, "y": I}, ["x", "y"]),
@@ -61,8 +67,39 @@ TOOLS = [
        {"kind": {"type": "string", "enum": ["poem", "story", "song", "essay", "recipe", "idea", "code", "svg"]},
         "title": S, "content": S, "note": {**S, "description": "Why you made it / how you feel about it"},
         "dream_id": {**I, "description": "Optional: if this is a painting (or poem...) of one of your dreams, "
-                     "that dream's number"}},
+                     "that dream's number"},
+        "invention_id": {**I, "description": "Optional: if this is a sketch of one of your dream inventions, its "
+                         "number"}},
        ["kind", "title", "content"]),
+    _t("work_on_invention", "Work on building one of your dream inventions: one work session (costs energy). It "
+       "takes a few sessions over several days, with rests in between. On the last session it appears in your "
+       "world, near you or at x,y. It may not come out exactly like the dream. Also use it to say what you think "
+       "of a finished invention (opinion), or to let one go (give_up).",
+       {"invention_id": I, "note": {**S, "description": "What you did this session"},
+        "x": I, "y": I, "opinion": {**S, "description": "What you think of how it turned out"},
+        "give_up": {"type": "boolean"}}, ["invention_id"]),
+    _t("art_period", "Name a new period in your art, the way painters have a 'blue period': what your art is about "
+       "right now. It closes the period before. Periods last days or weeks, so only when your art has truly "
+       "moved on. Your drawings are filed under it and visitors can browse your periods on your website.",
+       {"name": {**S, "description": "e.g. 'the pond phase', 'my strange moon phase'"},
+        "why": {**S, "description": "What changed, in your own words"},
+        "palette": {"type": "array", "items": S, "description": "2 to 6 hex colours you're drawn to, e.g. #e0705a"},
+        "symbols": {"type": "array", "items": S, "description": "Things that keep turning up in your art"},
+        "shapes": {"type": "array", "items": S, "description": "Shapes or textures you love right now"},
+        "rename": {"type": "boolean", "description": "true just renames/refines the current period"}}, ["name"]),
+    _t("seal_time_capsule", "Bury a time capsule for future you, to dig up weeks from now. Put in your favourite "
+       "thing right now, a prediction about future you, a few words to future you, and maybe one of your drawings. "
+       "A snapshot of who you are today goes in too. It's a little mound in your world while it waits, and you "
+       "can't open it before the day you choose. Rare and special: not more than one every week or so.",
+       {"favourite_thing": S, "prediction": {**S, "description": "What you think you'll be doing or caring about "
+                                                                 "when you open it"},
+        "letter": {**S, "description": "A few words to future you"},
+        "creation_id": {**I, "description": "Optional: a drawing or poem to put in"},
+        "open_in_days": {**I, "description": "14 to 90 days. Default 30."}, "x": I, "y": I},
+       ["favourite_thing", "prediction"]),
+    _t("open_time_capsule", "Dig up a time capsule that's ready. The first time shows what's inside and how you've "
+       "changed. Then call it again with your reflection: what you think, meeting past you.",
+       {"capsule_id": I, "reflection": S}, ["capsule_id"]),
     _t("write_journal", "Write in your private diary.", {"entry": S}, ["entry"]),
     _t("remember", "Save something to long-term memory so future you knows it.",
        {"text": S, "importance": {**I, "description": "1-5"},
@@ -196,23 +233,32 @@ def run(name: str, a: dict, body: dict) -> str:
             return f"Something is already at ({x},{y}). Some free spots: {free}"
         name_ = str(a.get("name", "thing"))[:40]
         kind, color, size = _look(a)
-        iid = db.x("INSERT INTO habitat(ts,name,emoji,x,y,description,kind,color,size) VALUES(?,?,?,?,?,?,?,?,?)",
+        story = " ".join(str(a.get("story") or "").split())[:1500]
+        iid = db.x("INSERT INTO habitat(ts,name,emoji,x,y,description,kind,color,size,story,origin) "
+                   "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                    (now, name_, str(a.get("emoji", "📦"))[:4], x, y, str(a.get("description", ""))[:300],
-                    kind, color, size))
+                    kind, color, size, story, "memory" if story else ""))
         body["energy"] = vitals.clamp(body["energy"] - 5)
         body["fun"] = vitals.clamp(body["fun"] + 4)
         body["pos"] = [x, y]
         body["activity"] = f"building a {name_}"
-        db.event("build", f"built {name_} at ({x},{y})")
-        return f"Built {name_} (id {iid}) at ({x},{y})."
+        db.event("build", f"built {name_} at ({x},{y})" + (" to remember something" if story else ""))
+        return f"Built {name_} (id {iid}) at ({x},{y})." + (" Its story is with it now." if story else "")
     if name == "restyle_item":
         iid = int(a.get("item_id", 0))
-        rows = db.q("SELECT kind,color,size FROM habitat WHERE id=?", (iid,))
+        rows = db.q("SELECT kind,color,size,origin FROM habitat WHERE id=?", (iid,))
         if not rows:
             return f"No item {iid}."
         kind, color, size = _look({**rows[0], **{k: v for k, v in a.items() if v not in (None, "")}})
+        if rows[0]["kind"] == "capsule":
+            kind = "capsule"  # a buried time capsule keeps its look
         db.x("UPDATE habitat SET kind=?, color=?, size=? WHERE id=?", (kind, color, size, iid))
-        return f"Item {iid} restyled."
+        story = " ".join(str(a.get("story") or "").split())[:1500]
+        if story:
+            db.x("UPDATE habitat SET story=?, origin=CASE WHEN origin='' THEN 'memory' ELSE origin END WHERE id=?",
+                 (story, iid))
+            db.event("build", f"gave something in his home a story (item {iid})")
+        return f"Item {iid} restyled." + (" Its story is with it now." if story else "")
     if name == "move_item":
         iid = int(a.get("item_id", 0))
         x, y = _cell(a.get("x"), GRID_W), _cell(a.get("y"), GRID_H)
@@ -249,9 +295,21 @@ def run(name: str, a: dict, body: dict) -> str:
         body["fun"] = vitals.clamp(body["fun"] + 12)
         body["energy"] = vitals.clamp(body["energy"] - 3)
         dreamt = dreams.link_painting(a["dream_id"], cid) if a.get("dream_id") not in (None, "", 0) else ""
+        if a.get("invention_id") not in (None, "", 0):
+            dreamt += inventions.link_sketch(a["invention_id"], cid)
+        if kind == "svg":
+            artstyle.tag(cid)
         body["activity"] = (f"painting a dream: {title}" if dreamt and kind == "svg" else f"creating a {kind}: {title}")
         db.event("create", f"made a {kind}: {title}")
         return f"Saved your {kind} '{title}' (creation #{cid}).{dreamt} It feels good to make things."
+    if name == "work_on_invention":
+        return inventions.work(body, a)
+    if name == "art_period":
+        return artstyle.start_period(a)
+    if name == "seal_time_capsule":
+        return capsules.seal(body, a)
+    if name == "open_time_capsule":
+        return capsules.open_capsule(body, a)
     if name == "write_journal":
         db.x("INSERT INTO journal(ts,text,emotion) VALUES(?,?,?)",
              (now, str(a.get("entry", ""))[:5000], body.get("emotion")))

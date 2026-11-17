@@ -109,7 +109,7 @@ html,body{margin:0;height:100%;background:#9fd0ea;color:var(--ink);font:15px/1.4
   <h1>Gino <span class="live" id="liveTag"><i></i>Live</span></h1>
   <div id="meta"></div>
   <div id="bars"></div>
-  <p id="note">You're watching Gino's world as it happens. He keeps his conversations private. <a href="/blog">Read his diary</a></p>
+  <p id="note">You're watching Gino's world as it happens. He keeps his conversations private. Things with a 📖 have a story: click them. <a href="/blog">Read his diary</a></p>
 </section>
 <section id="bubble" class="card" aria-live="polite">
   <svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="18" cy="24" rx="13" ry="9" fill="#8a5a33"/><ellipse cx="29" cy="17" rx="8" ry="7" fill="#8a5a33"/><ellipse cx="34" cy="19" rx="3.5" ry="3" fill="#6b4423"/><circle cx="29" cy="15" r="1.5" fill="#1d130b"/><ellipse cx="25" cy="10.5" rx="2" ry="2.4" fill="#6b4423"/></svg>
@@ -234,6 +234,16 @@ function openPiece(p, from) {
   $('#vFoot').innerHTML = /^\/blog\/page\/[\w-]+$/.test(p.page || '') ? `<a href="${esc(p.page)}">See it on his website</a>` : '';
   $('#viewer').classList.add('open'); $('#vClose').focus();
 }
+// keepsakes: things in his world that carry a story (already checked for privacy by the server)
+function openKeepsake(it, from) {
+  if (!it?.story) return; back = from || document.activeElement;
+  const what = it.kind === 'capsule' ? 'A time capsule' : it.description === 'A dream invention' ? 'A dream invention' : 'A keepsake';
+  $('#vTitle').textContent = `${it.emoji || ''} ${it.name}`.trim();
+  $('#vKind').textContent = it.kind === 'capsule' || !it.since ? what : `${what} · built ${it.since}`;
+  $('#vBody').innerHTML = `<p class="poem story">${esc(it.story)}</p>`;
+  $('#vFoot').textContent = '';
+  $('#viewer').classList.add('open'); $('#vClose').focus();
+}
 const closeViewer = () => { $('#viewer').classList.remove('open'); back?.focus?.(); };
 $('#vClose').onclick = closeViewer;
 $('#viewer').addEventListener('click', e => { if (e.target.id === 'viewer') closeViewer(); });
@@ -311,6 +321,7 @@ try {
     season: state.weather?.season, clock: gHour, petHint: '',
     onFollow: v => { follow = v; $('#followBtn').textContent = v ? 'Free camera' : 'Follow Gino'; },
     onPiece: p => openPiece(p),
+    onItem: it => openKeepsake(it),
   });
   world.update(state); wallKey = null; mapKey = ''; drawWall(state); drawMap(state); world.setFollow(true); window.ginoWorld = world;
   $('#followBtn').onclick = () => { follow = !follow; world.setFollow(follow); $('#followBtn').textContent = follow ? 'Free camera' : 'Follow Gino'; };

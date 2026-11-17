@@ -18,7 +18,7 @@ import logging
 import random
 import time
 
-from . import config, db, vitals
+from . import config, db, inventions, vitals
 
 log = logging.getLogger("gino.dreams")
 
@@ -49,6 +49,7 @@ DREAM_TOOL = {
             "longing": {"type": "string", "description": "What the dream leaves you wanting, wondering or "
                         "afraid of, in one sentence. Or 'nothing' if it was just a dream."},
             "sources": {"type": "string", "description": "Which real memories it seems to come from (your guess)"},
+            "invention": inventions.DREAM_FIELD,
         },
         "required": ["title", "story", "symbols", "feeling", "longing"],
     },
@@ -117,7 +118,7 @@ def fragments(body: dict) -> dict:
     }
 
 
-def prompt(body: dict, level: int, f: dict) -> str:
+def prompt(body: dict, level: int, f: dict, invent: bool = False) -> str:
     def block(title, items):
         return f"\n{title}:\n" + ("\n".join(f"- {i}" for i in items) if items else "- (nothing)")
     parts = [
@@ -139,6 +140,8 @@ def prompt(body: dict, level: int, f: dict) -> str:
         parts.append("Your body is " + ", ".join(f["body"]) + ", and that leaks into the dream.")
     if f["recurring"]:
         parts.append(f"A dream you had before is coming back, changed: \"{f['recurring']['title']}\".")
+    if invent:
+        parts.append(inventions.INVENT_PROMPT)
     parts.append(
         "\nDreams can be joyful, funny, tender, eerie or a little unsettling, like real dreams. Keep them "
         "gentle enough for a young capybara: no gore or cruelty. Don't explain the dream inside it. "
@@ -159,7 +162,8 @@ def dream_now() -> int | None:
         vitals.save(body)
         level = _pick_strangeness(body)
         f = fragments(body)
-        text = prompt(body, level, f)
+        invent = inventions.should_invent(level)
+        text = prompt(body, level, f, invent)
         max_tokens = 4000
         if not config.FAKE_BRAIN:  # the dream must fit in what's left of today's budget, worst case included
             from . import budget
@@ -169,7 +173,7 @@ def dream_now() -> int | None:
             db.event("sleep", "Gino slept too deeply to dream (thinking budget used up for today).")
             return None
         if config.FAKE_BRAIN:
-            d = fake_dream(f, level)
+            d = fake_dream(f, level, invent)
         else:
             d = _ask_claude(brain, text, max_tokens)
             if not d:
@@ -225,6 +229,8 @@ def save(body: dict, d: dict, level: int) -> int:
     db.x("INSERT INTO memories(ts,text,importance,tags) VALUES(?,?,?,?)",
          (now, keep[:1000], 4 if level == 5 else 3, "dream"))
     db.event("dream", ("had a vision in his sleep: " if level == 5 else "dreamed: ") + title)
+    if d.get("invention"):
+        inventions.from_dream(did, d["invention"])
     return did
 
 
@@ -260,7 +266,8 @@ def waking_lines(did: int) -> str:
              "soft gradients, blur and turbulence filters (<feGaussianBlur>, <feTurbulence>), things melting into "
              "each other. You could also write it in your diary, put the painting on your website, or tell dad. "
              "If it left you wanting something, let it change you if it feels true: update_self (your dreams or "
-             "passions) or set_goal. Or shrug it off: not every dream means something."]
+             "passions) or set_goal. Or shrug it off: not every dream means something.",
+             inventions.waking_lines(d["id"])]
     return "\n".join(x for x in lines if x)
 
 
@@ -316,7 +323,7 @@ def link_painting(dream_id, creation_id: int) -> str:
 
 # ---------------------------------------------------------------- practice brain (no API key)
 
-def fake_dream(f: dict, level: int) -> dict:
+def fake_dream(f: dict, level: int, invent: bool = False) -> dict:
     """A simple dream made from his own fragments, so dreaming works without an API key."""
     pool = list(dict.fromkeys(f["home"] + f["goals"] + ["a watermelon", "the moon", "a sunflower"]))
     a, b = random.sample(pool, 2) if len(pool) >= 2 else ("the pond", "the moon")
@@ -327,4 +334,14 @@ def fake_dream(f: dict, level: int) -> dict:
             "story": f"I'm walking towards {a}, {twist}. Then {b} is there too, much bigger than it should be. "
                      "I sit and watch it for a long time. It feels important but I don't know why.",
             "colours": "soft blues and gold", "longing": f"I want to understand why I dreamed of {a}.",
-            "sources": "today"}
+            "sources": "today", **({"invention": random.choice(FAKE_INVENTIONS)} if invent else {})}
+
+
+FAKE_INVENTIONS = [
+    {"name": "mushroom lantern", "idea": "A big spotty mushroom whose cap glows softly at night, so the path home "
+     "is never dark.", "made_from": ["a mushroom", "a lamp"], "emoji": "🍄", "looks_like": "mushroom"},
+    {"name": "floating veggie garden", "idea": "A little garden that drifts on the pond like a raft, so I can "
+     "snack while I swim.", "made_from": ["the garden", "the pond", "a raft"], "emoji": "🥕", "looks_like": "garden"},
+    {"name": "underwater telescope", "idea": "A telescope that points down into the pond instead of up at the "
+     "stars, to see the fish's sky.", "made_from": ["a telescope", "the pond"], "emoji": "🔭", "looks_like": "telescope"},
+]
