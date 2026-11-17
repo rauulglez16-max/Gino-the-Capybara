@@ -6,7 +6,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
-from . import config, db, dreams, public, shop, social, tools, vitals
+from . import budget, config, continuity, db, dreams, public, shop, social, tools, vitals
 
 log = logging.getLogger("gino.brain")
 mind_lock = threading.Lock()  # one thought at a time
@@ -47,6 +47,11 @@ Using your tools:
   and stars that follow dad's clock, real weather and seasons. Dad can fly around it, pet you, and see your \
   drawings hanging on any easel or gallery you build. Build it thoughtfully: plan where things go, choose shapes, colours and sizes, \
   walk around it, swim in your pond, and make it feel like home.
+- Let your days add up. When something grabs you, tag the memories about it with the same topic words \
+  (remember's tags) so it can grow into a lasting interest. Big passions deserve projects that take days: \
+  set a goal with real steps, do a step or two per turn, log each one with update_goal, and come back to it \
+  over the following days. Let what you learn feed what you make: study the moon for a few evenings, build a \
+  telescope, then paint what you saw. Older memories that connect to your projects will come back to you.
 - End each turn with set_next_wake (how long until you want another turn) or sleep. Sleep at night, \
   roughly when dad would. Short turns are fine: 2-6 actions is a good turn.
 
@@ -106,10 +111,10 @@ def context(body: dict) -> str:
     me = db.get("self", {})
     age_days = (time.time() - body.get("born", time.time())) / 86400
     habitat = db.q("SELECT id,name,emoji,x,y FROM habitat ORDER BY id")
-    goals = db.q("SELECT id,title,why,steps,progress FROM goals WHERE status='active' ORDER BY id")
+    goals = db.q("SELECT id,ts,updated,title,why,steps,progress FROM goals WHERE status='active' ORDER BY id")
     done = db.q("SELECT title FROM goals WHERE status='done' ORDER BY updated DESC LIMIT 5")
-    important = db.q("SELECT ts,text FROM memories WHERE importance>=4 ORDER BY ts DESC LIMIT 12")
-    recent_mem = db.q("SELECT ts,text FROM memories WHERE importance<4 ORDER BY ts DESC LIMIT 10")
+    important = db.q("SELECT id,ts,text FROM memories WHERE importance>=4 ORDER BY ts DESC LIMIT 12")
+    recent_mem = db.q("SELECT id,ts,text FROM memories WHERE importance<4 ORDER BY ts DESC LIMIT 10")
     journal = db.q("SELECT ts,text FROM journal ORDER BY ts DESC LIMIT 3")
     chat = list(reversed(db.q("SELECT ts,sender,text FROM chat ORDER BY ts DESC LIMIT 12")))
     events = list(reversed(db.q("SELECT ts,kind,text FROM events ORDER BY ts DESC LIMIT 18")))
@@ -128,9 +133,10 @@ def context(body: dict) -> str:
         "\n## About me\n" + ("\n".join(f"- {k}: {val}" for k, val in me.items()) or "(not written yet: who are you?)"),
         "\n## Your 3D world (16x10 meadow)\n" + ("\n".join(f"- #{h['id']} {h['emoji']} {h['name']} at ({h['x']},{h['y']})"
                                          for h in habitat) or "Empty grass. Nothing built yet."),
-        "\n## Active goals\n" + ("\n".join(f"- #{g['id']} {g['title']} (why: {g['why']}) steps: {g['steps']}\n"
-                                           f"  progress: {g['progress'][-400:] or 'none yet'}" for g in goals)
-                                 or "None. What do you want?"),
+        "\n## Active goals and projects\n" + ("\n".join(
+            f"- #{g['id']} {g['title']} (why: {g['why']}) steps: {g['steps']}\n"
+            f"  {continuity.goal_line(g)}\n  progress: {g['progress'][-600:] or 'none yet'}" for g in goals)
+            or "None. What do you want?"),
     ]
     if done:
         lines.append("Achieved: " + "; ".join(d["title"] for d in done))
@@ -138,6 +144,9 @@ def context(body: dict) -> str:
                                                or "none"))
     lines.append("## Recent memories\n" + ("\n".join(f"- ({ago(m['ts'])}) {m['text']}" for m in recent_mem)
                                           or "none"))
+    past = continuity.context_lines(goals, {m["id"] for m in important + recent_mem})
+    if past:
+        lines.append(past)
     if journal:
         lines.append("\n## Your last diary entries\n" + "\n".join(f"- ({ago(j['ts'])}) {j['text'][:600]}"
                                                                  for j in journal))
@@ -202,13 +211,32 @@ def call(model: str, messages: list, tool_list: list, max_tokens: int = 16000):
     return client().beta.messages.create(**kwargs)
 
 
-def run_loop(purpose: str, model: str, prompt: str, body: dict, tool_list: list) -> str:
-    """Let Gino act with tools until he's done. Returns his final words."""
+class Thought(str):
+    """Gino's final words from a run_loop, plus whether he had to stop because the budget ran out."""
+    out_of_budget = False
+
+
+def run_loop(purpose: str, model: str, prompt: str, body: dict, tool_list: list) -> Thought:
+    """Let Gino act with tools until he's done. Returns his final words.
+
+    The budget is checked before EVERY paid step, not just once per turn, and each step's answer length is
+    capped so that even its worst case fits in what's left today (see budget.py)."""
     messages = [{"role": "user", "content": prompt}]
-    final_text = ""
+    final_text, stopped = "", False
+    web = budget.uses_web(tool_list)
+    est_in = budget.estimate_tokens(SYSTEM, prompt, tool_list)
     for _ in range(config.MAX_STEPS_PER_TICK):
-        resp = call(model, messages, tool_list)
+        max_tokens = budget.step_allowance(model, spent_today(), purpose, est_in, web)
+        if not max_tokens:
+            stopped = True
+            db.event("mind", "Gino's thinking money for today ran out, so he stopped mid-thought.")
+            break
+        resp = call(model, messages, tool_list, max_tokens=max_tokens)
         record_spend(purpose, resp, model)
+        u = resp.usage
+        # next step re-reads everything so far: what this step read, what it wrote, plus the tool results
+        est_in = ((u.input_tokens or 0) + (getattr(u, "cache_read_input_tokens", 0) or 0)
+                  + (getattr(u, "cache_creation_input_tokens", 0) or 0) + (u.output_tokens or 0))
         messages.append({"role": "assistant", "content": resp.content})
         texts = [b.text for b in resp.content if b.type == "text" and b.text.strip()]
         if texts:
@@ -240,7 +268,18 @@ def run_loop(purpose: str, model: str, prompt: str, body: dict, tool_list: list)
         if ended:
             break
         messages.append({"role": "user", "content": results})
-    return final_text
+        est_in += budget.estimate_tokens(results)
+    out = Thought(final_text)
+    out.out_of_budget = stopped
+    return out
+
+
+def can_think(purpose: str, model: str, prompt: str, tool_list: list) -> bool:
+    """Is there enough budget left today for at least one useful step?"""
+    if config.FAKE_BRAIN:  # the practice brain is free, but keeps the same daily rhythm
+        return spent_today() < budget.cap(purpose)
+    est = budget.estimate_tokens(SYSTEM, prompt, tool_list)
+    return budget.step_allowance(model, spent_today(), purpose, est, budget.uses_web(tool_list)) > 0
 
 
 # ---------------------------------------------------------------- public entry points
@@ -249,7 +288,12 @@ def take_turn() -> None:
     """One self-directed turn. Called by the scheduler."""
     with mind_lock:
         body = vitals.tick(vitals.load())
-        if spent_today() >= config.DAILY_BUDGET_USD:
+        fresh = body.get("fresh_dream")
+        waking = ("\n\n" + dreams.waking_lines(fresh)) if fresh else ""
+        prompt = (context(body) + waking + "\n\n---\nIt's your turn. Nobody is asking anything of you. "
+                  "Check in with yourself and do what you want. End with set_next_wake or sleep.")
+        tool_list = tools.all_tools()
+        if not can_think("turn", config.MODEL, prompt, tool_list):
             tomorrow = (local_now() + dt.timedelta(days=1)).replace(hour=7, minute=0, second=0)
             body["next_wake"] = tomorrow.timestamp()
             body["activity"] = "lazing around (thinking budget used up for today)"
@@ -258,16 +302,13 @@ def take_turn() -> None:
             return
         body["next_wake"] = time.time() + 60 * 60  # default if he forgets to choose
         body.pop("dream_due", None)  # woke up before the dream came
-        fresh = body.pop("fresh_dream", None)
+        body.pop("fresh_dream", None)
         vitals.save(body)
         db.event("turn", "Gino's turn began.")
-        waking = ("\n\n" + dreams.waking_lines(fresh)) if fresh else ""
-        prompt = (context(body) + waking + "\n\n---\nIt's your turn. Nobody is asking anything of you. "
-                  "Check in with yourself and do what you want. End with set_next_wake or sleep.")
         if config.FAKE_BRAIN:
             fake_turn(body, fresh)
         else:
-            murmur = run_loop("turn", config.MODEL, prompt, body, tools.all_tools())
+            murmur = run_loop("turn", config.MODEL, prompt, body, tool_list)
             if murmur:
                 db.event("murmur", murmur[:400])
         if body["next_wake"] < time.time() + config.MIN_WAKE_MINUTES * 60 and not vitals.is_asleep(body):
@@ -286,18 +327,20 @@ def chat(text: str) -> str:
             db.event("sleep", "Dad's message woke Gino up.")
         body["social"] = vitals.clamp(body["social"] + 12)
         vitals.save(body)
+        tired = "*yawns* My brain is all thought out for today, dad. Talk tomorrow? 💤"
+        chat_tools = [t for t in tools.all_tools()
+                      if t["name"] not in ("sleep", "message_dad", "set_next_wake", "social_post")]
+        prompt = (context(body) + f"\n\n---\nDad is here chatting with you right now. He just said:\n\n"
+                  f"\"{text}\"\n\nReply to him as yourself. Your final plain text is what he sees, "
+                  "so keep it natural, like a text message. You can use tools first if you want "
+                  "(remember what he tells you that matters, update how you feel).")
         if config.FAKE_BRAIN:
             reply = fake_reply(text, body)
-        elif spent_today() >= config.DAILY_BUDGET_USD * 1.5:
-            reply = "*yawns* My brain is all thought out for today, dad. Talk tomorrow? 💤"
+        elif not can_think("chat", config.CHAT_MODEL, prompt, chat_tools):
+            reply = tired
         else:
-            chat_tools = [t for t in tools.all_tools()
-                          if t["name"] not in ("sleep", "message_dad", "set_next_wake", "social_post")]
-            prompt = (context(body) + f"\n\n---\nDad is here chatting with you right now. He just said:\n\n"
-                      f"\"{text}\"\n\nReply to him as yourself. Your final plain text is what he sees, "
-                      "so keep it natural, like a text message. You can use tools first if you want "
-                      "(remember what he tells you that matters, update how you feel).")
-            reply = run_loop("chat", config.CHAT_MODEL, prompt, body, chat_tools).strip() or "*happy capybara noises*"
+            said = run_loop("chat", config.CHAT_MODEL, prompt, body, chat_tools)
+            reply = said.strip() or (tired if said.out_of_budget else "*happy capybara noises*")
         db.x("INSERT INTO chat(ts,sender,text) VALUES(?,?,?)", (time.time(), "gino", reply))
         body["last_chat"] = time.time()
         vitals.save(body)

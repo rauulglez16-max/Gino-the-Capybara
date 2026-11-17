@@ -65,7 +65,9 @@ TOOLS = [
        ["kind", "title", "content"]),
     _t("write_journal", "Write in your private diary.", {"entry": S}, ["entry"]),
     _t("remember", "Save something to long-term memory so future you knows it.",
-       {"text": S, "importance": {**I, "description": "1-5"}, "tags": S}, ["text"]),
+       {"text": S, "importance": {**I, "description": "1-5"},
+        "tags": {**S, "description": "Comma-separated topics, e.g. 'astronomy, the moon'. Reuse the same topic "
+                 "words each time so your interests can build up over days."}}, ["text"]),
     _t("recall", "Search your long-term memories.", {"query": S}, ["query"]),
     _t("set_goal", "Set a personal goal you actually want.", {"title": S, "why": S, "steps": S}, ["title", "why"]),
     _t("update_goal", "Log progress on a goal, or mark it done/dropped.",

@@ -55,6 +55,9 @@ DREAM_MIN_SLEEP_HOURS = _f("GINO_DREAM_MIN_SLEEP_HOURS", 2.0)
 
 # Who is who
 DAD_NAME = os.environ.get("GINO_DAD_NAME", "Raul")
+# Extra words that must never appear on anything public: family names, your town, workplace, pets...
+# Comma separated, e.g. GINO_PRIVATE_WORDS=Ana, Madrid, Acme Ltd
+PRIVATE_WORDS = [w.strip() for w in os.environ.get("GINO_PRIVATE_WORDS", "").split(",") if len(w.strip()) >= 2]
 HEMISPHERE = os.environ.get("GINO_HEMISPHERE", "north").lower()  # north or south, for seasons
 TIMEZONE = os.environ.get("GINO_TZ", "")  # e.g. Europe/Madrid. Empty = this computer's zone
 

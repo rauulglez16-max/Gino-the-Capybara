@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from . import brain, config, db, dreams, live, public, shop, telegram, vitals, whatsapp
+from . import recap
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -102,6 +103,7 @@ def index():
 
 @app.get("/api/state", dependencies=[Depends(auth)])
 def state():
+    recap.seen()  # dad is here
     body = vitals.load()
     now = time.time()
     return {
@@ -122,6 +124,12 @@ def state():
         "weather": vitals.weather(brain.local_now()),
         "art": [r["filename"] for r in db.q("SELECT filename FROM creations WHERE kind='svg' ORDER BY ts DESC LIMIT 6")],
     }
+
+
+@app.get("/api/recap", dependencies=[Depends(auth)])
+def since_last_visit():
+    """'Since your last visit...': what Gino did while dad was away (free: built from his own records)."""
+    return recap.for_dad()
 
 
 @app.get("/api/feed", dependencies=[Depends(auth)])

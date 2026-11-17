@@ -72,6 +72,14 @@ dialog pre{white-space:pre-wrap;font:inherit}
 .goal{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px}
 .goal pre{white-space:pre-wrap;font:inherit;font-size:13px;color:var(--muted);margin:6px 0 0}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#recap{grid-column:1/-1;background:linear-gradient(180deg,var(--accent-soft),var(--card) 70%)}
+#recap h2{margin:0;font-size:19px}
+#recap .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px 22px;margin-top:8px}
+#recap h4{margin:10px 0 2px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+#recap ul{margin:0;padding-left:18px}
+#recap .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+#recap .thumbs img{width:88px;height:88px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--line)}
+#recap blockquote{margin:6px 0 0;padding-left:12px;border-left:3px solid var(--accent);white-space:pre-wrap;font-style:italic}
 </style>
 </head>
 <body>
@@ -82,6 +90,7 @@ dialog pre{white-space:pre-wrap;font:inherit}
   <a href="/blog" target="_blank" rel="noopener" style="margin-left:auto">Gino's public website ↗</a>
 </header>
 <main>
+  <section class="card" id="recap" hidden></section>
   <section class="card" id="hero">
     <div id="world"><svg id="scene" viewBox="0 0 800 500" role="img" aria-label="Gino's habitat"></svg><div id="tip"></div>
       <div id="hud"><div class="bubble"><b id="feeling">…</b> <span id="reason" class="muted"></span><div id="thought" style="margin-top:4px"></div></div></div>
@@ -243,7 +252,42 @@ async function renderTab() {
   P.innerHTML = `<div class="feed">${rows.map(line).join('') || '<p class="muted">Nothing here yet.</p>'}</div>`;
 }
 
-refresh(); loadChat(); renderTab();
+// "Since your last visit": what Gino did while you were away
+async function showRecap() {
+  let r; try { r = await api('/api/recap'); } catch { return; }
+  let gone = ''; try { gone = localStorage.getItem('ginoRecapClosed') || ''; } catch {}
+  if (!r.show || gone === String(r.since)) return;
+  const li = xs => `<ul>${xs.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  const sec = (title, html) => html ? `<div><h4>${title}</h4>${html}</div>` : '';
+  const img = f => `/creations/${encodeURIComponent(f)}?key=${encodeURIComponent(key())}`;
+  const made = r.made.map(c => `${c.dream_id ? '🌙 ' : ''}${esc(c.title)} <span class="muted">(${esc(c.kind === 'svg' ? 'drawing' : c.kind)})</span>`);
+  const thumbs = r.made.filter(c => c.kind === 'svg').slice(0, 6).map(c => `<img alt="${esc(c.title)}" src="${img(c.filename)}">`).join('');
+  const strange = ['', 'calm', 'a bit odd', 'dreamlike', 'very strange', 'a vision'];
+  const projects = [
+    ...r.done_goals.map(g => `✅ Finished: <b>${esc(g.title)}</b>`),
+    ...r.new_goals.map(g => `🎯 Started: <b>${esc(g.title)}</b> <span class="muted">${esc(g.why)}</span>`),
+    ...r.worked_on.map(g => `🔨 Kept going: <b>${esc(g.title)}</b>${g.latest ? ` <span class="muted">${esc(g.latest)}</span>` : ''}`)];
+  const j = r.journal;
+  $('#recap').innerHTML = `<div class="row" style="justify-content:space-between"><h2>Since your last visit <span class="muted" style="font-weight:400;font-size:15px">(${esc(r.away)} ago)</span></h2><button class="ghost" id="recapClose">Thanks, Gino</button></div>
+    <div class="cols">
+      ${sec('Projects', projects.length ? li(projects) : '')}
+      ${sec('He made', made.length ? li(made) + (thumbs ? `<div class="thumbs">${thumbs}</div>` : '') : '')}
+      ${sec('Dreams', r.dreams.length ? li(r.dreams.map(d => `🌙 ${esc(d.title)} <span class="muted">(${esc(strange[d.strangeness] || '')}, woke up ${esc(d.feeling)})</span>`)) : '')}
+      ${sec('New interests', r.new_interests.length ? li(r.new_interests.map(esc)) : '')}
+      ${sec('He learned and remembered', r.learned.length ? li(r.learned.map(esc)) : '')}
+      ${sec('Built in his home', r.built.length ? li(r.built.map(esc)) : '')}
+      ${sec('On his website', r.published.length ? li(r.published.map(p => `${p.kind === 'diary' ? '📔 Diary' : '📄'} ${esc(p.title)}`)) : '')}
+      ${sec('Shop', r.sales.length ? li(r.sales.map(x => `🛒 Someone bought <b>${esc(x.title)}</b> (£${(x.amount_pence / 100).toFixed(2)})`)) : '')}
+    </div>
+    ${r.messages ? `<p class="muted" style="margin:10px 0 0">He sent you ${r.messages} message${r.messages > 1 ? 's' : ''}: they're in the chat.</p>` : ''}
+    ${j ? `<h4>From his private diary${j.emotion ? ` · feeling ${esc(j.emotion)}` : ''}</h4><blockquote>${esc(j.text.length > 500 ? j.text.slice(0, 500) + '…' : j.text)}</blockquote>` : ''}`;
+  $('#recap').hidden = false;
+  $('#recapClose').onclick = () => { $('#recap').hidden = true; try { localStorage.setItem('ginoRecapClosed', String(r.since)); } catch {} };
+}
+
+refresh(); loadChat(); renderTab(); showRecap();
+// keep the page fresh while it's open (and let Gino know dad is around)
+setInterval(() => { if (!document.hidden) { refresh(); loadChat(); } }, 30000);
 // 3D world. If three.js can't load (offline, no WebGL) the flat map above stays.
 (async () => {
   try {
