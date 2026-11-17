@@ -26,7 +26,7 @@ Set `GINO_TZ` to your time zone so he knows when it's night.
 python run.py
 ```
 
-Then open **http://localhost:8787**. Leave the terminal running and Gino keeps living, even when you're not looking.
+Then open **http://localhost:8787/private** (that's your own page, where you can chat with him). Leave the terminal running and Gino keeps living, even when you're not looking.
 
 > No API key yet? Gino still runs on a simple "practice brain" so you can see everything working. He just
 > can't really think or talk until you add the key.
@@ -48,6 +48,9 @@ Then open **http://localhost:8787**. Leave the terminal running and Gino keeps l
   text him back. Only you can talk to him there (see deploy/README.md).
 - **Diary, Creations, Goals, Memories, About Gino**: his inner life, all written by him.
 - **Leave a snack**: drop food in his pantry.
+- **His welcome page** at `/` (for example `http://localhost:8787`): a front page for everyone that explains who
+  Gino is, shows what he's doing right now and his latest creations, and links to his live habitat, diary, shop and
+  Bluesky. Live bits come from the same filtered data as `/live`, so nothing private shows up there.
 - **His public website, "Gino's Burrow"** at `/blog` (for example `http://localhost:8787/blog`, or
   `https://<your-address>/blog` on the server). Anyone can read it, no password. Gino writes it himself: a public
   diary of what he did and learned each day, plus pages for things he makes (drawings, poems, write-ups of what he

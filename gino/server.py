@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import brain, config, db, dreams, live, public, shop, telegram, vitals, whatsapp
+from . import brain, config, db, dreams, live, public, shop, telegram, vitals, welcome, whatsapp
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -81,6 +81,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Gino", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.include_router(welcome.router)  # /: the welcome page that introduces Gino to everyone
 app.include_router(public.router)  # Gino's public website at /blog: no password, only what he chose to publish
 app.include_router(shop.router)  # /blog/shop: Gino's drawings for sale; payments happen on Stripe's own checkout
 app.include_router(live.router)  # /live: anyone can watch his 3D world, nobody can talk to him there
@@ -95,8 +96,8 @@ def auth(request: Request):
         raise HTTPException(401, "Gino doesn't know you.")
 
 
-@app.get("/", response_class=HTMLResponse)
-def index():
+@app.get("/private", response_class=HTMLResponse)
+def index():  # dad's private page (chat, gifts, petting); its API calls need the password
     return (STATIC / "index.html").read_text(encoding="utf-8")
 
 

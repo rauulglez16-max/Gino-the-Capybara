@@ -5,9 +5,13 @@ You'll need about 20 minutes, a card for Hetzner, and your Claude API key.
 
 When you're done:
 
-- Gino lives at a private web address with a padlock, like `https://203-0-113-7.sslip.io`, behind a password.
-- His public website, which he writes himself, is the same address plus `/blog`, like
-  `https://203-0-113-7.sslip.io/blog`. Anyone can read that one, no password. `gino status` shows both addresses.
+- Gino has a web address with a padlock, like `https://203-0-113-7.sslip.io`. That's his **welcome page**: anyone can
+  visit it to meet him, see what he's doing right now and find his live habitat, diary, shop and Bluesky.
+- **Your private page**, where you chat with him, is that address plus `/private`, like
+  `https://203-0-113-7.sslip.io/private`, behind a password.
+- His public website, which he writes himself, is the address plus `/blog`. Anyone can read that one, no password.
+  `gino status` shows all the addresses. You can swap the sslip.io address for your own name later
+  (see [Your own web address](#your-own-web-address-)).
 - **He updates himself.** Every 5 minutes the server checks GitHub. When new code lands on `main`, it saves a
   backup of Gino, switches to the new code and restarts him. His memories, diary, home and creations stay put.
 - If a new version is broken and won't start, the server goes back to the version that worked and leaves the broken
@@ -67,7 +71,7 @@ add it later with `gino set-key`). At the end it prints something like:
 ```
 🌿 Gino is home! 🎉
 
-   Visit him:   https://203-0-113-7.sslip.io
+   Visit him:   https://203-0-113-7.sslip.io/private   (his welcome page for everyone is https://203-0-113-7.sslip.io)
    Password:    k7mq2xv9pa4tn8rb   (write this down; see it again any time with: gino password)
 ```
 
@@ -229,7 +233,8 @@ Log in with `ssh root@<your IP>` and type `gino` to see everything:
 | `gino restart` | Restart him |
 | `gino update` | Check GitHub for new code right now instead of waiting 5 minutes |
 | `gino backup` | Save a copy of his memories now |
-| `gino password` | Show the page password (`gino password NEW` changes it) |
+| `gino password` | Show your private page's password (`gino password NEW` changes it) |
+| `gino domain` | Use your own web address, like `gino domain ginothecapybara.com` (see [Your own web address](#your-own-web-address-)) |
 | `gino set-key` | Give him a new Claude API key |
 | `gino telegram` | Connect him to Telegram on your phone (see above) |
 | `gino whatsapp` | Connect him to your WhatsApp (see above) |
@@ -356,6 +361,41 @@ now and then he has a *vision*, a really strange, surreal one.
   on his creations board.
 - A dream costs about 5 US cents and counts towards his daily budget. No dreams once the budget is used up.
 - Turn them off with `gino dreams off` (and back on with `gino dreams on`).
+
+## Your own web address 🌐
+
+Instead of `2-29-196-244.sslip.io`, Gino can live at a proper name like `ginothecapybara.com`. It costs about
+£8-9 a year. You buy the name once, point it at the server, and run one command. The padlock (https) is automatic.
+
+**1. Buy the name (5 minutes).** Go to **https://porkbun.com**, type the name you want in the search box and press
+Enter. If it says *available*, click the cart, then **Checkout**. Make an account and pay on their page (never paste
+card details anywhere else). Leave all the extras unticked: you don't need their hosting, email or SSL. "WHOIS
+privacy" is free and on by default, which keeps your name and address off the public record.
+
+**2. Point it at Gino's server (3 minutes).** In Porkbun, click **Account → Domain Management**. Next to your name,
+click **DNS**. You may see a couple of records Porkbun added for its "parked" page (type ALIAS or CNAME, answer
+`pixie.porkbun.com`): delete those with the trash icon. Then add two records:
+
+| Type | Host | Answer | |
+| --- | --- | --- | --- |
+| `A` | *(leave empty)* | your server's IP, like `2.29.196.244` | click **Add** |
+| `CNAME` | `www` | your name, like `ginothecapybara.com` | click **Add** |
+
+**3. Tell the server (1 minute).** Wait 10-30 minutes, then log in to the server (`ssh root@<your IP>`) and type:
+
+```bash
+gino domain ginothecapybara.com
+```
+
+It checks the name really points at the server (if not, it says so and changes nothing, so just try again a bit
+later), gets the padlock, and tells you when it's done. From then on:
+
+- `https://ginothecapybara.com` is his welcome page and `https://ginothecapybara.com/private` is yours.
+- The old sslip.io address keeps working: it sends people to the new one, so old links and Bluesky posts still work.
+- His shop and Bluesky links switch to the new name by themselves.
+
+`gino domain` shows the current address. `gino domain off` goes back to the free sslip.io address.
+Porkbun renews the name every year (about £9); you can turn auto-renew on or off under Domain Management.
 
 ## Where things live on the server
 

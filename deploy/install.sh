@@ -117,8 +117,11 @@ EOF
   ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") print $(i+1)}' | head -1)"
   [ -n "$ip" ] || ip="$(curl -4 -fsS --max-time 5 https://api.ipify.org || true)"
   domain="${GINO_DOMAIN:-${ip//./-}.sslip.io}"
+  if [ -z "${GINO_DOMAIN:-}" ] && grep -q "Written by: gino domain" /etc/caddy/Caddyfile 2>/dev/null; then
+    domain="$(cat /var/lib/gino-deploy/domain)"  # installing again: keep the web address set with `gino domain`
+  fi
   printf '%s\n' "$domain" > /var/lib/gino-deploy/domain
-  cat > /etc/caddy/Caddyfile <<EOF
+  grep -q "Written by: gino domain" /etc/caddy/Caddyfile 2>/dev/null || cat > /etc/caddy/Caddyfile <<EOF
 # Gino's front door. Caddy gets and renews the https certificate by itself.
 $domain {
 	encode gzip
@@ -143,7 +146,7 @@ EOF
   [ -n "$ok" ] || die "Gino didn't wake up. See what happened with:  gino logs"
 
   say "Gino is home! 🎉"
-  printf '\n   Visit him:   https://%s\n' "$domain"
+  printf '\n   Visit him:   https://%s/private   (his welcome page for everyone is https://%s)\n' "$domain" "$domain"
   printf '   Password:    %s   (write this down; see it again any time with: gino password)\n' \
     "$(grep -m1 '^GINO_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
   if ! grep -q '^ANTHROPIC_API_KEY=.\+' "$ENV_FILE"; then
