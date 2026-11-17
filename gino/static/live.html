@@ -7,8 +7,8 @@
 <meta name="description" content="Watch Gino the capybara live in the 3D world he builds for himself.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌿</text></svg>">
 <style>
-:root{--card:#fff7e8;--ink:#3b2e22;--muted:#7d6a55;--accent:#b5652b;--leaf:#4f7a37;--line:rgba(59,46,34,.12);--live:#d6453d;--edge:#5b4a38;--drop:rgba(91,74,56,.35);--board:#d9b382;--field:#dcebb8}
-@media (prefers-color-scheme:dark){:root{--card:#2a231b;--ink:#efe4d2;--muted:#b9a68c;--accent:#e39a5f;--leaf:#a6cf86;--line:rgba(239,228,210,.14);--edge:#cdb99a;--drop:rgba(0,0,0,.45);--board:#5a4530;--field:#3d4a2c}}
+:root{--card:#fff7e8;--ink:#3b2e22;--muted:#7d6a55;--accent:#b5652b;--leaf:#4f7a37;--line:rgba(59,46,34,.12);--live:#d6453d;--edge:#5b4a38;--drop:rgba(91,74,56,.35);--board:#d9b382;--field:#dcebb8;--track:#efe2c8}
+@media (prefers-color-scheme:dark){:root{--card:#2a231b;--ink:#efe4d2;--muted:#b9a68c;--accent:#e39a5f;--leaf:#a6cf86;--line:rgba(239,228,210,.14);--edge:#cdb99a;--drop:rgba(0,0,0,.45);--board:#5a4530;--field:#3d4a2c;--track:#3a3026}}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#9fd0ea;color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden;overscroll-behavior:none}
 #world{position:fixed;inset:0}
@@ -23,13 +23,23 @@ html,body{margin:0;height:100%;background:#9fd0ea;color:var(--ink);font:15px/1.4
 .live.off{color:var(--muted)}.live.off i{background:var(--muted);animation:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 #meta{color:var(--muted);font-size:13px;margin-top:6px}
-#bars{display:grid;grid-template-columns:1fr 1fr;gap:9px 14px;margin-top:12px}
-.bar{display:flex;align-items:center;gap:8px}
-.bar>span{width:28px;height:28px;flex:none;border-radius:50%;border:2px solid var(--c);background:color-mix(in srgb,var(--c) 22%,transparent);display:grid;place-items:center;font-size:14px}
-.bar>div{flex:1}
-.bar label{display:block;font-size:12px;font-weight:600;margin-bottom:3px}
-.bar p{margin:0;height:9px;border-radius:6px;background:var(--card);border:1.5px solid var(--edge);overflow:hidden}
-.bar p i{display:block;height:100%;background:var(--c);transition:width .8s}
+/* mood bars: a round badge with a little drawn icon, a chunky glossy bar and a word for how it's going */
+#bars{display:grid;grid-template-columns:1fr 1fr;gap:11px 14px;margin-top:13px}
+.bar{display:flex;align-items:center;gap:9px;min-width:0}
+.badge{width:34px;height:34px;flex:none;border-radius:50%;border:2px solid var(--edge);background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--c) 55%,#fff),var(--c) 70%);box-shadow:2px 2px 0 var(--drop);display:grid;place-items:center}
+.badge svg{width:20px;height:20px;fill:#fffaf0;stroke:var(--edge);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round;overflow:visible}
+.bar>div{flex:1;min-width:0}
+.bar .top{display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:3px}
+.bar label{font-size:12.5px;font-weight:700}
+.bar small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track{position:relative;height:13px;border-radius:8px;background:var(--track);border:2px solid var(--edge);overflow:hidden;box-shadow:inset 0 2px 0 rgba(0,0,0,.08)}
+.fill{position:absolute;inset:0 auto 0 0;border-radius:6px 0 0 6px;background:repeating-linear-gradient(-45deg,transparent 0 6px,rgba(255,255,255,.18) 6px 12px),linear-gradient(180deg,color-mix(in srgb,var(--c) 70%,#fff),var(--c) 60%);background-size:17px 100%,100% 100%;transition:width 1.2s cubic-bezier(.3,1.3,.5,1),background-color .6s;animation:slide 2.4s linear infinite}
+.fill::after{content:'';position:absolute;left:4px;right:4px;top:2px;height:3px;border-radius:3px;background:rgba(255,255,255,.55)}
+@keyframes slide{to{background-position:17px 0,0 0}}
+.bar.low .fill{--c:#d6453d}
+.bar.low .badge{animation:wobble 1.8s ease-in-out infinite}
+@keyframes wobble{0%,100%{transform:rotate(0)}20%{transform:rotate(-12deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-5deg)}}
+@media (prefers-reduced-motion:reduce){.fill,.bar.low .badge,.me-ring{animation:none!important}}
 #note{margin:10px 0 0;font-size:12.5px;color:var(--muted)}
 #note a{color:var(--accent)}
 #btns{position:fixed;right:16px;bottom:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -47,21 +57,48 @@ html,body{margin:0;height:100%;background:#9fd0ea;color:var(--ink);font:15px/1.4
 #now b{color:var(--leaf)}
 #said{margin:2px 0 0;font:italic 13.5px/1.35 Georgia,'Iowan Old Style',serif;color:var(--muted)}
 #said:empty{display:none}
-#map{position:fixed;left:18px;bottom:18px;width:150px;height:150px;border-radius:50%;overflow:hidden;background:var(--field);padding:0}
-#mapTag{position:fixed;left:50px;bottom:6px;font:600 11px/1.5 system-ui,sans-serif;padding:0 8px;border-radius:9px;border-width:1.5px;box-shadow:none}
+/* mini map: a round meadow with his things drawn small, the lake up north, a trail of where he's been */
+#map{position:fixed;left:18px;bottom:22px;width:172px;height:172px;border-radius:50%;overflow:hidden;background:var(--field);padding:0;border-width:3px;cursor:crosshair}
+#map svg{display:block;width:100%;height:100%}
+#map::after{content:'';position:absolute;inset:5px;border-radius:50%;border:1.5px dashed rgba(91,74,56,.35);pointer-events:none}
+.me-ring{animation:ping 2s ease-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes ping{0%{transform:scale(.6);opacity:.8}100%{transform:scale(1.9);opacity:0}}
+#mapTag{position:fixed;left:18px;bottom:6px;min-width:172px;max-width:280px;text-align:center;font:600 11.5px/1.6 system-ui,sans-serif;padding:0 8px;border-radius:9px;border-width:1.5px;box-shadow:2px 2px 0 var(--drop);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #mapTag i{color:var(--live);font-style:normal}
-#wall{position:fixed;right:18px;top:18px;width:150px;padding:10px 12px 4px;border-radius:14px;background:var(--board)}
-#wall h2{margin:0 0 10px;font:700 14px/1.5 Georgia,'Iowan Old Style',serif;text-align:center;background:var(--card);border:1.5px solid var(--edge);border-radius:8px}
-#wall a{display:block;position:relative;background:#fffdf6;padding:5px;margin:0 auto 10px;width:104px;box-shadow:2px 3px 0 rgba(0,0,0,.25);transform:rotate(-2.5deg)}
-#wall a:nth-of-type(2n){transform:rotate(2deg)}
-#wall a::before{content:'';position:absolute;left:50%;top:-5px;width:9px;height:9px;margin-left:-5px;border-radius:50%;background:var(--live);border:1px solid #7a1f1a}
-#wall img{display:block;width:94px;height:94px;object-fit:contain}
-#wall p{margin:0 0 8px;font-size:12px;text-align:center;color:var(--ink)}
+/* creations board: a cork board panel of his drawings and poems. Look and read only. */
+#wall{position:fixed;right:18px;top:18px;width:196px;max-height:calc(100vh - 110px);overflow:auto;padding:10px 12px 8px;border-radius:14px;background:radial-gradient(circle at 30% 20%,#d9a96f,#c08a50);scrollbar-width:thin}
+#wall h2{margin:0 0 12px;font:700 14px/1.6 Georgia,'Iowan Old Style',serif;text-align:center;background:var(--card);border:1.5px solid var(--edge);border-radius:8px;color:var(--ink)}
+#pins{display:grid;grid-template-columns:1fr 1fr;gap:12px 10px}
+.pin{all:unset;box-sizing:border-box;position:relative;display:block;cursor:pointer;padding:5px;background:#fffdf6;box-shadow:2px 3px 0 rgba(60,30,10,.3);transform:rotate(-2.5deg);transition:transform .2s;color:#3b2e22}
+.pin:nth-child(2n){transform:rotate(2.2deg)}
+.pin:hover,.pin:focus-visible{transform:rotate(0) scale(1.06);outline:2px solid var(--edge)}
+.pin::before{content:'';position:absolute;left:50%;top:-5px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--pc,#d6453d);border:1px solid rgba(0,0,0,.35);box-shadow:inset -2px -2px 0 rgba(0,0,0,.15)}
+.pin img{display:block;width:100%;aspect-ratio:1;object-fit:contain;background:#fff}
+.pin b{display:block;font:italic 10.5px/1.25 Georgia,serif;margin-top:4px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.pin.note{background:#fff4c9;min-height:84px;padding:7px 7px 5px}
+.pin.note b{text-align:left;font:700 10.5px/1.25 Georgia,serif;margin:0 0 3px;white-space:normal}
+.pin.note span{display:block;font:italic 9.5px/1.35 Georgia,serif;color:#5b4a38;white-space:pre-line;max-height:52px;overflow:hidden}
+#wall .empty{grid-column:1/-1;margin:0 0 4px;font-size:12px;text-align:center;color:#3b2e22;background:#fffdf6;padding:8px;transform:rotate(-1.5deg)}
+#boardBtn{all:unset;box-sizing:border-box;display:block;width:100%;margin-top:12px;text-align:center;cursor:pointer;font:600 12px/1 system-ui,sans-serif;padding:8px;border-radius:999px;background:var(--card);border:1.5px solid var(--edge);color:var(--ink)}
+#boardBtn:hover,#boardBtn:focus-visible{color:var(--accent)}
+#viewer{position:fixed;inset:0;display:none;place-items:center;padding:20px;background:rgba(40,28,16,.45);z-index:5}
+#viewer.open{display:grid}
+#viewer .card{position:relative;width:min(520px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:18px 20px 16px}
+#viewer h3{margin:0 34px 2px 0;font:700 20px/1.25 Georgia,'Iowan Old Style',serif}
+#viewer .kind{margin:0 0 12px;color:var(--muted);font-size:12.5px}
+#viewer img{display:block;width:100%;max-height:60vh;object-fit:contain;background:#fff;border:2px solid var(--edge);border-radius:8px}
+#viewer .poem{margin:0;padding:14px 16px;background:#fff4c9;color:#3b2e22;border-radius:8px;border:2px solid var(--edge);font:italic 15.5px/1.6 Georgia,'Iowan Old Style',serif;white-space:pre-line}
+#viewer .foot{margin:12px 0 0;font-size:13px}
+#viewer .foot a{color:var(--accent)}
+#viewer .x{all:unset;position:absolute;right:12px;top:12px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;cursor:pointer;border:1.5px solid var(--edge);font-size:15px}
+#viewer .x:hover,#viewer .x:focus-visible{color:var(--accent)}
+#creBtn{display:none}
 #tip{position:fixed;display:none;pointer-events:none;padding:6px 10px;font-size:13px;max-width:240px;border-radius:10px}
 #fallback{position:fixed;inset:0;display:none;place-items:center;text-align:center;padding:24px}
 @media (max-width:1080px){#bubble{bottom:74px}}
-@media (max-width:760px){#wall{display:none}}
-@media (max-width:520px){#panel{padding:12px 14px}#bars,#map,#mapTag{display:none}#btns{left:16px;justify-content:center}#soundPanel{left:16px;right:16px;width:auto;bottom:140px}#bubble{padding-right:16px}#bubble svg{width:40px;height:40px}}
+@media (max-width:760px){#wall{display:none}#creBtn{display:inline-block}}
+@media (max-width:520px){#panel{padding:12px 14px}#map,#mapTag{display:none}
+  #bars{grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.bar{flex-direction:column;gap:4px}.bar>div{width:100%}.bar .top{justify-content:center}.bar small{display:none}.bar label{font-size:11px}.badge{width:30px;height:30px}.badge svg{width:17px;height:17px}.track{height:10px}#btns{left:16px;justify-content:center;flex-wrap:nowrap;gap:6px}#btns button{padding:7px 11px;font-size:12.5px;white-space:nowrap}#fullBtn{display:none}#soundPanel{left:16px;right:16px;width:auto;bottom:140px}#bubble{padding-right:16px}#bubble svg{width:40px;height:40px}}
 </style>
 </head>
 <body>
@@ -78,16 +115,17 @@ html,body{margin:0;height:100%;background:#9fd0ea;color:var(--ink);font:15px/1.4
   <svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="18" cy="24" rx="13" ry="9" fill="#8a5a33"/><ellipse cx="29" cy="17" rx="8" ry="7" fill="#8a5a33"/><ellipse cx="34" cy="19" rx="3.5" ry="3" fill="#6b4423"/><circle cx="29" cy="15" r="1.5" fill="#1d130b"/><ellipse cx="25" cy="10.5" rx="2" ry="2.4" fill="#6b4423"/></svg>
   <div><p id="now">Finding Gino…</p><p id="said"></p></div>
 </section>
-<div id="map" class="card" role="img" aria-label="Map of Gino's home showing where he is"><svg viewBox="0 0 150 150" width="150" height="150"></svg></div>
-<div id="mapTag" class="card"><i>●</i> Gino is here</div>
-<aside id="wall" class="card" aria-label="Drawings Gino has put up"><h2>Gino's wall</h2><div id="pins"></div></aside>
+<div id="map" class="card" role="img" aria-label="Map of Gino's home showing where he is" title="Click the map to look at that spot"><svg viewBox="0 0 150 150"></svg></div>
+<div id="mapTag" class="card"><i>●</i> Finding Gino…</div>
+<aside id="wall" class="card" aria-label="Gino's creations board: his drawings and poems"><h2>📌 Gino's creations</h2><div id="pins"></div><button id="boardBtn">See the board in his world</button></aside>
+<div id="viewer" role="dialog" aria-modal="true" aria-labelledby="vTitle"><div class="card"><button class="x" id="vClose" aria-label="Close">✕</button><h3 id="vTitle"></h3><p class="kind" id="vKind"></p><div id="vBody"></div><p class="foot" id="vFoot"></p></div></div>
 <div id="soundPanel" class="card" role="group" aria-label="Sound settings">
   <label>Volume <input type="range" id="vol" min="0" max="100" value="60" aria-label="Volume"></label>
   <label>Lofi music <input type="checkbox" id="musicChk" checked></label>
   <label>Nature sounds <input type="checkbox" id="natureChk" checked></label>
   <small>Birds by day, crickets at night, rain when it rains. All made live in your browser.</small>
 </div>
-<div id="btns"><button class="card" id="soundBtn" aria-pressed="false">🔇 Sound off</button><button class="card" id="followBtn">Free camera</button><button class="card" id="fullBtn">Fullscreen</button></div>
+<div id="btns"><button class="card" id="creBtn">📌 Creations</button><button class="card" id="soundBtn" aria-pressed="false">🔇 Sound off</button><button class="card" id="followBtn">Free camera</button><button class="card" id="fullBtn">Fullscreen</button></div>
 <div id="fallback"><div class="card" style="padding:20px 22px;max-width:380px"><p id="fbText" style="margin:0">Gino's 3D world needs WebGL, which this browser can't show. You can still <a href="/blog">read his diary</a>.</p></div></div>
 
 <script type="importmap">
@@ -99,25 +137,109 @@ html,body{margin:0;height:100%;background:#9fd0ea;color:var(--ink);font:15px/1.4
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const WX = {clear:'☀️', cloudy:'☁️', rain:'🌧️', snow:'❄️', fog:'🌫️'};
-const BARS = [['mood','Mood','💛','#e9b93a'],['energy','Energy','⚡','#e8843c'],['fullness','Fullness','🥕','#5a9a3f'],['fun','Fun','🎈','#9b6fd1']];
+// [key, name, colour, icon, words from low to high]
+const BARS = [
+  ['mood', 'Mood', '#e9b93a', '<path d="M12 20.5s-7.6-4.5-9-9.3C2 7.8 4.2 4.8 7.3 4.8c2 0 3.6 1.2 4.7 2.9 1.1-1.7 2.7-2.9 4.7-2.9 3.1 0 5.3 3 4.3 6.4-1.4 4.8-9 9.3-9 9.3z"/>', ['low', 'so-so', 'good', 'great']],
+  ['energy', 'Energy', '#e8843c', '<path d="M13.5 2 4.5 13.5h6.2L9.5 22l9-11.6h-6.2z"/>', ['worn out', 'tired', 'awake', 'bouncy']],
+  ['fullness', 'Fullness', '#5a9a3f', '<path d="M3.5 20.5 13.2 9.2l2.6 2.6z"/><path d="M14.3 9.7c-.4-2.6.3-5 1.6-6.9M14.8 10.2c2.1-1.6 4.6-2.2 7-1.6M14.6 9.9c1-2.4 2.9-4 5.4-4.6" fill="none"/>', ['hungry', 'peckish', 'fed', 'stuffed']],
+  ['fun', 'Fun', '#9b6fd1', '<ellipse cx="12" cy="9" rx="6.2" ry="7.2"/><path d="m10.6 16.4 1.4 1.8 1.4-1.8z"/><path d="M12 18.2c-1.2 1.4 1 2.4-.3 3.8" fill="none"/>', ['bored', 'meh', 'playful', 'buzzing']],
+];
+$('#bars').innerHTML = BARS.map(([k, l, c, icon]) => `<div class="bar" id="bar-${k}" style="--c:${c}"><span class="badge"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span><div><div class="top"><label>${l}</label><small></small></div><div class="track" role="meter" aria-label="${l}" aria-valuemin="0" aria-valuemax="100"><i class="fill" style="width:0"></i></div></div></div>`).join('');
+function drawBars(v) {
+  for (const [k, l, , , words] of BARS) {
+    const n = Math.max(0, Math.min(100, Math.round(Number(v?.[k]) || 0))), el = $('#bar-' + k), word = words[Math.min(3, Math.floor(n / 25))];
+    el.classList.toggle('low', n < 25); el.title = `${l}: ${word} (${n} out of 100)`;
+    el.querySelector('.fill').style.width = Math.max(n, 4) + '%'; el.querySelector('.track').setAttribute('aria-valuenow', n);
+    el.querySelector('small').textContent = word;
+  }
+}
 // mini map: his home squares squeezed into the round card, the lake up north
-const MX = x => 22 + x * 7.2, MY = y => 40 + y * 8.6;
-const DOT = {garden:'#5a9a3f',campfire:'#f08a2e',easel:'#ffffff',bookshelf:'#8a5a3b',windmill:'#b98a5a',hammock:'#d9a05b',bridge:'#a0703c',bush:'#3f7a34',flowers:'#e8a33d',bench:'#a0714f',lamp:'#f2c46d'};
-let mapKey = '', wallKey = null;
+const MX = x => 22 + x * 7.2, MY = y => 40 + y * 8.6, IX = px => (px - 22) / 7.2, IY = py => (py - 40) / 8.6;
+const clampG = (x, y) => [Math.max(-1, Math.min(16.5, x)), Math.max(-1.8, Math.min(11, y))];
+const ICON = {
+  tree: (x, y) => `<circle cx="${x + .8}" cy="${y + 1.2}" r="4.6" fill="#2f5a25" opacity=".35"/><circle cx="${x}" cy="${y}" r="4.6" fill="#4f8f3a" stroke="#2f4a22" stroke-width=".8"/><circle cx="${x - 1.4}" cy="${y - 1.4}" r="1.8" fill="#79b85a"/>`,
+  pine: (x, y) => `<path d="M${x} ${y - 6}L${x + 4.5} ${y + 3.5}H${x - 4.5}Z" fill="#2f6b3a" stroke="#1f3f22" stroke-width=".8"/>`,
+  fruit_tree: (x, y) => ICON.tree(x, y) + `<circle cx="${x + 1.6}" cy="${y + .4}" r="1" fill="#d6453d"/><circle cx="${x - .8}" cy="${y + 1.8}" r="1" fill="#d6453d"/>`,
+  house: (x, y) => `<rect x="${x - 4.5}" y="${y - 1}" width="9" height="6.5" fill="#d8a06a" stroke="#3b2e22" stroke-width=".8"/><path d="M${x - 6.2} ${y - .6}L${x} ${y - 7}L${x + 6.2} ${y - .6}Z" fill="#c9503c" stroke="#3b2e22" stroke-width=".8"/><rect x="${x - 1}" y="${y + 2}" width="2" height="3.5" fill="#6b4423"/>`,
+  pond: (x, y) => `<ellipse cx="${x}" cy="${y}" rx="9" ry="6" fill="#5aa7dc" stroke="#2f6f9a" stroke-width=".9"/><path d="M${x - 4} ${y - 1}q2-1.4 4 0" stroke="#d8f0ff" fill="none" stroke-width=".9"/>`,
+  flowers: (x, y) => `<circle cx="${x - 2}" cy="${y}" r="1.5" fill="#e86a8e"/><circle cx="${x + 1.6}" cy="${y - 1.4}" r="1.5" fill="#f2c23d"/><circle cx="${x + 1}" cy="${y + 1.8}" r="1.5" fill="#fff"/>`,
+  campfire: (x, y) => `<path d="M${x} ${y - 4.5}c2.6 2.4 3 4.5 0 6.3c-3-1.8-2.6-3.9 0-6.3z" fill="#f08a2e" stroke="#9a3f12" stroke-width=".7"/>`,
+  rock: (x, y) => `<path d="M${x - 3.5} ${y + 2}l1-3.6 3-1.2 3 1.6.4 3.2z" fill="#a9a399" stroke="#5f5a52" stroke-width=".7"/>`,
+  path: (x, y) => `<circle cx="${x}" cy="${y}" r="1.8" fill="#d9c69c"/>`,
+};
+ICON.bush = (x, y) => `<circle cx="${x}" cy="${y}" r="3.2" fill="#3f7a34" stroke="#2f4a22" stroke-width=".8"/>`;
+const DOT = {garden:'#5a9a3f',easel:'#ffffff',bookshelf:'#8a5a3b',windmill:'#b98a5a',hammock:'#d9a05b',bridge:'#a0703c',bench:'#a0714f',lamp:'#f2c46d',well:'#9aa3ad',tent:'#e8843c',fountain:'#8cc4e6',picnic:'#d6453d',beehive:'#e9b93a',pumpkins:'#ee8a2a',mushroom:'#d6453d'};
+const ginoMark = '<g id="me"><circle class="me-ring" r="9" fill="none" stroke="#d6453d" stroke-width="2.2"/><circle r="7" fill="#fff" stroke="#d6453d" stroke-width="2"/>'
+  + '<ellipse cx="-.6" cy=".8" rx="4.2" ry="3.5" fill="#8a5a33"/><ellipse cx="2.6" cy="1.3" rx="1.8" ry="1.5" fill="#6b4423"/><circle cx="-2.6" cy="-2.2" r="1.2" fill="#6b4423"/><circle cx=".4" cy="-.2" r=".7" fill="#1d130b"/></g>';
+let mapKey = '', wallKey = null, trail = [], lastTrail = 0;
 function drawMap(s) {
-  const key = s.habitat.map(h => h.id + h.kind + h.x + ',' + h.y).join('|'); if (key === mapKey) return; mapKey = key;
+  const key = s.habitat.map(h => h.id + h.kind + h.x + ',' + h.y).join('|') + '|' + (world?.boardAt || ''); if (key === mapKey) return; mapKey = key;
   const n = v => Math.max(-1, Math.min(17, Number(v) || 0));
-  $('#map svg').innerHTML = '<ellipse cx="72" cy="16" rx="62" ry="16" fill="#8cc4e6"/>' + s.habitat.map(h => { const x = MX(n(h.x)), y = MY(n(h.y));
-    if (h.kind === 'path') return `<circle cx="${x}" cy="${y}" r="1.8" fill="#b9a88a"/>`;
-    if (h.kind === 'pond') return `<ellipse cx="${x}" cy="${y}" rx="9" ry="6" fill="#5aa7dc" stroke="#3b2e22"/>`;
-    if (h.kind === 'house') return `<path d="M${x - 6} ${y} L${x} ${y - 7} L${x + 6} ${y}Z" fill="#c9503c" stroke="#3b2e22"/><rect x="${x - 4.5}" y="${y}" width="9" height="6" fill="#c98b5a" stroke="#3b2e22"/>`;
-    return `<circle cx="${x}" cy="${y}" r="3.2" fill="${DOT[h.kind] || '#8d8a84'}" stroke="#3b2e22"/>`; }).join('')
-    + '<g id="me"><circle r="10" fill="none" stroke="#d6453d" stroke-width="2" opacity=".55"/><circle r="5" fill="#d6453d" stroke="#fff" stroke-width="2"/></g>';
+  const things = [...s.habitat].sort((a, b) => (a.kind === 'path' ? -1 : 0) - (b.kind === 'path' ? -1 : 0) || n(a.y) - n(b.y)).map(h => {
+    const x = MX(n(h.x)), y = MY(n(h.y)), f = ICON[h.kind];
+    return f ? f(x, y) : `<circle cx="${x}" cy="${y}" r="3.2" fill="${DOT[h.kind] || (/^#[0-9a-f]{6}$/i.test(h.color) ? h.color : '#c9b48a')}" stroke="#3b2e22" stroke-width=".8"/>`; }).join('');
+  let pin = '';
+  if (world?.boardAt) { const [bx, by] = world.boardAt, x = MX(bx), y = MY(by); pin = `<rect x="${x - 5}" y="${y - 3.5}" width="10" height="7" rx="1" fill="#c8935a" stroke="#3b2e22" stroke-width=".8"/><rect x="${x - 3.5}" y="${y - 2}" width="3" height="3.4" fill="#fff"/><rect x="${x + .5}" y="${y - 2}" width="3" height="3.4" fill="#fff4c9"/><circle cx="${x}" cy="${y - 4}" r="1.3" fill="#d6453d"/>`; }
+  $('#map svg').innerHTML = '<defs><pattern id="grassP" width="9" height="9" patternUnits="userSpaceOnUse"><path d="M2 7l1-3M6 4l.8-2.4" stroke="#5a8a3f" stroke-width=".7" opacity=".35"/></pattern>'
+    + '<radialGradient id="fieldG" cx="50%" cy="60%" r="60%"><stop offset="0" stop-color="#cfe6a0"/><stop offset="1" stop-color="#a9cf7c"/></radialGradient></defs>'
+    + '<rect width="150" height="150" fill="url(#fieldG)"/><rect width="150" height="150" fill="url(#grassP)"/>'
+    + '<path d="M0 0H150V22C130 34 108 30 86 28C60 26 34 34 0 26Z" fill="#7fb9e0"/><path d="M0 26C34 34 60 26 86 28C108 30 130 34 150 22" fill="none" stroke="#e8f4fb" stroke-width="2"/>'
+    + '<path d="M40 12q4-2.5 8 0M95 9q4-2.5 8 0" fill="none" stroke="#d8f0ff" stroke-width="1"/><text x="75" y="15" text-anchor="middle" font-size="7" font-style="italic" font-family="Georgia,serif" fill="#2f5a7a">the lake</text>'
+    + things + pin + '<polyline id="trail" fill="none" stroke="#d6453d" stroke-width="1.6" stroke-dasharray="1.5 3" stroke-linecap="round" opacity=".7"/>'
+    + '<g transform="translate(128 44)"><circle r="8" fill="#fff7e8" stroke="#5b4a38" stroke-width="1"/><path d="M0-6 2 0H-2Z" fill="#d6453d"/><path d="M0 6 2 0H-2Z" fill="#5b4a38"/><text y="-9.5" text-anchor="middle" font-size="6" font-weight="700" fill="#3b2e22">N</text></g>'
+    + ginoMark;
+}
+// where he is, in words, for the little tag under the map
+function nearWhat(gx, gy, s) {
+  if (world?.boardAt && Math.hypot(gx - world.boardAt[0], gy - world.boardAt[1]) < 1.8) return 'by his creations board';
+  if (gy < -0.6) return 'down by the lake';
+  let best = null, bd = 2.2;
+  for (const h of s.habitat) { if (h.kind === 'path') continue; const d = Math.hypot(gx - h.x, gy - h.y); if (d < bd) { bd = d; best = h; } }
+  return best ? `${best.kind === 'pond' ? 'in' : 'by'} the ${best.name}` : 'out in the meadow';
+}
+function moveMe(s) {
+  const [gx, gy] = clampG(...(world?.where || s.pos)), x = MX(gx).toFixed(1), y = MY(gy).toFixed(1);
+  $('#me')?.setAttribute('transform', `translate(${x} ${y})`);
+  const now = Date.now(); if (now - lastTrail > 1500) { lastTrail = now; const l = trail.at(-1); if (!l || Math.hypot(l[0] - x, l[1] - y) > 1) trail = [...trail, [x, y]].slice(-40); }
+  $('#trail')?.setAttribute('points', trail.map(p => p.join(',')).join(' '));
+  const tag = `<i>●</i> Gino is ${s.asleep ? 'asleep ' : ''}${esc(nearWhat(gx, gy, s))}`; if ($('#mapTag').innerHTML !== tag) $('#mapTag').innerHTML = tag;
+}
+$('#map').addEventListener('click', e => {
+  const r = e.currentTarget.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * 150, py = (e.clientY - r.top) / r.height * 150;
+  world?.lookAt(Math.max(-1, Math.min(16, IX(px))), Math.max(-1.5, Math.min(10, IY(py))));
+});
+
+// creations board: drawings and poems he already shared on his website. Look and read, nothing else.
+const PINC = ['#d6453d', '#3f7fd6', '#e8a33d', '#4f9a3f'];
+let pieces = [];
+function boardOf(s) {
+  if (Array.isArray(s.board)) return s.board.filter(p => p && p.title && (p.text || /^\/blog\/art\/\d+\.svg$/.test(p.img || '')));
+  return (s.art || []).filter(u => /^\/blog\/art\/\d+\.svg$/.test(u)).map(u => ({ kind: 'drawing', title: 'A drawing', img: u, page: '/blog' }));   // older server
 }
 function drawWall(s) {
-  const art = (s.art || []).filter(u => /^\/blog\/art\/\d+\.svg$/.test(u)).slice(0, 3), key = art.join('|'); if (key === wallKey) return; wallKey = key;
-  $('#pins').innerHTML = art.length ? art.map(u => `<a href="/blog"><img src="${u}" alt="A drawing by Gino" loading="lazy"></a>`).join('') : '<p>Nothing pinned up yet. His drawings will hang here.</p>';
+  pieces = boardOf(s); const key = JSON.stringify(pieces); if (key === wallKey) return; wallKey = key;
+  world?.setBoard?.(pieces);
+  $('#pins').innerHTML = pieces.length ? pieces.slice(0, 6).map((p, i) => p.img
+    ? `<button class="pin" style="--pc:${PINC[i % 4]}" data-i="${i}" aria-label="Look at the drawing ${esc(p.title)}"><img src="${esc(p.img)}" alt="" loading="lazy"><b>${esc(p.title)}</b></button>`
+    : `<button class="pin note" style="--pc:${PINC[i % 4]}" data-i="${i}" aria-label="Read the ${esc(p.kind)} ${esc(p.title)}"><b>${esc(p.title)}</b><span>${esc(p.text.split('\n').filter(Boolean).slice(0, 4).join('\n'))}</span></button>`).join('')
+    : '<p class="empty">Nothing pinned up yet. His drawings and poems will hang here.</p>';
 }
+$('#pins').addEventListener('click', e => { const b = e.target.closest('.pin'); if (b) openPiece(pieces[+b.dataset.i], b); });
+let back = null;
+function openPiece(p, from) {
+  if (!p) return; back = from || document.activeElement;
+  $('#vTitle').textContent = p.title;
+  $('#vKind').textContent = p.img ? 'A drawing by Gino' : `A ${p.kind} by Gino`;
+  $('#vBody').innerHTML = p.img ? `<img src="${esc(p.img)}" alt="${esc(p.title)}, a drawing by Gino">` : `<p class="poem">${esc(p.text)}</p>`;
+  $('#vFoot').innerHTML = /^\/blog\/page\/[\w-]+$/.test(p.page || '') ? `<a href="${esc(p.page)}">See it on his website</a>` : '';
+  $('#viewer').classList.add('open'); $('#vClose').focus();
+}
+const closeViewer = () => { $('#viewer').classList.remove('open'); back?.focus?.(); };
+$('#vClose').onclick = closeViewer;
+$('#viewer').addEventListener('click', e => { if (e.target.id === 'viewer') closeViewer(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#viewer').classList.contains('open')) closeViewer(); });
+const toBoard = () => { if (world?.showBoard) { world.showBoard(); } else if (pieces[0]) openPiece(pieces[0]); };
+$('#boardBtn').onclick = toBoard; $('#creBtn').onclick = toBoard;
 let state = null, clockAt = 0, world = null, sound = null;
 
 // the sky follows the time where Gino lives, not where the visitor is
@@ -130,14 +252,14 @@ function showNow() {
   const act = world?.doing || s.activity, doing = s.thinking && !s.asleep ? `${act} (deep in thought)` : act;
   const html = `<strong>Gino</strong> is ${esc(doing)}, feeling <b>${esc(s.emotion)}</b>`;
   if ($('#now').innerHTML !== html) $('#now').innerHTML = html;
-  const [gx, gy] = world?.where || s.pos; $('#me')?.setAttribute('transform', `translate(${MX(Math.max(-1, Math.min(16.5, gx))).toFixed(1)} ${MY(Math.max(-1, Math.min(11, gy))).toFixed(1)})`);
+  moveMe(s);
 }
 setInterval(showNow, 1500);
 
 function render() {
   const s = state;
   $('#meta').textContent = `${WX[s.weather?.kind] || ''} ${s.weather?.text || ''} · ${fmt(gHour())} in his world · ${s.age_days} days old`;
-  $('#bars').innerHTML = BARS.map(([k, l, e, c]) => `<div class="bar" style="--c:${c}" title="${l} ${Number(s.vitals[k]) || 0} out of 100"><span>${e}</span><div><label>${l}</label><p><i style="width:${Number(s.vitals[k]) || 0}%"></i></p></div></div>`).join('');
+  drawBars(s.vitals);
   const said = s.note ? `“${s.note}”` : ''; if ($('#said').textContent !== said) $('#said').textContent = said;
   const h = gHour(); $('#glow').style.opacity = h < 6 || h >= 21 ? 0.45 : 1;
   drawMap(s); drawWall(s);
@@ -188,8 +310,9 @@ try {
   world = m.createWorld($('#world'), $('#tip'), {
     season: state.weather?.season, clock: gHour, petHint: '',
     onFollow: v => { follow = v; $('#followBtn').textContent = v ? 'Free camera' : 'Follow Gino'; },
+    onPiece: p => openPiece(p),
   });
-  world.update(state); world.setFollow(true); window.ginoWorld = world;
+  world.update(state); wallKey = null; mapKey = ''; drawWall(state); drawMap(state); world.setFollow(true); window.ginoWorld = world;
   $('#followBtn').onclick = () => { follow = !follow; world.setFollow(follow); $('#followBtn').textContent = follow ? 'Free camera' : 'Follow Gino'; };
   $('#fullBtn').onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); };
 } catch (e) {

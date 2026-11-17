@@ -1,7 +1,7 @@
 """Gino's live habitat: anyone can watch him in his 3D world at /live, nobody can talk to him there.
 
 Visitors only ever see a small, filtered slice of his state: where he is, what he's doing, how he feels,
-his habitat, the drawings he already put on his public website and the newest line of his public diary. No chats, no thoughts, no memories,
+his habitat, the drawings and poems he already put on his public website and the newest line of his public diary. No chats, no thoughts, no memories,
 no journal, nothing about dad. Every bit of text Gino wrote goes through public.check() first, the same
 filter his public website uses. There are no write endpoints here: chatting, gifts and petting stay
 behind the password on the private page.
@@ -68,6 +68,34 @@ def _diary_line() -> str:
     return _clean(first, 130)
 
 
+def _board() -> list[dict]:
+    """Gino's creations board: drawings and poems he already put on public pages. Look, don't touch."""
+    out = []
+    for r in db.q("SELECT c.id, c.kind, c.title, c.filename, c.ts, MIN(p.slug) AS slug FROM creations c "
+                  "JOIN posts p ON p.creation_id=c.id WHERE p.kind='page' AND c.kind IN ('svg','poem','song','story') "
+                  "GROUP BY c.id ORDER BY c.ts DESC LIMIT 8"):
+        title = _clean(r["title"], 80)
+        if not title:
+            continue
+        item = {"id": r["id"], "kind": "drawing" if r["kind"] == "svg" else r["kind"], "title": title,
+                "page": f"/blog/page/{r['slug']}"}
+        if r["kind"] == "svg":
+            item["img"] = f"/blog/art/{r['id']}.svg"
+        else:
+            path = config.DATA_DIR / "creations" / r["filename"]
+            raw = path.read_text(encoding="utf-8") if path.exists() else ""
+            lines = [ln.strip().lstrip("#>*- ").strip() for ln in raw.splitlines()]
+            if lines and lines[0].lower().strip(" .:!") == r["title"].lower().strip(" .:!"):
+                lines = lines[1:]  # the title is shown already
+            text = "\n".join(lines).strip()
+            text = re.sub(r"\n{3,}", "\n\n", text)[:700]
+            if not text or public.check(text):
+                continue
+            item["text"] = text
+        out.append(item)
+    return out
+
+
 def _hour(now) -> float:
     return round(now.hour + now.minute / 60, 3)
 
@@ -106,6 +134,7 @@ def build() -> dict:
         "habitat": habitat,
         "art": art,
         "note": _diary_line(),
+        "board": _board(),
     }
 
 
