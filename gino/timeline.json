@@ -103,6 +103,7 @@
     "emoji": "🗺️",
     "title": "His story so far",
     "text": "This page! A timeline of everything that has happened in Gino's life, which grows a little every time something new arrives.",
-    "link": "/timeline"
+    "link": "/timeline",
+    "pr": 18
   }
 ]
