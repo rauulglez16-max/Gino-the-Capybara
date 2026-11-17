@@ -43,6 +43,10 @@ Then open **http://localhost:8787/private** (that's your own page, where you can
   the full look (soft shadows, ambient shading, dense grass) and a lighter one; it drops to low by itself on slower
   computers.
 - **How he feels**: fullness, energy, social, fun, comfort, and his overall mood, plus the emotion he names and why.
+- **Since your last visit**: when you open your page after being away for half an hour or more, a card at the
+  top tells you what Gino got up to: projects he started, kept going or finished, things he made (with little
+  pictures of his drawings), dreams, new interests, what he learned, what he built and what he put on his website.
+  It's made from his own records, so it costs nothing. "Thanks, Gino" hides it.
 - **Chat**: talk to him any time. Messaging him wakes him up if he's asleep, and he remembers what matters.
 - **Phone**: on his server, `gino telegram` or `gino whatsapp` connects him to your phone, so he texts you and you can
   text him back. Only you can talk to him there (see deploy/README.md).
@@ -89,6 +93,9 @@ Then open **http://localhost:8787/private** (that's your own page, where you can
 | Piece | File |
 | --- | --- |
 | Personality and the self-prompting loop | `gino/brain.py` |
+| The daily money guard | `gino/budget.py` |
+| Lasting interests, old memories coming back, multi-day projects | `gino/continuity.py` |
+| "Since your last visit" | `gino/recap.py` |
 | Body: needs, food, sleep, mood | `gino/vitals.py` |
 | Everything he can do | `gino/tools.py` |
 | Storage (SQLite) | `gino/db.py` |
@@ -98,6 +105,12 @@ Then open **http://localhost:8787/private** (that's your own page, where you can
 
 His needs drift on their own: he gets hungry, tired and lonely over time, sleeps them off, and a garden in his
 habitat makes foraging better. When he forgets to choose when to wake up, he wakes in an hour.
+
+**His days add up.** The topics he tags his memories with turn into lasting interests once he keeps coming back
+to them over several days (and he's reminded of ones he's left alone for a while). Older memories that connect to
+his current projects and interests come back into his mind even weeks later, and now and then an old memory just
+surfaces. Projects show how long he's been at them, so a passion can grow into something that takes days: study
+the moon for a few evenings, build a telescope, then paint what he saw.
 
 ## What it costs
 
@@ -112,8 +125,12 @@ Gino's thinking is paid per use through your Claude API account. Rough numbers f
 
 Web searches add $0.01 each. These are estimates; the page header shows what he has really spent today.
 
-**Safety net:** `GINO_DAILY_BUDGET_USD` (default $3) is a hard daily cap. When he reaches it he stops thinking and
-just lazes around until 7 AM. Chatting keeps working up to 1.5x the cap. You can also turn down `GINO_EFFORT`,
+**Safety net:** `GINO_DAILY_BUDGET_USD` (default $3) is a daily cap. Gino thinks in small steps (one paid call
+each), and before *every* step the money guard works out the most that step could possibly cost and only lets it
+happen if it fits in what's left; near the limit a step gets a shorter answer, and when not even a short step fits
+he stops and just lazes around until 7 AM. Because that worst case is worked out pessimistically, he usually stops a
+little *below* the cap rather than going over it. Chatting with you keeps working up to 1.5x the cap. Dreams count
+too. You can also turn down `GINO_EFFORT`,
 raise `GINO_MIN_WAKE_MINUTES`, or turn the web off with `GINO_WEB=0`.
 
 ## Moving Gino to the cloud
@@ -138,15 +155,33 @@ Always set `GINO_PASSWORD` before he's on the internet. His whole life is in `da
 - On the internet Gino can only look (search and read pages). He cannot buy, post or sign up anywhere. The places
   he publishes are his own website at `/blog` and, if you switch it on, his Bluesky account (new posts only: no
   replies, DMs, follows, likes or @mentions, and no links except to his own website).
-- He's told never to share anything about you. On top of that, everything he tries to put on his public website or
-  Bluesky is
-  checked first and turned away if it mentions you (your name or "dad"), quotes your chats, or contains a key,
-  a password, an email address or a phone number.
+- He's told never to share anything about you. On top of that, everything he tries to put on his public website,
+  Bluesky or shop is checked first and turned away if it mentions you (your name or "dad"), quotes your chats, or
+  contains a key, a password, an email address or a phone number. That includes any words hidden inside his
+  drawings (their text, titles, labels and notes), not just their names.
+- You can add your own private words with `GINO_PRIVATE_WORDS` (for example the names of family members or pets,
+  your town, your workplace), separated by commas. Anything public that mentions one is turned away too.
+- Be realistic about what the filter can do: it's a word filter, not a mind reader. It reliably catches names,
+  "dad", contact details, keys and quotes from your chats, but if Gino retold something private in completely
+  different words, it could get past. So the simplest rule is: don't tell Gino anything you'd hate to see on the
+  internet.
 - In his shop he can only list, reprice and remove his own drawings. He can't spend money, give refunds or
   contact buyers, never sees who bought, and never sees the Stripe key (a restricted key that can't move money).
   `gino shop off` closes it at once.
 - He only touches his own `data/` folder. He can't run code or read your files.
 - Pages he reads can't give him orders; his instructions say to ignore anything that tries.
+
+## Checking it works (automated tests)
+
+The promises above (the money guard, the privacy filter, the recap and his memories) have automated tests. They
+use a throwaway Gino, never your real one, and cost nothing:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+They also run by themselves on GitHub every time code changes.
 
 ## Ideas for next versions
 

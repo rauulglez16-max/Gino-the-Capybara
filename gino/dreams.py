@@ -157,23 +157,29 @@ def dream_now() -> int | None:
             return None
         body.pop("dream_due", None)
         vitals.save(body)
-        if brain.spent_today() >= config.DAILY_BUDGET_USD:
-            db.event("sleep", "Gino slept too deeply to dream (thinking budget used up for today).")
-            return None
         level = _pick_strangeness(body)
         f = fragments(body)
+        text = prompt(body, level, f)
+        max_tokens = 4000
+        if not config.FAKE_BRAIN:  # the dream must fit in what's left of today's budget, worst case included
+            from . import budget
+            est = budget.estimate_tokens(brain.SYSTEM, text, [DREAM_TOOL])
+            max_tokens = budget.step_allowance(config.DREAM_MODEL, brain.spent_today(), "dream", est, want=4000)
+        if (config.FAKE_BRAIN and brain.spent_today() >= config.DAILY_BUDGET_USD) or not max_tokens:
+            db.event("sleep", "Gino slept too deeply to dream (thinking budget used up for today).")
+            return None
         if config.FAKE_BRAIN:
             d = fake_dream(f, level)
         else:
-            d = _ask_claude(brain, prompt(body, level, f))
+            d = _ask_claude(brain, text, max_tokens)
             if not d:
                 return None
         return save(body, d, level)
 
 
-def _ask_claude(brain, text: str) -> dict | None:
+def _ask_claude(brain, text: str, max_tokens: int = 4000) -> dict | None:
     # Newer models don't allow forcing a tool, so the prompt asks for it; plain text still counts as a dream.
-    resp = brain.call(config.DREAM_MODEL, [{"role": "user", "content": text}], [DREAM_TOOL], max_tokens=4000)
+    resp = brain.call(config.DREAM_MODEL, [{"role": "user", "content": text}], [DREAM_TOOL], max_tokens=max_tokens)
     brain.record_spend("dream", resp, config.DREAM_MODEL)
     for b in resp.content:
         if b.type == "tool_use" and b.name == "dream" and isinstance(b.input, dict) and b.input.get("story"):

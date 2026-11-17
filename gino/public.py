@@ -46,13 +46,21 @@ def _dad_sentences() -> list[str]:
 
 
 def check(*texts: str) -> str | None:
-    """Return why this can't be published, or None if it's fine to show the whole world."""
-    text = "\n".join(t or "" for t in texts)
+    """Return why this can't be published, or None if it's fine to show the whole world.
+
+    This is a word filter: it reliably stops names, family words, contact details, keys and quotes from dad's
+    chats, and the private words dad lists in GINO_PRIVATE_WORDS. It can't understand meaning, so something
+    private retold in completely different words could still get past it."""
+    text = html.unescape("\n".join(str(t or "") for t in texts))
     low = text.lower()
     name = (config.DAD_NAME or "").strip()
     if (len(name) >= 2 and re.search(rf"\b{re.escape(name)}\b", text, re.I)) or _FAMILY.search(text):
         return ("Your public website must never mention your dad (not his name, not 'dad', nothing about him). "
                 "He is private. Rewrite it about yourself and your world.")
+    for w in config.PRIVATE_WORDS:
+        if re.search(rf"(?<!\w){re.escape(w)}(?!\w)", text, re.I):
+            return ("That mentions something your family keeps private (a name, place or detail from home). "
+                    "Leave it out and write about yourself and your world.")
     if any(s.lower() in low for s in _secrets()) or _SECRETY.search(text):
         return "That looks like it mentions a key or a password. Those are private: leave them out completely."
     if _EMAIL.search(text) or _PHONE.search(text):
@@ -121,7 +129,7 @@ def write_page(title: str, content: str, slug: str = "", summary: str = "", crea
         if not rows:
             return f"You don't have a creation #{creation_id}."
         creation = rows[0]
-    problem = check(title, content, summary, _creation_text(creation) if creation else "")
+    problem = check(title, content, summary, creation_text(creation) if creation else "")
     if problem:
         return "Not published. " + problem
     now = time.time()
@@ -150,11 +158,34 @@ def unpublish(kind: str, slug: str) -> str:
     return f"Took '{rows[0]['title']}' off your website."
 
 
-def _creation_text(c: dict) -> str:
-    if c["kind"] == "svg":
-        return c["title"]
+_SVG_SHAPE_ATTRS = {"d", "points", "transform", "viewbox", "path", "values", "keytimes", "keysplines"}
+
+
+def svg_text(svg: str) -> str:
+    """Every bit of readable text hidden in a drawing: its words, titles, descriptions, comments, metadata and
+    attribute values (labels, links, ids...). Shape data (the numbers that draw lines) is left out."""
+    svg = svg or ""
+    found = re.findall(r"<!--([\s\S]*?)-->", svg) + re.findall(r"<!\[CDATA\[([\s\S]*?)\]\]>", svg)
+    rest = re.sub(r"<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>", " ", svg)
+    for tag in re.findall(r"<[^>]*>", rest):
+        for name, v1, v2 in re.findall(r"([\w:.-]+)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')", tag):
+            if name.split(":")[-1].lower() not in _SVG_SHAPE_ATTRS:
+                found.append(v1 or v2)
+    words = [w for w in re.split(r"<[^>]*>", rest)]
+    found.append(" ".join(w.strip() for w in words if w.strip()))
+    found.append("".join(w.strip() for w in words if w.strip()))  # catches a name split over <tspan>s: "Ra" "ul"
+    return html.unescape("\n".join(f for f in found if f and f.strip()))
+
+
+def creation_text(c: dict) -> str:
+    """Everything readable in a creation, for the privacy check. For drawings that means the text inside."""
     path = config.DATA_DIR / "creations" / c["filename"]
-    return c["title"] + "\n" + (path.read_text(encoding="utf-8") if path.exists() else "")
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    if c["kind"] == "svg":
+        content = svg_text(content)
+    return c["title"] + "\n" + content
+
+
 
 
 def context_lines() -> str:
@@ -449,7 +480,7 @@ def art(cid: int):
     if not c or c["kind"] != "svg":
         raise HTTPException(404)
     path = config.DATA_DIR / "creations" / c["filename"]
-    if not path.exists():
+    if not path.exists() or check(creation_text(c)):  # checked again here, in case it was published before
         raise HTTPException(404)
     return Response(path.read_bytes(), media_type="image/svg+xml",
                     headers={**HEADERS, "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})

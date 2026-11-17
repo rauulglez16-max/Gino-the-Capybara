@@ -15,6 +15,7 @@ from . import brain, config, db, dreams, live, public, shop, telegram, timeline,
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
+from . import recap  # noqa: E402  ("since your last visit")
 
 
 def shop_news() -> None:
@@ -106,6 +107,7 @@ def index():  # dad's private page (chat, gifts, petting); its API calls need th
 def state():
     body = vitals.load()
     now = time.time()
+    recap.seen(now)  # dad is here
     return {
         "vitals": vitals.snapshot(body),
         "emotion": body.get("emotion"), "emotion_intensity": body.get("emotion_intensity"),
@@ -124,6 +126,12 @@ def state():
         "weather": vitals.weather(brain.local_now()),
         "art": [r["filename"] for r in db.q("SELECT filename FROM creations WHERE kind='svg' ORDER BY ts DESC LIMIT 6")],
     }
+
+
+@app.get("/api/recap", dependencies=[Depends(auth)])
+def since_last_visit():
+    """'Since your last visit...': what Gino did while dad was away (free: built from his own records)."""
+    return recap.for_dad()
 
 
 @app.get("/api/feed", dependencies=[Depends(auth)])

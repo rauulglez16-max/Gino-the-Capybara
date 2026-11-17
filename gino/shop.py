@@ -186,7 +186,7 @@ def list_item(creation_id, title: str, description: str, price) -> str:
     if len(title) < 2 or len(description) < 10:
         return "Give it a proper name and a short description (a sentence or two) so buyers know what it is."
     pence = _pence(price)
-    why = _price_problem(pence) or public.check(title, description)
+    why = _price_problem(pence) or public.check(title, description, public.creation_text(c))  # the drawing too
     if why:
         return "Not listed. " + why.replace("public website", "shop")
     if db.q("SELECT 1 FROM shop_items WHERE creation_id=? AND status='listed'", (c["id"],)):
@@ -221,7 +221,8 @@ def update_item(item_id, price=None, title: str = "", description: str = "") -> 
     title = " ".join(str(title or "").split())[:80] or it["title"]
     description = str(description or "").strip()[:600] or it["description"]
     pence = _pence(price) if price not in (None, "") else it["price_pence"]
-    why = _price_problem(pence) or public.check(title, description)
+    c = _creation(it["creation_id"])
+    why = _price_problem(pence) or public.check(title, description, public.creation_text(c) if c else "")
     if why:
         return "Not changed. " + why.replace("public website", "shop")
     try:
@@ -417,7 +418,7 @@ def shop_art(item_id: int):
     it = _item(item_id)
     c = _creation(it["creation_id"]) if it and it["status"] == "listed" else None
     path = config.DATA_DIR / "creations" / c["filename"] if c else None
-    if not path or not path.exists():
+    if not path or not path.exists() or public.check(public.creation_text(c)):
         raise HTTPException(404)
     return Response(path.read_bytes(), media_type="image/svg+xml",
                     headers={**public.HEADERS, "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
