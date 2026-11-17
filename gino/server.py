@@ -12,10 +12,10 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from . import brain, config, db, dreams, live, public, shop, telegram, vitals, whatsapp
-from . import recap
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
+from . import recap  # noqa: E402  ("since your last visit")
 
 
 def shop_news() -> None:
@@ -103,9 +103,9 @@ def index():
 
 @app.get("/api/state", dependencies=[Depends(auth)])
 def state():
-    recap.seen()  # dad is here
     body = vitals.load()
     now = time.time()
+    recap.seen(now)  # dad is here
     return {
         "vitals": vitals.snapshot(body),
         "emotion": body.get("emotion"), "emotion_intensity": body.get("emotion_intensity"),
