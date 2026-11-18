@@ -6,126 +6,258 @@
 <title>Gino's Home</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌿</text></svg>">
 <style>
+/* Same picture-book look as his live page: cream cards with a brown outline over the full-screen 3D world */
 :root{
-  --bg:#f6f1e7; --card:#fffdf8; --ink:#3b2f24; --muted:#8a7a68; --line:#e8dfcf;
-  --accent:#b8743a; --accent-soft:#f3e3d1; --grass:#bfe0a0; --grass2:#a9d48a; --water:#8ccbe6;
-  --good:#6fae5a; --warn:#e2a23b; --bad:#d4614a; --dad:#e9f3ff; --dad-ink:#24476b;
+  --card:#fff7e8; --ink:#3b2e22; --muted:#7d6a55; --accent:#b5652b; --leaf:#4f7a37; --line:rgba(59,46,34,.14); --live:#d6453d;
+  --edge:#5b4a38; --drop:rgba(91,74,56,.35); --track:#efe2c8; --field:#dcebb8; --tab:#efdcb8; --head:#f7e6c4; --paper:#fffdf6;
+  --bg:#f6efe1; --accent-soft:#f3e3d1; --grass:#bfe0a0; --grass2:#a9d48a; --water:#8ccbe6; --dad:#e3effa; --dad-ink:#24476b;
+  --good:#6fae5a; --warn:#e2a23b; --bad:#d4614a; --note:#fff4c9;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --bg:#1d1915; --card:#27221d; --ink:#efe6da; --muted:#a8998a; --line:#3a332b;
-  --accent:#d99a5e; --accent-soft:#3b2d20; --grass:#4f6b3e; --grass2:#46613a; --water:#3d7894;
-  --dad:#22324a; --dad-ink:#cfe2ff; }}
+  --card:#2a231b; --ink:#efe4d2; --muted:#b9a68c; --accent:#e39a5f; --leaf:#a6cf86; --line:rgba(239,228,210,.14);
+  --edge:#cdb99a; --drop:rgba(0,0,0,.45); --track:#3a3026; --field:#3d4a2c; --tab:#3a2f24; --head:#342a20; --paper:#2f271f;
+  --bg:#231d17; --accent-soft:#3b2d20; --grass:#4f6b3e; --grass2:#46613a; --water:#3d7894; --dad:#22324a; --dad-ink:#cfe2ff; --note:#3d3420; }}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-rounded,"SF Pro Rounded","Nunito",system-ui,sans-serif}
-header{display:flex;align-items:center;gap:12px;padding:14px 20px;flex-wrap:wrap}
-header h1{margin:0;font-size:22px}
-.pill{background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:3px 10px;font-size:13px;font-weight:600}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:#9fd0ea;color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif}
+a{color:var(--accent)}
 .muted{color:var(--muted)}
-main{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:16px;padding:0 20px 20px;max-width:1400px;margin:0 auto}
-@media (max-width:900px){main{grid-template-columns:1fr;padding:0 16px 16px}}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
-#hero{grid-column:1/-1}
-#world{position:relative;width:100%;height:clamp(380px,70vh,820px);border-radius:12px;overflow:hidden;background:var(--grass)}
-#world:fullscreen{height:100vh;border-radius:0}
-#world canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.card{background:var(--card);border:2px solid var(--edge);border-radius:16px;box-shadow:4px 5px 0 var(--drop)}
+button,select,input,textarea{font:inherit;color:var(--ink)}
+button{cursor:pointer}
+.btn,button.solid{border:2px solid var(--edge);border-radius:999px;padding:6px 14px;background:var(--accent);color:#fff;font-weight:700;box-shadow:2px 2px 0 var(--drop)}
+button:disabled{opacity:.5}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;background:var(--card);border:2px solid var(--edge);box-shadow:2px 3px 0 var(--drop);padding:5px 12px;font-size:12.5px;font-weight:600;white-space:nowrap}
+button.pill:hover,button.pill:focus-visible{color:var(--accent)}
+
+/* the world fills the whole screen */
+#world{position:fixed;inset:0;background:var(--grass)}
+#world canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab;filter:saturate(1.2) sepia(.3) hue-rotate(-8deg) brightness(1.06) contrast(1.05)}
 #scene{width:100%;height:100%;display:block}
-#tip{position:absolute;display:none;max-width:230px;background:rgba(30,24,18,.86);color:#fff;padding:5px 9px;border-radius:8px;font-size:13px;pointer-events:none}
-#worldBtns{position:absolute;left:10px;right:10px;bottom:10px;display:none;gap:6px;flex-wrap:wrap}
-#hud{position:absolute;left:10px;top:10px;max-width:min(360px,calc(100% - 20px));pointer-events:none}
-#hud .bubble{margin:0;background:rgba(255,253,248,.82);color:#3b2f24;backdrop-filter:blur(6px);font-size:14px}
-#hud .muted{color:#7a6a58}
-#wx{position:absolute;right:10px;top:10px;background:rgba(255,253,248,.82);color:#3b2f24;border-radius:999px;padding:4px 11px;font-size:13px;pointer-events:none}
-@media (max-width:600px){#wx{top:auto;bottom:96px}}
-@media (max-width:900px){#chat{order:2;min-height:340px}#lower{order:3}}
-#worldBtns button{background:rgba(255,253,248,.85);color:#3b2f24;border:none;padding:5px 10px;font-size:13px}
-.bubble{margin-top:10px;background:var(--accent-soft);border-radius:14px;padding:10px 14px;position:relative}
-.bubble b{color:var(--accent)}
-.vitals{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:12px}
-.vital label{font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
-.bar{height:9px;background:var(--line);border-radius:9px;overflow:hidden}
-.bar i{display:block;height:100%;border-radius:9px;transition:width .6s}
-#chat{display:flex;flex-direction:column;height:100%;min-height:420px}
-#msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px;max-height:520px}
-.msg{max-width:85%;padding:8px 12px;border-radius:14px;white-space:pre-wrap;word-wrap:break-word}
+#glow{position:fixed;inset:0;pointer-events:none;mix-blend-mode:soft-light;background:linear-gradient(180deg,rgba(255,150,60,.55),rgba(255,200,120,.25) 50%,rgba(130,60,150,.35));transition:opacity 2s}
+#tip{position:fixed;display:none;pointer-events:none;padding:6px 10px;font-size:13px;max-width:240px;border-radius:10px;z-index:4}
+
+/* Gino's card: name, what he's doing, his six mood bars, a snack */
+#me{position:fixed;left:16px;top:16px;width:372px;padding:14px 16px;z-index:2;max-height:calc(100vh - 230px);overflow:auto}
+#me h1{margin:0;font:600 21px/1.2 Georgia,'Iowan Old Style',serif;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#me h1 a{margin-left:auto;font:600 12px system-ui,sans-serif;text-decoration:none}
+.live{display:inline-flex;align-items:center;gap:6px;font:700 11px/1 system-ui,sans-serif;letter-spacing:.1em;color:var(--live);text-transform:uppercase}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--live);animation:pulse 1.6s infinite}
+.live.off{color:var(--muted)}.live.off i{background:var(--muted);animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+#meta{color:var(--muted);font-size:12.5px;margin:5px 0 12px}
+#meta b{color:var(--leaf)}
+#bars{display:grid;grid-template-columns:1fr 1fr;gap:11px 14px}
+.bar{display:flex;align-items:center;gap:9px;min-width:0}
+.badge{width:34px;height:34px;flex:none;border-radius:50%;border:2px solid var(--edge);background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--c) 55%,#fff),var(--c) 70%);box-shadow:2px 2px 0 var(--drop);display:grid;place-items:center}
+.badge svg{width:20px;height:20px;fill:#fffaf0;stroke:var(--edge);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round;overflow:visible}
+.bar>div{flex:1;min-width:0}
+.bar .top{display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:3px}
+.bar label{font-size:12.5px;font-weight:700}
+.bar small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track{position:relative;height:13px;border-radius:8px;background:var(--track);border:2px solid var(--edge);overflow:hidden;box-shadow:inset 0 2px 0 rgba(0,0,0,.08)}
+.fill{position:absolute;inset:0 auto 0 0;border-radius:6px 0 0 6px;background:repeating-linear-gradient(-45deg,transparent 0 6px,rgba(255,255,255,.18) 6px 12px),linear-gradient(180deg,color-mix(in srgb,var(--c) 70%,#fff),var(--c) 60%);background-size:17px 100%,100% 100%;transition:width 1.2s cubic-bezier(.3,1.3,.5,1);animation:slide 2.4s linear infinite}
+.fill::after{content:'';position:absolute;left:4px;right:4px;top:2px;height:3px;border-radius:3px;background:rgba(255,255,255,.55)}
+@keyframes slide{to{background-position:17px 0,0 0}}
+.bar.low .fill{--c:#d6453d}
+.bar.low .badge{animation:wobble 1.8s ease-in-out infinite}
+@keyframes wobble{0%,100%{transform:rotate(0)}20%{transform:rotate(-12deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-5deg)}}
+.snack{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:13px;padding-top:11px;border-top:1.5px dashed var(--line);font-size:13px}
+.snack select{font-size:13px;border:2px solid var(--edge);border-radius:999px;padding:4px 10px;background:var(--paper);max-width:150px}
+.snack button{font-size:13px;padding:4px 13px}
+.snack .muted{font-size:12px}
+
+/* "Since your last visit": a postcard at the top */
+#post{position:fixed;left:404px;right:400px;top:16px;max-width:620px;margin:0 auto;padding:10px 14px;display:flex;gap:12px;align-items:center;background:var(--note);transform:rotate(-.6deg);z-index:2}
+#post[hidden]{display:none}
+#post .stamp{font-size:26px;flex:none}
+#post p{margin:0;font-size:13px}
+#post b.t{font:700 14px Georgia,serif;display:block}
+#post .acts{margin-left:auto;display:flex;flex-direction:column;gap:6px}
+#post .acts .pill{font-size:12px;padding:4px 10px}
+
+/* chat, docked on the right */
+#chat{position:fixed;right:16px;top:16px;bottom:16px;width:368px;display:flex;flex-direction:column;padding:0;overflow:hidden;z-index:3}
+#chat header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:2px solid var(--edge);background:var(--head)}
+#chat header b{font:700 16px Georgia,serif;display:block}
+#chat header small{color:var(--muted);font-size:12px}
+#chat header .x{display:none;margin-left:auto}
+.av{width:38px;height:38px;flex:none;border-radius:50%;border:2px solid var(--edge);background:#f0d9b0}
+#msgs{flex:1;display:flex;flex-direction:column;gap:9px;padding:14px;overflow-y:auto}
+#msgs>:first-child{margin-top:auto}
+.msg{max-width:86%;padding:8px 12px;border-radius:14px;font-size:14px;border:1.5px solid var(--edge);white-space:pre-wrap;word-wrap:break-word}
 .msg.gino{background:var(--accent-soft);align-self:flex-start;border-bottom-left-radius:4px}
 .msg.dad{background:var(--dad);color:var(--dad-ink);align-self:flex-end;border-bottom-right-radius:4px}
-.msg small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
-form{display:flex;gap:8px;margin-top:10px}
-input,button,select{font:inherit;border-radius:10px;border:1px solid var(--line);padding:8px 12px;background:var(--card);color:var(--ink)}
-input{flex:1;min-width:0}
-button{background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:600}
-button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
-button:disabled{opacity:.5}
-.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-.tabs button{background:transparent;color:var(--muted);border:1px solid var(--line)}
-.tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-#lower{min-width:0}
-.feed{display:flex;flex-direction:column;gap:8px;max-height:480px;overflow-y:auto}
-.item{border-bottom:1px solid var(--line);padding:6px 2px}
-.item time{font-size:12px;color:var(--muted);margin-right:6px}
-.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
-.art{border:1px solid var(--line);border-radius:12px;padding:8px;cursor:pointer;background:var(--bg)}
-.art img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:8px;background:#fff}
-.art .txt{height:120px;overflow:hidden;font-size:13px;white-space:pre-wrap;color:var(--muted)}
-dialog{border:none;border-radius:16px;max-width:min(720px,92vw);background:var(--card);color:var(--ink)}
-dialog pre{white-space:pre-wrap;font:inherit}
-.goal{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px}
+.msg small{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
+#chatForm{display:flex;gap:8px;padding:10px 12px;border-top:1.5px dashed var(--line);margin:0}
+#chatIn{flex:1;min-width:0;font-size:14px;border:2px solid var(--edge);border-radius:999px;padding:8px 14px;background:var(--paper)}
+
+/* mini map, view buttons, what he's doing */
+#map{position:fixed;left:18px;bottom:22px;width:164px;height:164px;border-radius:50%;overflow:hidden;padding:0;border-width:3px;cursor:crosshair;z-index:2}
+#map svg{display:block;width:100%;height:100%}
+#map::after{content:'';position:absolute;inset:5px;border-radius:50%;border:1.5px dashed rgba(91,74,56,.35);pointer-events:none}
+.me-ring{animation:ping 2s ease-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes ping{0%{transform:scale(.6);opacity:.8}100%{transform:scale(1.9);opacity:0}}
+#mapTag{position:fixed;left:18px;bottom:6px;width:164px;text-align:center;font:600 11.5px/1.6 system-ui,sans-serif;padding:0 8px;border-radius:9px;border-width:1.5px;box-shadow:2px 2px 0 var(--drop);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:2}
+#mapTag i{color:var(--live);font-style:normal}
+#tools{position:fixed;left:194px;bottom:118px;display:none;flex-direction:column;align-items:flex-start;gap:6px;z-index:2}
+#tools.on{display:flex}
+#bubble{position:fixed;left:calc((100vw - 384px) / 2);transform:translateX(-50%);bottom:110px;display:flex;align-items:center;gap:12px;padding:9px 22px 9px 10px;border-radius:30px;width:max-content;max-width:min(560px,calc(100vw - 32px));z-index:2}
+#bubble .av{width:46px;height:46px}
+#now{margin:0;font-size:15px}
+#now b{color:var(--leaf)}
+#thought{margin:2px 0 0;font:italic 13.5px/1.35 Georgia,'Iowan Old Style',serif;color:var(--muted)}
+#thought:empty{display:none}
+
+/* Gino's book: one round button per part of his life; opens on top of the world */
+#dock{position:fixed;left:200px;right:400px;bottom:16px;display:flex;justify-content:center;align-items:flex-end;gap:2px;padding:9px 10px 6px;border-radius:22px;z-index:2}
+#dock h2{position:absolute;top:-12px;left:16px;margin:0;background:var(--card);border:1.5px solid var(--edge);border-radius:8px;padding:0 8px;font:700 11.5px/1.6 Georgia,serif}
+#dock button{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:58px;padding:0 2px;font-size:11px;font-weight:700;color:var(--ink);position:relative}
+#dock button .badge{width:40px;height:40px;font-size:19px;background:radial-gradient(circle at 35% 30%,#fff,var(--c,#f2dcb3) 75%);transition:transform .15s}
+#dock button:hover .badge,#dock button:focus-visible .badge,#dock button.on .badge{transform:translateY(-3px) scale(1.06)}
+#dock button.on{color:var(--accent)}
+#dock button:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:10px}
+#dock .dot{position:absolute;top:-2px;right:8px;width:12px;height:12px;border-radius:50%;background:var(--live);border:2px solid var(--card);display:none}
+#dock .dot.on{display:block}
+.only-narrow,.only-phone{display:none!important}
+
+#book{position:fixed;left:60px;right:430px;top:150px;bottom:112px;display:none;flex-direction:column;padding:0;overflow:hidden;z-index:4}
+#book.open{display:flex}
+#book .head{display:flex;align-items:flex-end;gap:10px;padding:10px 54px 0 14px;background:var(--head);border-bottom:2px solid var(--edge)}
+#tabs{display:flex;gap:5px;flex-wrap:wrap}
+#tabs button{border:2px solid var(--edge);border-bottom:none;border-radius:12px 12px 0 0;padding:6px 11px;font-size:13px;font-weight:700;background:var(--tab);margin-bottom:-2px}
+#tabs button.on{background:var(--card);color:var(--accent)}
+#book .x,.x{position:absolute;right:12px;top:10px;width:32px;height:32px;border-radius:50%;border:2px solid var(--edge);display:grid;place-items:center;background:var(--card);font-size:15px;padding:0}
+#bookTitle{margin:0 0 10px;font:700 18px Georgia,serif;display:none}
+#panel{flex:1;overflow-y:auto;padding:16px 20px}
+#panel h4{font-family:Georgia,serif}
+#scrim{position:fixed;inset:0;background:rgba(40,28,16,.35);display:none;z-index:3}
+#scrim.on{display:block}
+
+/* the pieces inside the book */
+.feed{display:flex;flex-direction:column;gap:4px}
+.item{border-bottom:1.5px dashed var(--line);padding:8px 2px}
+.item time{font-size:12px;color:var(--accent);font-weight:700;margin-right:6px}
+.item .pill{box-shadow:none;border-width:1.5px;padding:1px 9px;font-size:12px;margin-right:4px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:22px 18px;padding-top:6px}
+.art{position:relative;background:#fffdf6;color:#3b2e22;padding:7px 7px 6px;box-shadow:2px 3px 0 rgba(60,30,10,.3);transform:rotate(-1.6deg);cursor:pointer;transition:transform .2s}
+.art:nth-child(2n){transform:rotate(1.6deg)}
+.art:hover{transform:rotate(0) scale(1.03)}
+.art::before{content:'';position:absolute;left:50%;top:-6px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--pc,#d6453d);border:1px solid rgba(0,0,0,.35)}
+.art:nth-child(4n+2){--pc:#3f7fd6}.art:nth-child(4n+3){--pc:#e8a33d}.art:nth-child(4n){--pc:#4f9a3f}
+.art img{width:100%;aspect-ratio:1;object-fit:contain;background:#fff;display:block}
+.art .txt{height:150px;overflow:hidden;font:italic 13px/1.4 Georgia,serif;white-space:pre-wrap;color:#5b4a38;background:#fff4c9;padding:8px}
+.art strong{display:block;font:italic 13px/1.3 Georgia,serif;margin-top:5px;text-align:center}
+.art .muted{text-align:center;color:#7d6a55}
+dialog{border:2px solid var(--edge);border-radius:16px;box-shadow:4px 5px 0 var(--drop);max-width:min(720px,92vw);background:var(--card);color:var(--ink);padding:18px 20px}
+dialog h3{margin:0 0 10px;font:700 20px Georgia,serif}
+dialog pre{white-space:pre-wrap;font:italic 15.5px/1.6 Georgia,serif;background:var(--note);border:2px solid var(--edge);border-radius:8px;padding:14px 16px}
+dialog form{margin:12px 0 0}
+dialog::backdrop{background:rgba(40,28,16,.45)}
+.goal{border:2px solid var(--edge);background:var(--paper);border-radius:12px;padding:10px 12px;margin-bottom:10px;box-shadow:2px 3px 0 var(--drop)}
 .goal pre{white-space:pre-wrap;font:inherit;font-size:13px;color:var(--muted);margin:6px 0 0}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-#recap{grid-column:1/-1;background:linear-gradient(180deg,var(--accent-soft),var(--card) 70%)}
-#recap h2{margin:0;font-size:19px}
-#recap .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px 22px;margin-top:8px}
-#recap h4{margin:10px 0 2px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-#recap ul{margin:0;padding-left:18px}
-#recap .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-.period .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.period .thumbs img{width:88px;height:88px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--line)}
-.swatch{display:flex;height:14px;max-width:280px;border-radius:7px;overflow:hidden;margin:6px 0}.swatch i{flex:1}
+.row select{border:2px solid var(--edge);border-radius:999px;padding:5px 10px;background:var(--paper)}
+#panel button:not(.x){border:2px solid var(--edge);border-radius:999px;padding:5px 13px;background:var(--accent);color:#fff;font-weight:700}
+#panel button.ghost{background:var(--card);color:var(--ink)}
+#recapFull h4{margin:12px 0 2px;font:700 12px system-ui;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+#recapFull .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 22px}
+#recapFull ul{margin:0;padding-left:18px}
+#recapFull .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+#recapFull .thumbs img{width:88px;height:88px;object-fit:contain;background:#fff;border-radius:6px;border:2px solid var(--edge)}
+#recapFull blockquote{margin:6px 0 0;padding:10px 14px;border-left:4px solid var(--accent);background:var(--note);border-radius:0 8px 8px 0;white-space:pre-wrap;font:italic 15px/1.5 Georgia,serif}
+.period .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.period .thumbs img{width:88px;height:88px;object-fit:contain;background:#fff;border-radius:6px;border:2px solid var(--edge)}
+.swatch{display:flex;height:14px;max-width:280px;border-radius:7px;overflow:hidden;margin:6px 0;border:1.5px solid var(--edge)}.swatch i{flex:1}
 .fam-red{background:#d9463e}.fam-orange{background:#f08a2c}.fam-yellow{background:#f2c94c}.fam-green{background:#5aa86b}.fam-teal{background:#2fa3a0}.fam-blue{background:#3f7fd6}.fam-purple{background:#8a5cc9}.fam-pink{background:#e276a8}.fam-brown{background:#8a5a33}.fam-white{background:#f6f1e6}.fam-black{background:#2a2420}.fam-grey{background:#9a948c}
-#recap .thumbs img{width:88px;height:88px;object-fit:contain;background:#fff;border-radius:10px;border:1px solid var(--line)}
-#recap blockquote{margin:6px 0 0;padding-left:12px;border-left:3px solid var(--accent);white-space:pre-wrap;font-style:italic}
-.clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
-.clip{border:1px solid var(--line);border-radius:12px;padding:8px;background:var(--bg);display:flex;flex-direction:column;gap:6px}
+.clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-top:10px}
+.clip{border:2px solid var(--edge);border-radius:12px;padding:8px;background:var(--paper);display:flex;flex-direction:column;gap:6px;box-shadow:2px 3px 0 var(--drop)}
 .clip video,.clip .wait{width:100%;aspect-ratio:9/16;border-radius:8px;background:#1d1a16;object-fit:cover}
 .clip .wait{display:flex;align-items:center;justify-content:center;color:#f3e9da;text-align:center;padding:12px;box-sizing:border-box;font-size:14px}
 .clip .cap{font-size:13px;color:var(--muted);max-height:5.6em;overflow:auto;white-space:pre-wrap}
-.clip .row a,.clip .row button{font-size:13px;padding:6px 10px}
-.clip a.btn{background:var(--accent);color:#fff;border-radius:10px;text-decoration:none;font-weight:600}
-.tt{border:1px dashed var(--line);border-radius:12px;padding:10px;margin:10px 0;font-size:14px}
+.clip .row a,.clip .row button{font-size:13px;padding:5px 10px}
+.clip a.btn{text-decoration:none;color:#fff}
+.tt{border:2px dashed var(--edge);border-radius:12px;padding:10px;margin:10px 0;font-size:14px}
+#fallbackNote{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);padding:16px 18px;max-width:340px;display:none;z-index:1}
+
+/* screens without room for the chat on the side: chat opens from the book bar instead */
+@media (max-width:1180px){
+  #chat{display:none;left:auto;top:16px;bottom:16px;z-index:5}
+  #chat.open{display:flex}
+  #chat header .x{display:grid;position:static}
+  #post{right:16px}
+  #dock{right:16px;left:200px}
+  #bubble{left:50%}
+  #book{right:60px}
+  .only-narrow{display:flex!important}
+}
+@media (max-width:1180px) and (min-width:861px){ #bubble{left:calc(50% + 92px)} }
+@media (max-width:860px){
+  #post{left:16px;right:16px;top:auto;bottom:178px;transform:rotate(-.6deg)}
+  #me{max-height:none}
+  #dock{left:16px}#map,#mapTag,#tools{display:none!important}
+  #dock button{min-width:0;flex:1}#dock{justify-content:space-between}
+  #book{left:16px;right:16px;top:16px;bottom:100px}
+  #chat{left:16px;right:16px;width:auto;bottom:100px}
+}
+/* phones: a slim Gino card on top, a five-button bar at the bottom */
+@media (max-width:640px){
+  #me{left:10px;right:10px;top:10px;width:auto;padding:11px 13px}
+  #me h1{font-size:18px}#me h1 a{display:none}
+  #meta{margin:3px 0 9px;font-size:12px}
+  #bars{grid-template-columns:repeat(3,1fr);gap:8px}.bar{flex-direction:column;gap:3px}.bar>div{width:100%}.bar .top{justify-content:center}.bar small{display:none}.bar label{font-size:11px}.badge{width:28px;height:28px}.badge svg{width:16px;height:16px}.track{height:10px}
+  #me .snack{display:none}
+  #me.snackOpen .snack{display:flex}
+  #post{left:12px;right:12px;bottom:166px;flex-wrap:wrap;gap:6px 10px;padding:8px 12px}#post .stamp{font-size:20px}#post p{flex:1 1 calc(100% - 40px)}#post #postText{display:none}#post .acts{flex-direction:row;margin:0 0 0 30px}
+  #me.snackOpen~#post{display:none}#post p{font-size:12.5px}
+  #bubble{left:10px;right:10px;transform:none;bottom:92px;max-width:none;width:auto;padding-right:14px}
+  #bubble .av{width:38px;height:38px}#now{font-size:14px}#thought{font-size:12.5px}
+  #dock{left:8px;right:8px;bottom:10px;padding:7px 4px 5px}#dock h2{display:none}
+  #dock .b-tab{display:none!important}.only-phone{display:flex!important}
+  #dock button .badge{width:44px;height:44px}
+  #book{left:8px;right:8px;top:8px;bottom:92px}
+  #tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}#tabs button{white-space:nowrap;font-size:12.5px;padding:6px 9px}
+  #book .head{padding-right:50px}
+  #panel{padding:12px 14px}
+  .gallery{grid-template-columns:1fr 1fr;gap:18px 14px}
+  #chat{left:8px;right:8px;top:8px;bottom:92px}
+}
+@media (prefers-reduced-motion:reduce){.fill,.bar.low .badge,.me-ring,.live i{animation:none!important}}
 </style>
 </head>
 <body>
-<header>
-  <h1>Gino's Home</h1>
-  <span class="pill" id="status">waking up…</span>
-  <span class="muted" id="meta"></span>
-  <a href="/blog" target="_blank" rel="noopener" style="margin-left:auto">Gino's public website ↗</a>
-</header>
-<main>
-  <section class="card" id="recap" hidden></section>
-  <section class="card" id="hero">
-    <div id="world"><svg id="scene" viewBox="0 0 800 500" role="img" aria-label="Gino's habitat"></svg><div id="tip"></div>
-      <div id="hud"><div class="bubble"><b id="feeling">…</b> <span id="reason" class="muted"></span><div id="thought" style="margin-top:4px"></div></div></div>
-      <div id="wx"></div>
-      <div id="worldBtns"><button class="ghost" id="followBtn">Follow Gino</button><button class="ghost" id="timeBtn">Sky: live</button><button class="ghost" id="wxBtn">Weather: live</button><button class="ghost" id="qBtn">Quality: high</button><button class="ghost" id="photoBtn">Photo</button><button class="ghost" id="fullBtn">Fullscreen</button></div></div>
-    <div class="vitals" id="vitals"></div>
-    <div class="row" style="margin-top:12px">
-      <span class="muted">Leave a snack:</span>
-      <select id="food"></select>
-      <button class="ghost" id="giftBtn">Gift</button>
-      <span class="muted" id="pantry" style="font-size:13px"></span>
-    </div>
-  </section>
-  <section class="card" id="lower">
-    <div class="tabs" id="tabs"></div>
-    <div id="panel"></div>
-  </section>
-  <section class="card" id="chat">
-    <div class="row" style="justify-content:space-between"><strong>Chat with Gino</strong><span class="muted" id="typing"></span></div>
-    <div id="msgs"></div>
-    <form id="chatForm"><input id="chatIn" placeholder="Say hi to Gino…" autocomplete="off" maxlength="4000"><button id="sendBtn">Send</button></form>
-  </section>
-</main>
-<dialog id="dlg"><h3 id="dlgTitle"></h3><div id="dlgBody"></div><p class="muted" id="dlgNote"></p><form method="dialog"><button>Close</button></form></dialog>
+<div id="world"><svg id="scene" viewBox="0 0 800 500" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Gino's habitat"></svg></div>
+<div id="glow"></div>
+<div id="tip" class="card"></div>
+
+<section id="me" class="card" aria-live="polite">
+  <h1>Gino's Home <span class="live" id="liveTag"><i></i>Live</span><a href="/blog" target="_blank" rel="noopener">Public website ↗</a></h1>
+  <div id="meta">waking up…</div>
+  <div id="bars"></div>
+  <div class="snack" id="snack">🥕 Snack: <select id="food" aria-label="Snack to leave"></select><button class="btn" id="giftBtn">Gift</button><span class="muted" id="pantry"></span></div>
+</section>
+
+<section id="post" class="card" hidden aria-label="Since your last visit"><span class="stamp">📮</span><p><b class="t" id="postTitle">Since your last visit</b><span id="postText"></span></p>
+  <div class="acts"><button class="pill" id="postOpen">Read it all</button><button class="pill" id="recapClose">Thanks, Gino</button></div></section>
+
+<div id="tools"><button class="pill" id="followBtn">🎥 Follow Gino</button><button class="pill" id="timeBtn">🌅 Sky: live</button><button class="pill" id="wxBtn">🌦️ Weather: live</button><button class="pill" id="qBtn">✨ Quality: high</button><button class="pill" id="photoBtn">📷 Photo</button><button class="pill" id="fullBtn">⛶ Fullscreen</button></div>
+<div id="map" class="card" role="img" aria-label="Map of Gino's home showing where he is" title="Click the map to look at that spot"><svg viewBox="0 0 150 150"></svg></div>
+<div id="mapTag" class="card"><i>●</i> Finding Gino…</div>
+
+<section id="bubble" class="card" aria-live="polite"><svg class="av" viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="18" cy="24" rx="13" ry="9" fill="#8a5a33"/><ellipse cx="29" cy="17" rx="8" ry="7" fill="#8a5a33"/><ellipse cx="34" cy="19" rx="3.5" ry="3" fill="#6b4423"/><circle cx="29" cy="15" r="1.5" fill="#1d130b"/><ellipse cx="25" cy="10.5" rx="2" ry="2.4" fill="#6b4423"/></svg>
+  <div><p id="now">Finding Gino…</p><p id="thought"></p></div></section>
+
+<nav id="dock" class="card" aria-label="Gino's book"><h2>📖 Gino's book</h2></nav>
+<div id="scrim"></div>
+<section id="book" class="card" role="dialog" aria-label="Gino's book"><div class="head"><div id="tabs" role="tablist"></div></div><button class="x" id="bookClose" aria-label="Close">✕</button>
+  <div id="panel"></div></section>
+
+<aside id="chat" class="card" aria-label="Chat with Gino">
+  <header><svg class="av" viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="18" cy="24" rx="13" ry="9" fill="#8a5a33"/><ellipse cx="29" cy="17" rx="8" ry="7" fill="#8a5a33"/><ellipse cx="34" cy="19" rx="3.5" ry="3" fill="#6b4423"/><circle cx="29" cy="15" r="1.5" fill="#1d130b"/><ellipse cx="25" cy="10.5" rx="2" ry="2.4" fill="#6b4423"/></svg>
+    <div><b>Chat with Gino</b><small id="typing">Messaging him wakes him up</small></div><button class="x" id="chatClose" aria-label="Close chat">✕</button></header>
+  <div id="msgs"></div>
+  <form id="chatForm"><input id="chatIn" placeholder="Say hi to Gino…" autocomplete="off" maxlength="4000"><button class="btn" id="sendBtn">Send</button></form>
+</aside>
+<div id="fallbackNote" class="card">Gino's 3D world can't be shown in this browser, so this is a flat map of his home. Everything else works as usual.</div>
+<dialog id="dlg"><h3 id="dlgTitle"></h3><div id="dlgBody"></div><p class="muted" id="dlgNote"></p><form method="dialog"><button class="btn">Close</button></form></dialog>
 <script type="importmap">
 { "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
@@ -143,9 +275,28 @@ async function api(path, opts = {}) {
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const when = ts => { const d = new Date(ts * 1000); const today = new Date().toDateString() === d.toDateString();
   return today ? d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}); };
-const NEEDS = [['fullness','Fullness'],['energy','Energy'],['social','Social'],['fun','Fun'],['comfort','Comfort'],['mood','Mood']];
-const color = v => v > 60 ? 'var(--good)' : v > 30 ? 'var(--warn)' : 'var(--bad)';
+const narrow = () => matchMedia('(max-width:1180px)').matches;
 
+// his six needs as mood bars: [key, name, colour, icon, words from low to high]
+const BARS = [
+  ['mood', 'Mood', '#e9b93a', '<path d="M12 20.5s-7.6-4.5-9-9.3C2 7.8 4.2 4.8 7.3 4.8c2 0 3.6 1.2 4.7 2.9 1.1-1.7 2.7-2.9 4.7-2.9 3.1 0 5.3 3 4.3 6.4-1.4 4.8-9 9.3-9 9.3z"/>', ['low', 'so-so', 'good', 'great']],
+  ['energy', 'Energy', '#e8843c', '<path d="M13.5 2 4.5 13.5h6.2L9.5 22l9-11.6h-6.2z"/>', ['worn out', 'tired', 'awake', 'bouncy']],
+  ['fullness', 'Fullness', '#5a9a3f', '<path d="M3.5 20.5 13.2 9.2l2.6 2.6z"/><path d="M14.3 9.7c-.4-2.6.3-5 1.6-6.9M14.8 10.2c2.1-1.6 4.6-2.2 7-1.6M14.6 9.9c1-2.4 2.9-4 5.4-4.6" fill="none"/>', ['hungry', 'peckish', 'fed', 'stuffed']],
+  ['fun', 'Fun', '#9b6fd1', '<ellipse cx="12" cy="9" rx="6.2" ry="7.2"/><path d="m10.6 16.4 1.4 1.8 1.4-1.8z"/><path d="M12 18.2c-1.2 1.4 1 2.4-.3 3.8" fill="none"/>', ['bored', 'meh', 'playful', 'buzzing']],
+  ['social', 'Social', '#3f8fd0', '<path d="M4 5.5h16v10H10l-4.5 4v-4H4z"/>', ['lonely', 'missing you', 'happy', 'loved']],
+  ['comfort', 'Comfort', '#d26a8c', '<path d="M3 15c0-3 2-4.5 4.5-4.5h9c2.5 0 4.5 1.5 4.5 4.5v3H3z"/><path d="M6 10.5V8c0-1.5 1-2.5 2.5-2.5h7C17 5.5 18 6.5 18 8v2.5" fill="none"/>', ['uncomfy', 'okay', 'cosy', 'snug']],
+];
+$('#bars').innerHTML = BARS.map(([k, l, c, icon]) => `<div class="bar" id="bar-${k}" style="--c:${c}"><span class="badge"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span><div><div class="top"><label>${l}</label><small></small></div><div class="track" role="meter" aria-label="${l}" aria-valuemin="0" aria-valuemax="100"><i class="fill" style="width:0"></i></div></div></div>`).join('');
+function drawBars(v) {
+  for (const [k, l, , , words] of BARS) {
+    const n = Math.max(0, Math.min(100, Math.round(Number(v?.[k]) || 0))), el = $('#bar-' + k), word = words[Math.min(3, Math.floor(n / 25))];
+    el.classList.toggle('low', n < 25); el.title = `${l}: ${word} (${n} out of 100)`;
+    el.querySelector('.fill').style.width = Math.max(n, 4) + '%'; el.querySelector('.track').setAttribute('aria-valuenow', n);
+    el.querySelector('small').textContent = word;
+  }
+}
+
+// flat map, only used when the 3D world can't load
 function capy(x, y, asleep) {
   const cx = x * 50 + 25, cy = y * 50 + 30;
   const eye = asleep ? `<path d="M${cx+20} ${cy-14} q4 3 8 0" stroke="#3b2f24" stroke-width="2.5" fill="none" stroke-linecap="round"/>`
@@ -158,7 +309,6 @@ function capy(x, y, asleep) {
     <ellipse cx="${cx+14}" cy="${cy-25}" rx="5" ry="4" fill="#8a5d33"/>
     ${eye}<rect x="${cx-24}" y="${cy+12}" width="8" height="10" rx="3" fill="#8a5d33"/><rect x="${cx+6}" y="${cy+12}" width="8" height="10" rx="3" fill="#8a5d33"/>${z}</g>`;
 }
-
 function drawScene(s) {
   const hr = new Date().getHours(); const night = hr < 7 || hr >= 21;
   let g = `<defs><pattern id="tuft" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M10 40 l3 -8 l3 8 M32 18 l2 -6 l2 6" stroke="var(--grass2)" stroke-width="2" fill="none"/></pattern></defs>
@@ -174,54 +324,146 @@ function drawScene(s) {
 }
 let world = null;
 
+// mini map: his home squares squeezed into the round card, the lake up north, a trail of where he's been
+const MX = x => 22 + x * 7.2, MY = y => 40 + y * 8.6, IX = px => (px - 22) / 7.2, IY = py => (py - 40) / 8.6;
+const clampG = (x, y) => [Math.max(-1, Math.min(16.5, x)), Math.max(-1.8, Math.min(11, y))];
+const ICON = {
+  tree: (x, y) => `<circle cx="${x + .8}" cy="${y + 1.2}" r="4.6" fill="#2f5a25" opacity=".35"/><circle cx="${x}" cy="${y}" r="4.6" fill="#4f8f3a" stroke="#2f4a22" stroke-width=".8"/><circle cx="${x - 1.4}" cy="${y - 1.4}" r="1.8" fill="#79b85a"/>`,
+  pine: (x, y) => `<path d="M${x} ${y - 6}L${x + 4.5} ${y + 3.5}H${x - 4.5}Z" fill="#2f6b3a" stroke="#1f3f22" stroke-width=".8"/>`,
+  fruit_tree: (x, y) => ICON.tree(x, y) + `<circle cx="${x + 1.6}" cy="${y + .4}" r="1" fill="#d6453d"/><circle cx="${x - .8}" cy="${y + 1.8}" r="1" fill="#d6453d"/>`,
+  house: (x, y) => `<rect x="${x - 4.5}" y="${y - 1}" width="9" height="6.5" fill="#d8a06a" stroke="#3b2e22" stroke-width=".8"/><path d="M${x - 6.2} ${y - .6}L${x} ${y - 7}L${x + 6.2} ${y - .6}Z" fill="#c9503c" stroke="#3b2e22" stroke-width=".8"/><rect x="${x - 1}" y="${y + 2}" width="2" height="3.5" fill="#6b4423"/>`,
+  pond: (x, y) => `<ellipse cx="${x}" cy="${y}" rx="9" ry="6" fill="#5aa7dc" stroke="#2f6f9a" stroke-width=".9"/><path d="M${x - 4} ${y - 1}q2-1.4 4 0" stroke="#d8f0ff" fill="none" stroke-width=".9"/>`,
+  flowers: (x, y) => `<circle cx="${x - 2}" cy="${y}" r="1.5" fill="#e86a8e"/><circle cx="${x + 1.6}" cy="${y - 1.4}" r="1.5" fill="#f2c23d"/><circle cx="${x + 1}" cy="${y + 1.8}" r="1.5" fill="#fff"/>`,
+  campfire: (x, y) => `<path d="M${x} ${y - 4.5}c2.6 2.4 3 4.5 0 6.3c-3-1.8-2.6-3.9 0-6.3z" fill="#f08a2e" stroke="#9a3f12" stroke-width=".7"/>`,
+  rock: (x, y) => `<path d="M${x - 3.5} ${y + 2}l1-3.6 3-1.2 3 1.6.4 3.2z" fill="#a9a399" stroke="#5f5a52" stroke-width=".7"/>`,
+  path: (x, y) => `<circle cx="${x}" cy="${y}" r="1.8" fill="#d9c69c"/>`,
+};
+ICON.bush = (x, y) => `<circle cx="${x}" cy="${y}" r="3.2" fill="#3f7a34" stroke="#2f4a22" stroke-width=".8"/>`;
+const DOT = {garden:'#5a9a3f',easel:'#ffffff',bookshelf:'#8a5a3b',windmill:'#b98a5a',hammock:'#d9a05b',bridge:'#a0703c',bench:'#a0714f',lamp:'#f2c46d',well:'#9aa3ad',tent:'#e8843c',fountain:'#8cc4e6',picnic:'#d6453d',beehive:'#e9b93a',pumpkins:'#ee8a2a',mushroom:'#d6453d'};
+const ginoMark = '<g id="meDot"><circle class="me-ring" r="9" fill="none" stroke="#d6453d" stroke-width="2.2"/><circle r="7" fill="#fff" stroke="#d6453d" stroke-width="2"/>'
+  + '<ellipse cx="-.6" cy=".8" rx="4.2" ry="3.5" fill="#8a5a33"/><ellipse cx="2.6" cy="1.3" rx="1.8" ry="1.5" fill="#6b4423"/><circle cx="-2.6" cy="-2.2" r="1.2" fill="#6b4423"/><circle cx=".4" cy="-.2" r=".7" fill="#1d130b"/></g>';
+let mapKey = '', trail = [], lastTrail = 0;
+function drawMap(s) {
+  const k = s.habitat.map(h => h.id + h.kind + h.x + ',' + h.y).join('|'); if (k === mapKey) return; mapKey = k;
+  const n = v => Math.max(-1, Math.min(17, Number(v) || 0));
+  const things = [...s.habitat].sort((a, b) => (a.kind === 'path' ? -1 : 0) - (b.kind === 'path' ? -1 : 0) || n(a.y) - n(b.y)).map(h => {
+    const x = MX(n(h.x)), y = MY(n(h.y)), f = ICON[h.kind];
+    return f ? f(x, y) : `<circle cx="${x}" cy="${y}" r="3.2" fill="${DOT[h.kind] || (/^#[0-9a-f]{6}$/i.test(h.color) ? h.color : '#c9b48a')}" stroke="#3b2e22" stroke-width=".8"/>`; }).join('');
+  $('#map svg').innerHTML = '<defs><pattern id="grassP" width="9" height="9" patternUnits="userSpaceOnUse"><path d="M2 7l1-3M6 4l.8-2.4" stroke="#5a8a3f" stroke-width=".7" opacity=".35"/></pattern>'
+    + '<radialGradient id="fieldG" cx="50%" cy="60%" r="60%"><stop offset="0" stop-color="#cfe6a0"/><stop offset="1" stop-color="#a9cf7c"/></radialGradient></defs>'
+    + '<rect width="150" height="150" fill="url(#fieldG)"/><rect width="150" height="150" fill="url(#grassP)"/>'
+    + '<path d="M0 0H150V22C130 34 108 30 86 28C60 26 34 34 0 26Z" fill="#7fb9e0"/><path d="M0 26C34 34 60 26 86 28C108 30 130 34 150 22" fill="none" stroke="#e8f4fb" stroke-width="2"/>'
+    + '<path d="M40 12q4-2.5 8 0M95 9q4-2.5 8 0" fill="none" stroke="#d8f0ff" stroke-width="1"/><text x="75" y="15" text-anchor="middle" font-size="7" font-style="italic" font-family="Georgia,serif" fill="#2f5a7a">the lake</text>'
+    + things + '<polyline id="trail" fill="none" stroke="#d6453d" stroke-width="1.6" stroke-dasharray="1.5 3" stroke-linecap="round" opacity=".7"/>'
+    + '<g transform="translate(128 44)"><circle r="8" fill="#fff7e8" stroke="#5b4a38" stroke-width="1"/><path d="M0-6 2 0H-2Z" fill="#d6453d"/><path d="M0 6 2 0H-2Z" fill="#5b4a38"/><text y="-9.5" text-anchor="middle" font-size="6" font-weight="700" fill="#3b2e22">N</text></g>'
+    + ginoMark;
+}
+function nearWhat(gx, gy, s) {
+  if (gy < -0.6) return 'down by the lake';
+  let best = null, bd = 2.2;
+  for (const h of s.habitat) { if (h.kind === 'path') continue; const d = Math.hypot(gx - h.x, gy - h.y); if (d < bd) { bd = d; best = h; } }
+  return best ? `${best.kind === 'pond' ? 'in' : 'by'} the ${best.name}` : 'out in the meadow';
+}
+function moveMe(s) {
+  const [gx, gy] = clampG(...(world?.where || s.pos)), x = MX(gx).toFixed(1), y = MY(gy).toFixed(1);
+  $('#meDot')?.setAttribute('transform', `translate(${x} ${y})`);
+  const now = Date.now(); if (now - lastTrail > 1500) { lastTrail = now; const l = trail.at(-1); if (!l || Math.hypot(l[0] - x, l[1] - y) > 1) trail = [...trail, [x, y]].slice(-40); }
+  $('#trail')?.setAttribute('points', trail.map(p => p.join(',')).join(' '));
+  const tag = `<i>●</i> Gino is ${s.asleep ? 'asleep ' : ''}${esc(nearWhat(gx, gy, s))}`; if ($('#mapTag').innerHTML !== tag) $('#mapTag').innerHTML = tag;
+}
+$('#map').addEventListener('click', e => {
+  const r = e.currentTarget.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * 150, py = (e.clientY - r.top) / r.height * 150;
+  world?.lookAt?.(Math.max(-1, Math.min(16, IX(px))), Math.max(-1.5, Math.min(10, IY(py))));
+});
+
 let lastState = null;
+const doing = () => { const s = lastState; return s.thinking ? 'thinking' : s.asleep ? 'sleeping' : window.ginoWorld?.doing || s.activity || 'chilling'; };
 function showStatus() {  // includes his own little wanderings between the things his brain decides
   const s = lastState; if (!s) return;
-  $('#status').textContent = s.thinking ? 'thinking…' : s.asleep ? 'sleeping' : window.ginoWorld?.doing || s.activity || 'chilling';
+  const html = `<strong>Gino</strong> is <b>${esc(doing())}</b>, feeling <b>${esc(s.emotion || 'okay')}</b>${s.emotion_intensity ? ` <span class="muted">(${s.emotion_intensity}/5)</span>` : ''}`;
+  if ($('#now').innerHTML !== html) $('#now').innerHTML = html;
+  const nw = s.next_wake_in > 0 ? ` · next turn in ${s.next_wake_in >= 5400 ? (s.next_wake_in / 3600).toFixed(1) + ' h' : Math.round(s.next_wake_in / 60) + ' min'}` : '';
+  const meta = `<b>${esc(doing())}</b> · ${s.age_days} days old${nw} · thinking today $${s.spent_today.toFixed(2)} of $${s.budget.toFixed(2)}${s.brain === 'practice' ? ' · practice brain' : ''}`;
+  if ($('#meta').innerHTML !== meta) $('#meta').innerHTML = meta;
+  moveMe(s);
 }
 setInterval(showStatus, 1500);
 async function refresh() {
-  let s; try { s = await api('/api/state'); } catch (e) { $('#status').textContent = 'Gino is unreachable'; return; }
-  lastState = s;
-  showStatus();
-  const nw = s.next_wake_in > 0 ? ` · next turn in ${Math.round(s.next_wake_in/60)} min` : '';
-  $('#meta').textContent = `${s.age_days} days old · brain: ${s.brain} · today's thinking: $${s.spent_today.toFixed(2)} of $${s.budget.toFixed(2)}${nw}`;
-  $('#feeling').textContent = `Feeling ${s.emotion} (${s.emotion_intensity}/5)`;
-  $('#reason').textContent = s.emotion_reason ? '· ' + s.emotion_reason : '';
-  $('#thought').textContent = s.thought ? '💭 ' + s.thought : '';
-  $('#vitals').innerHTML = NEEDS.map(([k, l]) => `<div class="vital"><label>${l}<span>${s.vitals[k]}</span></label><div class="bar"><i style="width:${s.vitals[k]}%;background:${color(s.vitals[k])}"></i></div></div>`).join('');
+  let s; try { s = await api('/api/state'); } catch (e) { $('#liveTag').className = 'live off'; $('#meta').textContent = 'Gino is unreachable right now'; return; }
+  lastState = s; $('#liveTag').className = 'live';
+  const WX = {clear:'☀️', cloudy:'☁️', rain:'🌧️', snow:'❄️', fog:'🌫️'};
+  const said = s.thought ? `💭 “${s.thought}”` : s.emotion_reason || '';
+  if ($('#thought').textContent !== said) $('#thought').textContent = said;
+  $('#bubble').title = s.weather ? `${WX[s.weather.kind] || ''} ${s.weather.text}` : '';
+  drawBars(s.vitals);
   $('#pantry').textContent = 'Pantry: ' + (Object.entries(s.pantry).map(([f, n]) => `${s.foods[f] || ''}${n}`).join(' ') || 'empty');
   if (!$('#food').options.length) $('#food').innerHTML = Object.entries(s.foods).map(([f, e]) => `<option value="${esc(f)}">${e} ${esc(f)}</option>`).join('');
-  const WX = {clear:'☀️', cloudy:'☁️', rain:'🌧️', snow:'❄️', fog:'🌫️'};
-  $('#wx').textContent = s.weather ? `${WX[s.weather.kind] || ''} ${s.weather.text}` : '';
+  const h = new Date().getHours(); $('#glow').style.opacity = h < 6 || h >= 21 ? 0.45 : 1;
+  drawMap(s); showStatus();
   if (world) world.update(s); else drawScene(s);
-  if (tab === 'goals' || tab === 'about') renderTab();
+  if (bookOpen() && (tab === 'goals' || tab === 'about')) renderTab();
 }
 
-let chatIds = '';
+// chat: docked on the right on big screens; opened from the bottom bar on smaller ones
+let chatIds = '', lastGino = null;
 async function loadChat() {
   const rows = await api('/api/feed?kind=chat&limit=80');
   const ids = rows.map(r => r.id).join(',');
   if (ids === chatIds) return; chatIds = ids;
-  $('#msgs').innerHTML = rows.map(r => `<div class="msg ${r.sender === 'dad' ? 'dad' : 'gino'}">${esc(r.text)}<small>${when(r.ts)}</small></div>`).join('') || '<p class="muted">Gino hasn\'t said anything yet. Say hi!</p>';
+  $('#msgs').innerHTML = rows.map(r => `<div class="msg ${r.sender === 'dad' ? 'dad' : 'gino'}">${esc(r.text)}<small>${r.sender === 'dad' ? 'You' : 'Gino'} · ${when(r.ts)}</small></div>`).join('') || '<p class="muted">Gino hasn\'t said anything yet. Say hi!</p>';
   $('#msgs').scrollTop = 1e9;
+  const g = rows.filter(r => r.sender !== 'dad').at(-1)?.id ?? null;
+  if (lastGino !== null && g !== lastGino && !$('#chat').classList.contains('open')) $('#chatDot')?.classList.add('on');
+  lastGino = g;
 }
 $('#chatForm').onsubmit = async e => {
   e.preventDefault(); const t = $('#chatIn').value.trim(); if (!t) return;
   $('#chatIn').value = ''; $('#sendBtn').disabled = true; $('#typing').textContent = 'Gino is typing…';
   $('#msgs').insertAdjacentHTML('beforeend', `<div class="msg dad">${esc(t)}</div>`); $('#msgs').scrollTop = 1e9;
   try { await api('/api/chat', {method: 'POST', body: JSON.stringify({text: t})}); } catch (err) { alert('Message failed: ' + err.message); }
-  $('#sendBtn').disabled = false; $('#typing').textContent = ''; chatIds = ''; loadChat(); refresh();
+  $('#sendBtn').disabled = false; $('#typing').textContent = 'Messaging him wakes him up'; chatIds = ''; loadChat(); refresh();
 };
 $('#giftBtn').onclick = async () => { await api('/api/gift', {method: 'POST', body: JSON.stringify({food: $('#food').value})}); refresh(); };
 
-const TABS = [['events','Activity'],['videos','Videos 🎬'],['journal','Diary'],['creations','Creations'],['art','Art periods'],['dreams','Dreams'],['keepsakes','Keepsakes'],['goals','Goals'],['memories','Memories'],['about','About Gino']];
+// Gino's book: each part of his life is a round button at the bottom; it opens on top of the world
+const TABS = [['events','Activity','📜','#f2dcb3'],['videos','Videos','🎬','#f6c7a8'],['journal','Diary','📔','#f3e1a0'],['creations','Creations','🎨','#c8e3f2'],['art','Art periods','🖌️','#e5d0f2'],
+  ['dreams','Dreams','🌙','#cdd3f5'],['keepsakes','Keepsakes','🎁','#f7cfd8'],['goals','Goals','🎯','#d4ecc0'],['memories','Memories','🧠','#f2dcb3'],['about','About Gino','🐾','#ead8c2']];
 let tab = 'events';
-$('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('');
-$('#tabs').onclick = e => { const k = e.target.dataset.k; if (k) { tab = k; renderTab(); } };
-
+const dockBtn = (k, label, emoji, c, cls = '') => `<button data-k="${k}" class="${cls}"><span class="badge" style="--c:${c}">${emoji}</span>${label}${k === 'chat' ? '<i class="dot" id="chatDot"></i>' : ''}</button>`;
+$('#dock').insertAdjacentHTML('beforeend',
+  dockBtn('world', 'World', '🌿', '#d4ecc0', 'only-phone') + dockBtn('chat', 'Chat', '💬', '#c8e3f2', 'only-narrow') + dockBtn('book', 'Book', '📖', '#f3e1a0', 'only-phone')
+  + dockBtn('snack', 'Snack', '🥕', '#f6c7a8', 'only-phone') + dockBtn('recap', 'News', '📮', '#f7cfd8', 'only-phone')
+  + TABS.map(([k, l, e, c]) => dockBtn(k, l.replace(' Gino', ''), e, c, 'b-tab')).join(''));
+$('#dock [data-k="recap"]').hidden = true;
+$('#tabs').innerHTML = TABS.map(([k, l, e]) => `<button data-k="${k}" role="tab">${e} ${l}</button>`).join('');
+$('#tabs').onclick = e => { const k = e.target.closest('button')?.dataset.k; if (k) { tab = k; renderTab(); } };
+const bookOpen = () => $('#book').classList.contains('open');
+function closeAll() {
+  $('#book').classList.remove('open'); $('#chat').classList.remove('open'); $('#scrim').classList.remove('on'); $('#me').classList.remove('snackOpen');
+  document.querySelectorAll('#dock button').forEach(b => b.classList.remove('on'));
+}
+function openBook(k) {
+  closeAll(); if (k) tab = k;
+  $('#book').classList.add('open'); $('#scrim').classList.add('on');
+  if (tab === 'recap') { document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('on')); $('#panel').innerHTML = `<div id="recapFull">${recapHTML}</div>`; }
+  else renderTab();
+  $('#dock [data-k="' + (tab === 'recap' ? 'recap' : 'book') + '"]')?.classList.add('on');
+  $('#dock .b-tab[data-k="' + tab + '"]')?.classList.add('on');
+  $('#bookClose').focus({preventScroll: true});
+}
+function openChat() { closeAll(); $('#chat').classList.add('open'); $('#scrim').classList.add('on'); $('#chatDot').classList.remove('on'); $('#dock [data-k="chat"]').classList.add('on'); $('#msgs').scrollTop = 1e9; $('#chatIn').focus(); }
+$('#dock').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return; const k = b.dataset.k, was = b.classList.contains('on');
+  if (k === 'world' || was) return closeAll();
+  if (k === 'chat') return openChat();
+  if (k === 'snack') { closeAll(); $('#me').classList.add('snackOpen'); b.classList.add('on'); return; }
+  openBook(k === 'book' ? (tab === 'recap' ? 'events' : tab) : k);
+};
+$('#bookClose').onclick = closeAll; $('#chatClose').onclick = closeAll; $('#scrim').onclick = closeAll;
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#dlg').open) closeAll(); });
 async function renderTab() {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.k === tab));
+  document.querySelectorAll('#dock .b-tab').forEach(b => b.classList.toggle('on', b.dataset.k === tab));
   const P = $('#panel');
   if (tab === 'goals') {
     const g = lastState?.goals || [];
@@ -237,7 +479,7 @@ async function renderTab() {
   if (tab === 'videos') { renderVideos(P); return; }
   const rows = await api(`/api/feed?kind=${tab}&limit=100`);
   if (tab === 'creations') {
-    P.innerHTML = `<div class="gallery">${rows.map(r => `<div class="art" data-f="${esc(r.filename)}" data-t="${esc(r.title)}" data-n="${esc(r.note)}" data-k="${esc(r.kind)}">${r.kind === 'svg' ? `<img alt="${esc(r.title)}" src="/creations/${esc(r.filename)}?key=${encodeURIComponent(key())}">` : `<div class="txt" data-load="${esc(r.filename)}"></div>`}<strong>${esc(r.title)}</strong><div class="muted" style="font-size:12px">${esc(r.kind)} · ${when(r.ts)}</div></div>`).join('')}</div>` || '<p class="muted">Nothing yet.</p>';
+    P.innerHTML = `<div class="gallery">${rows.map(r => `<div class="art" data-f="${esc(r.filename)}" data-t="${esc(r.title)}" data-n="${esc(r.note)}" data-k="${esc(r.kind)}">${r.kind === 'svg' ? `<img alt="${esc(r.title)}" src="/creations/${esc(r.filename)}?key=${encodeURIComponent(key())}">` : `<div class="txt" data-load="${esc(r.filename)}"></div>`}<strong>${esc(r.title)}</strong><div class="muted" style="font-size:12px">${esc(r.kind === 'svg' ? 'drawing' : r.kind)} · ${when(r.ts)}</div></div>`).join('')}</div>` || '<p class="muted">Nothing yet.</p>';
     P.querySelectorAll('[data-load]').forEach(async el => { const r = await fetch(`/creations/${el.dataset.load}`, {headers: {'x-gino-key': key()}}); el.textContent = await r.text(); });
     P.querySelectorAll('.art').forEach(el => el.onclick = async () => {
       $('#dlgTitle').textContent = el.dataset.t; $('#dlgNote').textContent = el.dataset.n;
@@ -365,11 +607,13 @@ function showKeepsake(it) {
   $('#dlgBody').innerHTML = `<p style="font-style:italic;white-space:pre-wrap">${esc(it.story)}</p>`; $('#dlg').showModal();
 }
 
-// "Since your last visit": what Gino did while you were away
+// "Since your last visit": what Gino did while you were away. A postcard at the top; "Read it all" opens it in his book.
+let recapHTML = '', recapSince = '';
 async function showRecap() {
   let r; try { r = await api('/api/recap'); } catch { return; }
   let gone = ''; try { gone = localStorage.getItem('ginoRecapClosed') || ''; } catch {}
   if (!r.show || gone === String(r.since)) return;
+  recapSince = String(r.since);
   const li = xs => `<ul>${xs.map(x => `<li>${x}</li>`).join('')}</ul>`;
   const sec = (title, html) => html ? `<div><h4>${title}</h4>${html}</div>` : '';
   const img = f => `/creations/${encodeURIComponent(f)}?key=${encodeURIComponent(key())}`;
@@ -381,7 +625,7 @@ async function showRecap() {
     ...r.new_goals.map(g => `🎯 Started: <b>${esc(g.title)}</b> <span class="muted">${esc(g.why)}</span>`),
     ...r.worked_on.map(g => `🔨 Kept going: <b>${esc(g.title)}</b>${g.latest ? ` <span class="muted">${esc(g.latest)}</span>` : ''}`)];
   const j = r.journal;
-  $('#recap').innerHTML = `<div class="row" style="justify-content:space-between"><h2>Since your last visit <span class="muted" style="font-weight:400;font-size:15px">(${esc(r.away)} ago)</span></h2><button class="ghost" id="recapClose">Thanks, Gino</button></div>
+  recapHTML = `<h3 style="margin:0;font:700 20px Georgia,serif">📮 Since your last visit <span class="muted" style="font:400 14px system-ui">(${esc(r.away)} ago)</span></h3>
     <div class="cols">
       ${sec('Projects', projects.length ? li(projects) : '')}
       ${sec('He made', made.length ? li(made) + (thumbs ? `<div class="thumbs">${thumbs}</div>` : '') : '')}
@@ -393,37 +637,59 @@ async function showRecap() {
       ${sec('Shop', r.sales.length ? li(r.sales.map(x => `🛒 Someone bought <b>${esc(x.title)}</b> (£${(x.amount_pence / 100).toFixed(2)})`)) : '')}
     </div>
     ${r.messages ? `<p class="muted" style="margin:10px 0 0">He sent you ${r.messages} message${r.messages > 1 ? 's' : ''}: they're in the chat.</p>` : ''}
-    ${j ? `<h4>From his private diary${j.emotion ? ` · feeling ${esc(j.emotion)}` : ''}</h4><blockquote>${esc(j.text.length > 500 ? j.text.slice(0, 500) + '…' : j.text)}</blockquote>` : ''}`;
-  $('#recap').hidden = false;
-  $('#recapClose').onclick = () => { $('#recap').hidden = true; try { localStorage.setItem('ginoRecapClosed', String(r.since)); } catch {} };
+    ${j ? `<h4>From his private diary${j.emotion ? ` · feeling ${esc(j.emotion)}` : ''}</h4><blockquote>${esc(j.text.length > 500 ? j.text.slice(0, 500) + '…' : j.text)}</blockquote>` : ''}
+    <p style="margin:14px 0 0"><button id="recapDone">Thanks, Gino</button></p>`;
+  // the postcard: the first few things, in one or two lines
+  const plain = h => { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.trim(); };
+  const bits = [
+    ...r.done_goals.map(g => `finished “${g.title}”`), ...r.new_goals.map(g => `started “${g.title}”`),
+    ...r.made.map(c => `made ${c.kind === 'svg' ? 'a drawing' : 'a ' + c.kind}, “${c.title}”`),
+    ...r.dreams.map(d => `dreamed “${d.title}”`), ...r.learned.map(x => `learned ${x}`), ...r.built.map(x => plain(x).replace(/ at \(-?\d+, *-?\d+\)/, '')),
+    ...(r.messages ? [`sent you ${r.messages} message${r.messages > 1 ? 's' : ''}`] : [])];
+  $('#postTitle').textContent = `Since your last visit (${r.away} ago)`;
+  $('#postText').textContent = bits.length ? 'He ' + bits.slice(0, 3).join(', ') + (bits.length > 3 ? ', and more.' : '.') : 'Have a look at what he got up to.';
+  $('#post').hidden = false; $('#dock [data-k="recap"]').hidden = false;
 }
+function closeRecap() {
+  $('#post').hidden = true; $('#dock [data-k="recap"]').hidden = true; if (tab === 'recap') { tab = 'events'; closeAll(); }
+  try { localStorage.setItem('ginoRecapClosed', recapSince); } catch {}
+}
+$('#recapClose').onclick = closeRecap;
+$('#postOpen').onclick = () => openBook('recap');
+$('#panel').addEventListener('click', e => { if (e.target.id === 'recapDone') closeRecap(); });
 
-refresh(); loadChat(); renderTab(); showRecap();
+refresh(); loadChat(); showRecap();
 // keep the page fresh while it's open (and let Gino know dad is around)
 setInterval(() => { if (!document.hidden) { refresh(); loadChat(); } }, 30000);
-// 3D world. If three.js can't load (offline, no WebGL) the flat map above stays.
+
+// The page is mostly 3D view: a trackpad pinch or sideways swipe over the world moves the camera, never zooms the page or goes back.
+for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, e => { if (e.target.closest?.('#world')) e.preventDefault(); });
+document.addEventListener('wheel', e => { if (e.target.closest?.('#world') && (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY))) e.preventDefault(); }, { passive: false });
+
+// 3D world. If three.js can't load (offline, no WebGL) the flat map stays.
 (async () => {
   try {
     const m = await import('/static/world.js');
     while (!lastState) await new Promise(r => setTimeout(r, 100));
     let f = false;
+    const label = { follow: () => f ? '🎥 Free camera' : '🎥 Follow Gino' };
     const w = m.createWorld($('#world'), $('#tip'), {
       season: new URLSearchParams(location.search).get('season') || lastState.weather?.season, key: key(),
       onPet: () => api('/api/pet', {method: 'POST'}).then(refresh).catch(() => {}),
       onItem: it => showKeepsake(it),
       autoQuality: !new URLSearchParams(location.search).has('hq'),
-      onQuality: q => { $('#qBtn').textContent = 'Quality: ' + q; },
-      onFollow: v => { f = v; $('#followBtn').textContent = f ? 'Free camera' : 'Follow Gino'; },
+      onQuality: q => { $('#qBtn').textContent = '✨ Quality: ' + q; },
+      onFollow: v => { f = v; $('#followBtn').textContent = label.follow(); },
     });
-    $('#scene').remove(); $('#worldBtns').style.display = 'flex'; world = w; window.ginoWorld = w; w.update(lastState);
-    $('#followBtn').onclick = () => { f = !f; w.setFollow(f); $('#followBtn').textContent = f ? 'Free camera' : 'Follow Gino'; };
-    const cycle = (btn, label, opts, fn) => { let i = 0; btn.onclick = () => { i = (i + 1) % opts.length; fn(opts[i][0]); btn.textContent = `${label}: ${opts[i][1]}`; }; };
-    cycle($('#timeBtn'), 'Sky', [['auto', 'live'], ['day', 'day'], ['sunset', 'sunset'], ['night', 'night']], v => w.setTime(v));
-    cycle($('#wxBtn'), 'Weather', [[null, 'live'], ['clear', 'clear'], ['cloudy', 'cloudy'], ['rain', 'rain'], ['snow', 'snow'], ['fog', 'fog']], v => w.setWeather(v));
-    $('#qBtn').textContent = 'Quality: ' + w.quality; $('#qBtn').onclick = () => w.setQuality(w.quality === 'high' ? 'low' : 'high');
+    $('#scene').remove(); $('#tools').classList.add('on'); world = w; window.ginoWorld = w; w.update(lastState);
+    $('#followBtn').onclick = () => { f = !f; w.setFollow(f); $('#followBtn').textContent = label.follow(); };
+    const cycle = (btn, icon, name, opts, fn) => { let i = 0; btn.onclick = () => { i = (i + 1) % opts.length; fn(opts[i][0]); btn.textContent = `${icon} ${name}: ${opts[i][1]}`; }; };
+    cycle($('#timeBtn'), '🌅', 'Sky', [['auto', 'live'], ['day', 'day'], ['sunset', 'sunset'], ['night', 'night']], v => w.setTime(v));
+    cycle($('#wxBtn'), '🌦️', 'Weather', [[null, 'live'], ['clear', 'clear'], ['cloudy', 'cloudy'], ['rain', 'rain'], ['snow', 'snow'], ['fog', 'fog']], v => w.setWeather(v));
+    $('#qBtn').textContent = '✨ Quality: ' + w.quality; $('#qBtn').onclick = () => w.setQuality(w.quality === 'high' ? 'low' : 'high');
     $('#photoBtn').onclick = async () => { const blob = await w.photo(); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `gino-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
-    $('#fullBtn').onclick = () => { document.fullscreenElement ? document.exitFullscreen() : $('#world').requestFullscreen?.(); };
-  } catch (e) { console.warn('3D world unavailable, showing the flat map.', e); }
+    $('#fullBtn').onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); };
+  } catch (e) { console.warn('3D world unavailable, showing the flat map.', e); $('#fallbackNote').style.display = 'block'; setTimeout(() => $('#fallbackNote').style.display = 'none', 8000); }
 })();
 </script>
 </body>

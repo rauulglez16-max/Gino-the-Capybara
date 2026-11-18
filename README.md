@@ -33,9 +33,13 @@ Then open **http://localhost:8787/private** (that's your own page, where you can
 
 ## What you'll see
 
+- **Your page**: it looks like his live page. His 3D world fills the whole screen; his card (top left) shows what he's
+  doing, his six mood bars and a snack basket; the chat sits on the right; and the round buttons at the bottom (*Gino's
+  book*) open his Activity, Videos, Diary, Creations and the rest on top of the world. On a phone, the bottom bar has
+  World, Chat, Book, Snack and News.
 - **His 3D world**: a meadow by a lake, ringed by forest and snowy mountains, that he furnishes himself from 39
   shapes (or anything he invents). Drag to orbit, scroll to zoom, hover to see what things are, double-click a
-  thing to look at it, or press *Follow Gino*. The sun, moon and stars follow your clock, the weather changes
+  thing to look at it, or press *Follow Gino* (the view buttons sit next to the mini map). The sun, moon and stars follow your clock, the weather changes
   every few hours, and the seasons follow the calendar (`GINO_HEMISPHERE=south` flips them). Lamps, campfires and
   windows glow at night. Gino walks to what he builds, curls up to sleep, swims in his pond, and shows how he
   feels above his head. Click him to pet him. His drawings hang on any easel or gallery he builds. *Photo* saves
