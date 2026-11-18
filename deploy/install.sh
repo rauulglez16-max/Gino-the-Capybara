@@ -104,7 +104,7 @@ EOF
 
   # --- services: Gino himself + the 5-minute update check ---
   install -m 644 "$APP"/deploy/systemd/gino.service "$APP"/deploy/systemd/gino-update.service \
-    "$APP"/deploy/systemd/gino-update.timer /etc/systemd/system/
+    "$APP"/deploy/systemd/gino-update.timer "$APP"/deploy/systemd/gino-stream.service /etc/systemd/system/
   ln -sf "$APP/deploy/gino" /usr/local/bin/gino
   chmod +x "$APP/deploy/gino"
   systemctl daemon-reload

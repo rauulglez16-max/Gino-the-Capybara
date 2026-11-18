@@ -1,0 +1,24 @@
+[Unit]
+Description=Gino on live TV (YouTube, 24/7). Off until you run: gino stream on
+After=gino.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=gino
+Group=gino
+WorkingDirectory=/opt/gino/app
+EnvironmentFile=/etc/gino/gino.env
+Environment=HOME=/tmp
+ExecStart=/opt/gino/venv/bin/python -m gino.stream run youtube
+Restart=always
+RestartSec=30
+# filming is heavy work: Gino's own thinking and his website always come first
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/opt/gino/data
+
+[Install]
+WantedBy=multi-user.target

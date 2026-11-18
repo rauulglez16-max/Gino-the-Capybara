@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Gino Live TV</title>
+<!-- Gino's live TV picture. This page is what a YouTube or TikTok live stream shows: his 3D world filling the screen,
+     a camera that wanders between shots by itself, his meadow's sounds and a caption of what he's doing.
+     It is filmed either by the server (gino/stream.py) or by OBS on dad's PC (a "Browser" source pointed here).
+     All it shows comes from /api/live, the same filtered, public slice of Gino the /live page uses: nothing from
+     chats, thoughts or memories, and nothing about dad. Nobody can click or type anything here.
+     Options in the address: ?sound=0 (silent), ?music=0 (nature sounds only), ?quality=low (a slow computer),
+     ?overlay=1 (only the words and bars on a see-through page: the server lays it over the scenes it filmed).
+     Tall screens (TikTok, 720x1280) get a tall layout by themselves. -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌿</text></svg>">
+<style>
+@font-face{font-family:Fraunces;src:url(/static/welcome/fonts/fraunces.woff2) format('woff2');font-weight:100 900}
+@font-face{font-family:Caveat;src:url(/static/welcome/fonts/caveat.woff2) format('woff2');font-weight:400 700}
+/* one unit that is the same size on a wide (1280x720) and a tall (720x1280) picture */
+:root{--u:min(1vw,1vh);--card:#fff7e8;--ink:#3b2e22;--muted:#7d6a55;--edge:#5b4a38;--drop:rgba(91,74,56,.35);--live:#d6453d;--track:#efe2c8}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#9fd0ea;color:var(--ink);font:calc(var(--u)*2.2)/1.35 system-ui,-apple-system,'Segoe UI',sans-serif;cursor:none}
+#world{position:fixed;inset:0}
+#world canvas{display:block;width:100%;height:100%;filter:saturate(1.2) sepia(.3) hue-rotate(-8deg) brightness(1.06) contrast(1.05)}
+#glow{position:fixed;inset:0;pointer-events:none;mix-blend-mode:soft-light;background:linear-gradient(180deg,rgba(255,150,60,.55),rgba(255,200,120,.25) 50%,rgba(130,60,150,.35));transition:opacity 4s}
+#tip{display:none}
+.card{background:var(--card);border:calc(var(--u)*.3) solid var(--edge);border-radius:calc(var(--u)*2);box-shadow:calc(var(--u)*.5) calc(var(--u)*.6) 0 var(--drop)}
+/* top left: who this is and that it's live */
+#badge{position:fixed;left:calc(var(--u)*3);top:calc(var(--u)*3);display:flex;align-items:center;gap:calc(var(--u)*1.4);padding:calc(var(--u)*1.1) calc(var(--u)*2)}
+#badge b{font:600 calc(var(--u)*3)/1 Fraunces,Georgia,serif}
+.live{display:inline-flex;align-items:center;gap:calc(var(--u)*.7);font:800 calc(var(--u)*1.6)/1 system-ui,sans-serif;letter-spacing:.12em;color:#fff;background:var(--live);padding:calc(var(--u)*.6) calc(var(--u)*1);border-radius:calc(var(--u)*.8)}
+.live i{width:calc(var(--u)*1);height:calc(var(--u)*1);border-radius:50%;background:#fff;animation:pulse 1.6s infinite}
+.live.off{background:var(--muted)}.live.off i{animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+#site{font-size:calc(var(--u)*1.7);color:var(--muted)}
+/* top right: how he feels */
+#bars{position:fixed;right:calc(var(--u)*3);top:calc(var(--u)*3);width:calc(var(--u)*30);padding:calc(var(--u)*1.4) calc(var(--u)*1.8);display:grid;gap:calc(var(--u)*.9)}
+.bar{display:grid;grid-template-columns:calc(var(--u)*3) 1fr;align-items:center;gap:calc(var(--u)*1)}
+.bar span{font-size:calc(var(--u)*2.4);text-align:center}
+.bar .top{display:flex;justify-content:space-between;font-size:calc(var(--u)*1.5);font-weight:700;margin-bottom:calc(var(--u)*.3)}
+.bar .top small{font-weight:400;color:var(--muted)}
+.track{height:calc(var(--u)*1.3);border-radius:calc(var(--u)*1);background:var(--track);border:calc(var(--u)*.22) solid var(--edge);overflow:hidden}
+.fill{height:100%;background:var(--c);transition:width 3s ease}
+/* bottom: what he's doing right now */
+#lower{position:fixed;left:calc(var(--u)*3);right:calc(var(--u)*3);bottom:calc(var(--u)*3);display:flex;align-items:center;gap:calc(var(--u)*2);padding:calc(var(--u)*1.6) calc(var(--u)*2.4)}
+#lower svg{width:calc(var(--u)*7);height:calc(var(--u)*7);flex:none}
+#lower .txt{min-width:0;flex:1}
+#now{margin:0;font:600 calc(var(--u)*3.2)/1.2 Fraunces,Georgia,serif}
+#meta{margin:calc(var(--u)*.4) 0 0;font-size:calc(var(--u)*1.8);color:var(--muted)}
+#ticker{margin:calc(var(--u)*.6) 0 0;font:600 calc(var(--u)*2.6)/1.2 Caveat,'Comic Sans MS',cursive;color:#8a4d1f;min-height:1.2em;transition:opacity .8s}
+#ticker.hide{opacity:0}
+#away{position:fixed;inset:0;display:none;place-items:center;background:rgba(159,208,234,.55)}
+#away .card{padding:calc(var(--u)*3) calc(var(--u)*4);font:600 calc(var(--u)*3.4)/1.3 Fraunces,Georgia,serif;text-align:center}
+/* the server's caption layer: see-through, no moving parts */
+.overlay,.overlay body{background:transparent}
+.overlay #world,.overlay #glow,.overlay #away{display:none!important}
+.overlay *{transition:none!important;animation:none!important}
+/* a tall picture (TikTok): the bars go under the badge and the caption gets more room */
+@media (orientation:portrait){
+  html,body{font-size:calc(var(--u)*3)}
+  #badge{left:calc(var(--u)*4);top:calc(var(--u)*5)}
+  #bars{left:calc(var(--u)*4);right:auto;top:calc(var(--u)*16);width:calc(var(--u)*44)}
+  #lower{left:calc(var(--u)*4);right:calc(var(--u)*4);bottom:calc(var(--u)*14);flex-direction:column;align-items:flex-start}
+  #now{font-size:calc(var(--u)*5)}#meta{font-size:calc(var(--u)*2.8)}#ticker{font-size:calc(var(--u)*4.2)}
+  #lower svg{display:none}
+}
+</style>
+</head>
+<body>
+<script>if (new URLSearchParams(location.search).get('overlay') === '1') document.documentElement.className = 'overlay';</script>
+<div id="world"></div>
+<div id="glow"></div>
+<div id="tip"></div>
+<div id="badge" class="card"><span class="live" id="liveTag"><i></i>LIVE</span><div><b>Gino the capybara</b><div id="site"></div></div></div>
+<div id="bars" class="card"></div>
+<div id="lower" class="card">
+  <svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="18" cy="24" rx="13" ry="9" fill="#8a5a33"/><ellipse cx="29" cy="17" rx="8" ry="7" fill="#8a5a33"/><ellipse cx="34" cy="19" rx="3.5" ry="3" fill="#6b4423"/><circle cx="29" cy="15" r="1.5" fill="#1d130b"/><ellipse cx="25" cy="10.5" rx="2" ry="2.4" fill="#6b4423"/></svg>
+  <div class="txt"><p id="now">Finding Gino…</p><p id="meta"></p><p id="ticker"></p></div>
+</div>
+<div id="away"><div class="card">Gino will be right back 🌿</div></div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/" } }
+</script>
+<script type="module">
+const $ = s => document.querySelector(s);
+const opt = new URLSearchParams(location.search);
+const WX = {clear:'☀️', cloudy:'☁️', rain:'🌧️', snow:'❄️', fog:'🌫️'};
+const BARS = [['mood', 'Mood', '#e9b93a', '💛', ['low', 'so-so', 'good', 'great']],
+              ['energy', 'Energy', '#e8843c', '⚡', ['worn out', 'tired', 'awake', 'bouncy']],
+              ['fullness', 'Tummy', '#5a9a3f', '🍉', ['hungry', 'peckish', 'fed', 'stuffed']],
+              ['fun', 'Fun', '#9b6fd1', '🎈', ['bored', 'meh', 'playful', 'buzzing']]];
+$('#bars').innerHTML = BARS.map(([k, l, c, e]) => `<div class="bar" id="bar-${k}" style="--c:${c}"><span>${e}</span><div><div class="top">${l}<small></small></div><div class="track"><div class="fill" style="width:0"></div></div></div></div>`).join('');
+$('#site').textContent = location.hostname && !/^(127\.|localhost)/.test(location.hostname) ? location.hostname.replace(/^www\./, '') : 'ginothecapybara.com';
+
+let state = null, clockAt = 0, world = null, sound = null, failedAt = 0;
+const gHour = () => state ? (state.local_hour + (Date.now() - clockAt) / 3.6e6) % 24 : new Date().getHours();
+const fmt = h => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.floor((h % 1) * 60)).padStart(2, '0')}`;
+
+function nearWhat(s) {
+  const [gx, gy] = world?.where || s.pos;
+  if (gy < -0.6) return 'down by the lake';
+  let best = null, bd = 2.2;
+  for (const h of s.habitat) { if (h.kind === 'path') continue; const d = Math.hypot(gx - h.x, gy - h.y); if (d < bd) { bd = d; best = h; } }
+  return best ? `${best.kind === 'pond' ? 'in' : 'by'} the ${best.name}` : 'out in the meadow';
+}
+function showNow() {
+  const s = state; if (!s) return;
+  const act = s.asleep ? s.activity : (world?.doing || s.activity);
+  const line = s.asleep ? `Shh… Gino is ${act} 💤` : `Gino is ${act}${s.thinking ? ' (deep in thought)' : ''}`;
+  // add where he is, unless what he's doing already says it ("building a pond" by the pond)
+  const near = s.asleep ? '' : nearWhat(s), thing = near.replace(/^(by|in) the /, '').toLowerCase();
+  const says = /\b(by|in|at|on|under|near) the\b|lake|meadow/i.test(act) || (thing && act.toLowerCase().includes(thing));
+  const text = line + (near && !says ? ' ' + near : '');
+  if ($('#now').textContent !== text) $('#now').textContent = text;
+  const meta = `Feeling ${s.emotion} · ${WX[s.weather?.kind] || ''} ${s.weather?.text || ''} · ${fmt(gHour())} in his world · ${Math.floor(s.age_days)} days old`;
+  if ($('#meta').textContent !== meta) $('#meta').textContent = meta;
+}
+setInterval(showNow, 1500);
+
+function drawBars(v) {
+  for (const [k, , , , words] of BARS) {
+    const n = Math.max(0, Math.min(100, Math.round(Number(v?.[k]) || 0))), el = $('#bar-' + k);
+    el.querySelector('.fill').style.width = Math.max(n, 4) + '%';
+    el.querySelector('small').textContent = words[Math.min(3, Math.floor(n / 25))];
+  }
+}
+
+// a slow ticker under the caption: his diary, his newest pieces and a few words about who he is
+let tick = 0;
+function tickerLines(s) {
+  const out = [];
+  if (s.note) out.push(`From his diary: “${s.note}”`);
+  for (const p of (s.board || []).slice(0, 2)) out.push(p.kind === 'dream' ? `His newest dream painting: “${p.title}”` : `He made this: “${p.title}” (${p.kind})`);
+  const kept = (s.habitat || []).filter(h => h.story);
+  if (kept.length) { const k = kept[Math.floor(Date.now() / 6e5) % kept.length]; out.push(`${k.emoji || '📖'} ${k.name}: “${k.story.slice(0, 110)}${k.story.length > 110 ? '…' : ''}”`); }
+  out.push('Gino is an AI capybara. Nobody tells him what to do: he decides everything himself.');
+  out.push(`Read his diary and see his paintings at ${$('#site').textContent}`);
+  return out;
+}
+function nextTicker() {
+  if (!state) return;
+  const lines = tickerLines(state), el = $('#ticker');
+  el.classList.add('hide');
+  setTimeout(() => { el.textContent = lines[tick++ % lines.length]; el.classList.remove('hide'); }, document.documentElement.className === 'overlay' ? 0 : 900);
+}
+setInterval(nextTicker, 18000);
+
+function render() {
+  const s = state;
+  drawBars(s.vitals);
+  const h = gHour(); $('#glow').style.opacity = h < 6 || h >= 21 ? 0.45 : 1;
+  showNow();
+  world?.update(s);
+  sound?.update({ hour: h, weather: s.weather?.kind || 'clear', asleep: s.asleep });
+}
+async function refresh() {
+  try {
+    const r = await fetch('/api/live', {cache: 'no-store'});
+    if (!r.ok) throw new Error(r.status);
+    const first = !state;
+    state = await r.json(); clockAt = Date.now(); failedAt = 0;
+    $('#liveTag').className = 'live'; $('#away').style.display = 'none';
+    render(); if (first) nextTicker();
+  } catch {
+    $('#liveTag').className = 'live off';
+    failedAt ||= Date.now();
+    if (Date.now() - failedAt > 60000 || !state) $('#away').style.display = 'grid';   // the server is restarting or updating
+  }
+}
+await refresh();
+setInterval(refresh, 10000);
+// a fresh start every 6 hours keeps a page that runs day and night from slowly filling up memory
+setTimeout(() => location.reload(), 6 * 3600e3);
+if (!state) setTimeout(() => location.reload(), 60000);   // couldn't reach Gino at all: try again in a minute
+
+// the camera directs itself: mostly close to Gino, sometimes the whole meadow, one of his things or his board
+function direct() {
+  if (!world || !state) return setTimeout(direct, 5000);
+  const r = Math.random(), things = state.habitat.filter(h => h.kind !== 'path');
+  let hold;
+  if (state.asleep || r < 0.5) { world.setFollow(true); hold = 70 + Math.random() * 50; }
+  else if (r < 0.75 || !things.length) { world.setFollow(false); hold = 45 + Math.random() * 30; }   // wide, slowly turning
+  else if (r < 0.93) { const t = things[Math.floor(Math.random() * things.length)]; world.lookAt(t.x, t.y); hold = 25 + Math.random() * 15; }
+  else if ((state.board || []).length && world.showBoard) { world.showBoard(); hold = 25; }
+  else { world.setFollow(true); hold = 60; }
+  setTimeout(direct, hold * 1000);
+}
+
+const overlay = opt.get('overlay') === '1';
+try {
+  if (overlay) throw 'the server films the world itself';
+  if (!state) throw new Error('no state yet');
+  const m = await import('/static/world.js');
+  const low = opt.get('quality') === 'low';
+  world = m.createWorld($('#world'), $('#tip'), { season: state.weather?.season, clock: gHour, petHint: '', autoQuality: !low, lite: low });
+  if (low) world.setQuality('low'); else if (opt.get('quality') === 'high') world.setQuality('high');
+  world.update(state); world.setBoard?.((state.board || []).filter(p => p && p.title));
+  world.setFollow(true); window.ginoWorld = world;
+  setTimeout(direct, 60000);
+} catch (e) { if (!overlay) console.warn('3D world unavailable', e); }
+
+// sound: this page is only ever opened by a streaming program, so it plays straight away
+if (opt.get('sound') !== '0' && !overlay) {
+  try {
+    const m = await import('/static/sound.js'); sound = m.createSound(); window.ginoSound = sound;
+    sound.setVolume(0.7); sound.setMusic(opt.get('music') !== '0'); sound.setNature(true);
+    if (state) sound.update({ hour: gHour(), weather: state.weather?.kind || 'clear', asleep: state.asleep });
+    await sound.setOn(true);
+  } catch (e) { console.warn('no sound', e); }
+}
+window.streamReady = true;
+</script>
+</body>
+</html>

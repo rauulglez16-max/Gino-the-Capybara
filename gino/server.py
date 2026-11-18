@@ -11,8 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import (artstyle, brain, clips, config, db, dreams, live, news, public, roadmap, shop, telegram, tiktok, timeline,
-               vitals, welcome, whatsapp)
+from . import (artstyle, brain, clips, config, db, dreams, live, news, public, roadmap, shop, stream, telegram, tiktok,
+               timeline, vitals, welcome, whatsapp)
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -94,6 +94,7 @@ app.include_router(public.router)  # Gino's public website at /blog: no password
 app.include_router(shop.router)  # /blog/shop: Gino's drawings for sale; payments happen on Stripe's own checkout
 app.include_router(artstyle.router)  # /blog/periods: his art periods, with drawings he already made public
 app.include_router(live.router)  # /live: anyone can watch his 3D world, nobody can talk to him there
+app.include_router(stream.router)  # /stream: the picture his live TV stream shows (filmed by OBS or the server)
 app.include_router(whatsapp.router)  # WhatsApp webhook: only signed requests from Meta, only dad's number
 
 
