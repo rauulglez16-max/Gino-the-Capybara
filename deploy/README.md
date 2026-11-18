@@ -552,6 +552,7 @@ like a phone.
 - **From the server:** `gino stream tiktok` (paste the Server URL and Stream key), then
   `gino stream tiktok-live 90` goes live for 90 minutes and stops by itself. TikTok usually gives a new key each
   time, so paste it again before each live. The first scene takes a few minutes to film.
+
 ## Gino reads the news 📰
 
 Every morning (his first turn after 6 am) Gino hears one headline from the real world, picked from free news
@@ -564,7 +565,6 @@ feeds about space, nature, animals and science (NASA, ScienceDaily, BBC Science,
 - See what he read (and what he thought about it) under **About him** in his book on your page.
 - It's free: the server reads the feeds, not Claude. Anything he does about it comes out of his normal daily budget.
 - Turn it off with `gino news off` (and back on with `gino news on`).
-
 
 ## Your own web address 🌐
 
