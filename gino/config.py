@@ -45,7 +45,7 @@ MAX_STEPS_PER_TICK = int(_f("GINO_MAX_STEPS", 8))
 # Rhythm and money
 DAILY_BUDGET_USD = _f("GINO_DAILY_BUDGET_USD", 3.0)
 MIN_WAKE_MINUTES = int(_f("GINO_MIN_WAKE_MINUTES", 15))
-MAX_WAKE_MINUTES = int(_f("GINO_MAX_WAKE_MINUTES", 360))
+MAX_WAKE_MINUTES = int(_f("GINO_MAX_WAKE_MINUTES", 180))
 TIME_SCALE = _f("GINO_TIME_SCALE", 1.0)  # >1 makes needs change faster (testing)
 
 # Dreams: when he sleeps 2+ hours he has one dream (about 5 US cents, inside the daily budget)
