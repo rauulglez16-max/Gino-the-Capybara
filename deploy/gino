@@ -479,6 +479,14 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
       *) echo "usage: gino stream [status|youtube|tiktok|test|on|off|tiktok-live MINUTES|logs]"; exit 1 ;;
     esac
     ;;
+  news)
+    case "${2:-status}" in
+      on)  need_root; unset_setting GINO_NEWS; systemctl restart gino; echo "📰 Gino will hear one gentle headline each morning." ;;
+      off) need_root; set_setting GINO_NEWS 0; systemctl restart gino; echo "The news is off. Gino's meadow is quiet." ;;
+      status) [ "$(setting GINO_NEWS)" = "0" ] && echo "The news is OFF (turn on with: gino news on)" || echo "📰 The morning news is ON" ;;
+      *) echo "usage: gino news [status|on|off]"; exit 1 ;;
+    esac
+    ;;
   domain)
     need_root
     ip="$(server_ip)"; [ -n "$ip" ] || { echo "Couldn't work out this server's IP address. Nothing changed."; exit 1; }
@@ -552,6 +560,7 @@ gino tiktok      send videos to TikTok: gino tiktok setup | mode | auto on/off |
 gino shop        his shop: gino shop setup | on | off | sales | status
 gino dreams      his dreams at night: gino dreams on | off | status
 gino stream      live TV: gino stream youtube | test | on | off | tiktok | tiktok-live 90 | status
+gino news        his gentle morning headline: gino news on | off | status
 gino settings    edit all his settings
 EOF
     ;;

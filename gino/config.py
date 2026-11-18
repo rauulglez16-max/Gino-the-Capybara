@@ -53,6 +53,10 @@ DREAMS_ON = os.environ.get("GINO_DREAMS", "1") == "1"
 DREAM_MODEL = os.environ.get("GINO_DREAM_MODEL", MODEL)
 DREAM_MIN_SLEEP_HOURS = _f("GINO_DREAM_MIN_SLEEP_HOURS", 2.0)
 
+# News: once a day he hears one gentle headline (space, nature, science) from free news feeds. No extra cost.
+NEWS_ON = os.environ.get("GINO_NEWS", "1") == "1"
+NEWS_FEEDS = os.environ.get("GINO_NEWS_FEEDS", "")  # optional comma-separated https:// feed addresses
+
 # Who is who
 DAD_NAME = os.environ.get("GINO_DAD_NAME", "Raul")
 # Extra words that must never appear on anything public: family names, your town, workplace, pets...
