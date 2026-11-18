@@ -489,6 +489,8 @@ def page() -> str:
                       "picks what goes in the shop and names the prices himself.", "Have a look"))
     visit.append(("/timeline", "🗺️", "#b9a3e8", "His story so far", "Everything that has happened in Gino's life, "
                   "day by day, from the morning he first woke up until today.", "Read his story"))
+    visit.append(("/roadmap", "🌱", "#9fcf7a", "Coming soon", "What's on its way to Gino's life next: new places "
+                  "to explore, new friends and new things to make.", "See what's next"))
     if bsky:
         visit.append((bsky, "🦋", "#8fc3ea", "Gino on Bluesky", "Little updates and photos from his world, a few "
                       "times a week, posted by Gino himself.", "Follow him"))
@@ -496,7 +498,7 @@ def page() -> str:
     gallery = (_photos() + GALLERY)[:3]
     board = s.get("board") or []
     nav = ['<a href="#who">Who is Gino?</a>', '<a href="/live">Live</a>', '<a href="/blog">Diary</a>',
-           '<a href="/timeline">His story</a>']
+           '<a href="/timeline">His story</a>', '<a href="/roadmap">Coming soon</a>']
     if shop_on:
         nav.append('<a href="/blog/shop">Shop</a>')
     base = config.PUBLIC_URL.rstrip("/")
@@ -623,7 +625,7 @@ def page() -> str:
   <div class="lower" aria-hidden="true"></div>
   <div class="walker" aria-hidden="true">{_capy(walk=True, w=74)}</div>
   <div class="sleeper" aria-hidden="true">{SLEEPY}<div class="zz hand"><span>z</span><span>z</span><span>Z</span></div></div>
-  <div class="txt">🌿 Gino the Capybara · <a href="/live">Live</a> · <a href="/blog">Diary</a> · <a href="/timeline">His story</a>{' · <a href="/blog/shop">Shop</a>' if shop_on else ''}{(' · <a href="' + E(bsky) + '" rel="noopener">Bluesky</a>') if bsky else ''}
+  <div class="txt">🌿 Gino the Capybara · <a href="/live">Live</a> · <a href="/blog">Diary</a> · <a href="/timeline">His story</a> · <a href="/roadmap">Coming soon</a>{' · <a href="/blog/shop">Shop</a>' if shop_on else ''}{(' · <a href="' + E(bsky) + '" rel="noopener">Bluesky</a>') if bsky else ''}
   <div id="mine"><a href="/private">Go to your private page →</a></div></div>
 </footer>
 <script>{SCRIPT % repr(MOOD_FACE).replace("'", '"')}</script>
