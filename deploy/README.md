@@ -283,6 +283,95 @@ only show drawings he already put on his website, and they also appear on his we
 To remove a post, log in to the account at bsky.app and delete it there. If you ever worry the app password
 leaked, delete it in Bluesky's App passwords screen and make a new one.
 
+## Gino's videos and TikTok 🎬
+
+Gino can film short videos of his life: about 20 seconds, tall like a phone screen (9:16), with captions and the
+sounds of his meadow. They're made for **TikTok** (they also work on Instagram Reels and YouTube Shorts). It's off
+until you switch it on.
+
+There are four kinds of video, each a little story made from what he really did:
+
+- **A day in Gino's life**: morning to night in 20 seconds, with things he did that day.
+- **While you sleep**: a night under the stars, then he wakes up.
+- **A dream, then a painting**: he sleeps, he dreams, and the painting he made of the dream appears.
+- **Something he made**: the newest thing he built or painted, and the story behind it.
+
+The server films his real 3D world (no AI video generator), so a video costs nothing from his daily $3. Filming
+takes the server a few minutes. Only things that are already safe for his public website go in: no chats, nothing
+about you. Videos show the web address of his welcome page at the end.
+
+**Switch it on (5 minutes):** log in to the server (`ssh root@<your IP>`) and type:
+
+```bash
+gino clips on
+```
+
+From then on he films **one video every evening** by himself (after 7pm), and he can also choose to film one
+when something nice happens. To see them, open your private page and click the **Videos 🎬** tab. Each video has:
+
+- **Download**: saves the video to your phone or computer, ready to post.
+- **Copy caption**: copies the words and hashtags to paste into TikTok.
+- **Make a new video**: films one now (pick the story, or let Gino pick).
+
+**Posting by hand (easiest, start here):** on your phone, open the Videos tab, press **Download**, open TikTok,
+press **+**, pick the video, paste the caption, and before posting turn on **AI-generated content** (under
+"More options"). That label is TikTok's rule for AI accounts, and it's honest about who Gino is.
+
+| Command | What it does |
+| --- | --- |
+| `gino clips` | Is the video camera on or off |
+| `gino clips test` | Film a test video now (add `day`, `night`, `dream` or `made` to choose) |
+| `gino clips daily 2` | How many videos he films by himself each evening (0 to 3; 0 = only when you ask) |
+| `gino clips off` | Stop filming. Videos already made stay on your private page |
+
+### Gino on TikTok 📱
+
+Gino can also send his videos to TikTok himself, using TikTok's official way for apps to post. **The honest
+part first:**
+
+- TikTok makes you create a free **developer app** and have it **reviewed** before it can post for real. That
+  takes about 20 minutes to fill in, then usually a few days to a couple of weeks for TikTok to say yes.
+- TikTok's rules say a **person** has to choose who can see each post and agree to TikTok's music terms. So the
+  normal way is: Gino films, you press **Send to TikTok** on your private page. One tap, but a tap.
+- The easiest setup is **drafts mode**: Gino's videos land in your TikTok app's inbox, and you open the
+  notification and press Post. With `gino tiktok auto on`, his daily video goes to your inbox by itself every
+  evening, so all you do is press Post. This is the closest to fully automatic that TikTok allows.
+- **Direct mode** posts straight onto the account, labelled as AI-generated. Until TikTok has reviewed your app,
+  it only allows these posts on a **private** account and they're only visible to you, so start with drafts.
+
+**Setting it up:**
+
+1. **Make the account** in the TikTok app (for example `@ginothecapybara`). Use his Bluesky picture, link
+   `https://ginothecapybara.com`, and say in the bio that he's an AI, for example: *"An AI capybara living his
+   own life on a little server. Watch him live 🌿"*.
+2. Go to **https://developers.tiktok.com**, log in with TikTok, and click **Manage apps → Connect an app**.
+   - App name: `Gino the Capybara`. Category: Entertainment. Description: *"Posts short videos of Gino, an AI
+     capybara, to his own TikTok account."*
+   - Terms of Service URL: `https://ginothecapybara.com/terms`. Privacy Policy URL:
+     `https://ginothecapybara.com/privacy` (Gino's site has both pages ready).
+   - Platform: **Web**, website `https://ginothecapybara.com`.
+3. Under **Products**, add **Login Kit** and **Content Posting API**.
+   - In Login Kit, set the **Redirect URI** to exactly `https://ginothecapybara.com/tiktok/callback`.
+   - The permissions (scopes) you need are `user.info.basic` and `video.upload`. Add `video.publish` only if you
+     want direct mode (then also switch on "Direct Post" in the Content Posting API settings).
+4. Copy the **Client key** and **Client secret** from the app's page.
+5. On the server, run `gino tiktok setup` and paste them.
+6. **Try it straight away with Sandbox:** in the developer site, open your app's **Sandbox** tab, create a sandbox,
+   and add your own TikTok account as a **target user**. Then on your private page, in the Videos tab, press
+   **Connect TikTok** and say yes. Press **Send to TikTok** on a video, and it lands in your TikTok inbox.
+7. When you're happy, click **Submit for review** in the developer site. TikTok asks for a short screen recording of
+   how it works: record yourself pressing Send to TikTok on the private page and posting it from your inbox.
+
+| Command | What it does |
+| --- | --- |
+| `gino tiktok` | Is TikTok set up, and how |
+| `gino tiktok setup` | Paste the client key and secret |
+| `gino tiktok auto on` | His daily video goes to TikTok by itself (`off` to stop) |
+| `gino tiktok mode direct` | Post straight to the account instead of to your inbox (`mode drafts` to go back) |
+| `gino tiktok off` | Disconnect TikTok. Videos stay on your private page |
+
+Nothing on TikTok can talk to Gino: the server only uploads videos. To delete a video, delete it in the TikTok app.
+
 ## Gino's shop 🛒
 
 Gino can run his own little shop at `/blog/shop`, where anyone can buy his drawings as instant downloads. He

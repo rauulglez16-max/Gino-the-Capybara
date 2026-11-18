@@ -247,6 +247,99 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
       *) echo "usage: gino photos [status|on|test|off]"; exit 1 ;;
     esac
     ;;
+  clips)
+    need_root
+    case "${2:-status}" in
+      on)
+        echo "Installing Gino's video camera (a headless browser and a video maker, about 400 MB). This takes a few minutes..."
+        apt-get install -y -qq libatomic1 ffmpeg >/dev/null
+        if ! /opt/gino/venv/bin/python -c "import playwright" 2>/dev/null || [ ! -d /opt/gino/browsers ]; then
+          /opt/gino/venv/bin/pip install -q playwright
+          mkdir -p /opt/gino/browsers
+          PLAYWRIGHT_BROWSERS_PATH=/opt/gino/browsers /opt/gino/venv/bin/python -m playwright install --with-deps --only-shell chromium
+          chmod -R a+rX /opt/gino/browsers
+        fi
+        set_setting PLAYWRIGHT_BROWSERS_PATH /opt/gino/browsers
+        domain="$(cat /var/lib/gino-deploy/domain 2>/dev/null || true)"
+        [ -n "$domain" ] && [ -z "$(setting GINO_PUBLIC_URL)" ] && set_setting GINO_PUBLIC_URL "https://$domain"
+        set_setting GINO_CLIPS 1
+        systemctl restart gino
+        echo "🎬 Video camera installed! Gino films one video every evening, and you can make more any time:"
+        echo "   open your private page, then the Videos tab. (Make a test one here with: gino clips test)"
+        ;;
+      test)
+        sleep 3
+        out=/opt/gino/data/clip-test.mp4
+        echo "Filming a test video. This takes a few minutes on the server..."
+        if systemd-run --quiet --wait --pipe --uid=gino --gid=gino -p EnvironmentFile="$ENV_FILE" \
+             -p WorkingDirectory="$APP" -E HOME=/tmp /opt/gino/venv/bin/python -m gino.clips test "${3:-}" "$out"; then
+          echo "It's also on your private page, in the Videos tab, the next time Gino films one."
+        fi
+        ;;
+      off)
+        set_setting GINO_CLIPS 0; systemctl restart gino
+        echo "The video camera is OFF. The videos he already made stay on your private page."
+        ;;
+      daily)
+        n="${3:-}"; case "$n" in 0|1|2|3) ;; *) echo "usage: gino clips daily 0|1|2|3   (videos he films by himself each evening)"; exit 1 ;; esac
+        set_setting GINO_CLIPS_PER_DAY "$n"; systemctl restart gino
+        echo "Gino will film $n video(s) by himself each evening."
+        ;;
+      status)
+        [ "$(setting GINO_CLIPS)" = "1" ] && echo "🎬 The video camera is ON ($(setting GINO_CLIPS_PER_DAY | sed 's/^$/1/') a day by himself)" \
+          || echo "The video camera is OFF (turn on with: gino clips on)"
+        ;;
+      *) echo "usage: gino clips [status|on|test|daily N|off]"; exit 1 ;;
+    esac
+    ;;
+  tiktok)
+    need_root
+    case "${2:-status}" in
+      setup)
+        domain="$(cat /var/lib/gino-deploy/domain 2>/dev/null || true)"
+        echo "Connect Gino's videos to TikTok. You need your own TikTok developer app first (see the guide:"
+        echo "https://github.com/rauulglez16-max/Gino-the-Capybara/blob/main/deploy/README.md#gino-on-tiktok-)."
+        echo "In the app's Login Kit settings, the Redirect URI must be exactly:  https://$domain/tiktok/callback"
+        echo
+        read -r -p "1/2  Client key: " ck
+        read -r -s -p "2/2  Client secret (nothing shows while you paste): " cs; echo
+        ck="$(printf '%s' "$ck" | tr -d '[:space:]')"; cs="$(printf '%s' "$cs" | tr -d '[:space:]')"
+        [ -n "$ck" ] && [ -n "$cs" ] || { echo "Something was left empty, nothing changed."; exit 1; }
+        set_setting GINO_TIKTOK_CLIENT_KEY "$ck"; set_setting GINO_TIKTOK_CLIENT_SECRET "$cs"
+        [ -n "$domain" ] && set_setting GINO_PUBLIC_URL "https://$domain"
+        [ -n "$(setting GINO_TIKTOK_MODE)" ] || set_setting GINO_TIKTOK_MODE drafts
+        systemctl restart gino
+        echo "Saved. 🎉 Last step: open your private page, go to the Videos tab and press \"Connect TikTok\"."
+        ;;
+      mode)
+        case "${3:-}" in
+          drafts|direct) set_setting GINO_TIKTOK_MODE "$3"; systemctl restart gino
+            echo "TikTok mode is now: $3. Press \"Connect TikTok\" on your private page again so TikTok asks for the right permission." ;;
+          *) echo "usage: gino tiktok mode drafts|direct"; echo "  drafts: videos land in your TikTok inbox and you post them from the app (easiest)"
+             echo "  direct: videos post straight to the account (needs TikTok's video.publish permission)"; exit 1 ;;
+        esac
+        ;;
+      auto)
+        case "${3:-}" in
+          on) set_setting GINO_TIKTOK_AUTO 1; systemctl restart gino; echo "📱 Gino's daily video goes to TikTok by itself now." ;;
+          off) set_setting GINO_TIKTOK_AUTO 0; systemctl restart gino; echo "Videos only go to TikTok when you press the button." ;;
+          *) echo "usage: gino tiktok auto on|off"; exit 1 ;;
+        esac
+        ;;
+      off)
+        unset_setting GINO_TIKTOK_CLIENT_KEY; unset_setting GINO_TIKTOK_CLIENT_SECRET; set_setting GINO_TIKTOK_AUTO 0
+        systemctl restart gino
+        echo "TikTok is disconnected. Videos stay on your private page to download."
+        ;;
+      status)
+        if [ -n "$(setting GINO_TIKTOK_CLIENT_KEY)" ]; then
+          echo "📱 TikTok is set up (mode: $(setting GINO_TIKTOK_MODE | sed 's/^$/drafts/'), automatic: $( [ "$(setting GINO_TIKTOK_AUTO)" = "1" ] && echo on || echo off ))."
+          echo "   Connect or check the account on your private page, in the Videos tab."
+        else echo "TikTok isn't set up (gino tiktok setup). You can still download videos from your private page."; fi
+        ;;
+      *) echo "usage: gino tiktok [status|setup|mode drafts|direct|auto on|off|off]"; exit 1 ;;
+    esac
+    ;;
   shop)
     need_root
     shop_py() { systemd-run --quiet --wait --pipe --uid=gino --gid=gino -p EnvironmentFile="$ENV_FILE" \
@@ -372,6 +465,8 @@ gino telegram    connect him to your phone (gino telegram test / gino telegram o
 gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / template / off)
 gino social      Bluesky posting: gino social setup | on | off | status
 gino photos      photos in his posts: gino photos on | test | off
+gino clips       his videos: gino clips on | test | daily N | off
+gino tiktok      send videos to TikTok: gino tiktok setup | mode | auto on/off | off
 gino shop        his shop: gino shop setup | on | off | sales | status
 gino dreams      his dreams at night: gino dreams on | off | status
 gino settings    edit all his settings

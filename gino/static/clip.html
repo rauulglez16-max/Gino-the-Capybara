@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<!-- Gino's video camera. Only opened by the server's own headless browser (gino/clips.py) to film a short
+     vertical clip of his 3D world. It has no data of its own: the server hands it a filtered script.
+     Time is "fake" here: the server asks for one frame at a time, so every clip plays smoothly however slow
+     the server's computer is. -->
+<title>Gino's video camera</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#bfe3f5}
+  #world{position:fixed;left:0;top:0}#tip{display:none}
+  @font-face{font-family:Fraunces;src:url(/static/welcome/fonts/fraunces.woff2) format('woff2');font-weight:100 900}
+  @font-face{font-family:Caveat;src:url(/static/welcome/fonts/caveat.woff2) format('woff2');font-weight:400 700}
+</style>
+<script>
+  // a pretend clock: the page only moves forward when the server asks for the next frame
+  (() => {
+    let now = 0, queue = [];
+    performance.now = () => now;
+    window.requestAnimationFrame = cb => { queue.push(cb); return queue.length; };
+    window.cancelAnimationFrame = () => {};
+    window.__advance = ms => { now += ms; const q = queue; queue = []; for (const cb of q) cb(now); };
+  })();
+</script>
+</head><body>
+<div id="world"></div><div id="tip"></div>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/" } }
+</script>
+<script type="module">
+const ease = k => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const clamp01 = v => Math.max(0, Math.min(1, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const fade = (t, a, b, edge = 0.45) => clamp01(Math.min((t - a) / edge, (b - t) / edge));   // 0..1 in, hold, out
+
+let W, H, job, w, THREE, out, g, shots = [], total = 0, frame = 0, curShot = -1, hourNow = 12;
+const art = {};
+
+function loadImage(src) {
+  return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+}
+
+window.setupClip = async (j) => {
+  job = j; W = j.width; H = j.height;
+  THREE = await import('three');
+  // the 3D world is drawn a little smaller and stretched to fit (much quicker on a server without a graphics card);
+  // the words are drawn at full size on top, so they stay sharp
+  const box = document.getElementById('world'), rs = j.render_scale || 1;
+  box.style.width = Math.round(W * rs) + 'px'; box.style.height = Math.round(H * rs) + 'px';
+  await Promise.all([document.fonts.load('700 40px Fraunces'), document.fonts.load('700 40px Caveat')]).catch(() => {});
+  for (const s of j.shots) if (s.art && !art[s.art]) art[s.art] = await loadImage(s.art);
+  const { createWorld } = await import('/static/world.js');
+  w = createWorld(box, document.getElementById('tip'), {
+    key: '', season: j.state.weather?.season, autoQuality: false, lite: true,
+    clock: () => hourNow, director: direct });
+  w.setQuality('low');
+  w.update(j.state);
+  const { controls, roam, skip, snap } = w._debug;
+  controls.enableDamping = false; controls.autoRotate = false; controls.enabled = false;
+  roam.on = true;            // let him wander about like on /live
+  skip(); snap();
+  let t = 0; shots = j.shots.map(s => { const o = { ...s, t0: t, t1: t + s.dur }; t += s.dur; return o; });
+  total = t;
+  out = document.createElement('canvas'); out.width = W; out.height = H; g = out.getContext('2d');
+  curShot = 0; startShot(shots[0]); hourNow = shots[0].hour[0];
+  for (let i = 0; i < 2 * j.fps; i++) window.__advance(1000 / j.fps);   // let the sky, lights and Gino settle first
+  return Math.round(total * j.fps);
+};
+
+function shotAt(t) { return shots.find(s => t < s.t1) || shots[shots.length - 1]; }
+
+// where the camera is, for this moment of this shot
+function direct() {
+  const t = frame / job.fps, s = shotAt(t), k = ease(clamp01((t - s.t0) / s.dur));
+  const { camera, controls, gino, cellPos } = w._debug;
+  const c = s.cam || {};
+  let centre;
+  if (c.around === 'gino') centre = new THREE.Vector3(gino.position.x, gino.position.y + 0.7, gino.position.z);
+  else if (Array.isArray(c.around)) centre = cellPos(c.around[0], c.around[1]).add(new THREE.Vector3(0, 0.8, 0));
+  else centre = new THREE.Vector3(0, 0.6, 0);
+  const a = c.from || [24, 12, -0.6], b = c.to || a;
+  const dist = lerp(a[0], b[0], k), high = lerp(a[1], b[1], k), ang = lerp(a[2], b[2], k);
+  if (s.__face === undefined) s.__face = c.around === 'gino' ? gino.rotation.y : 0;   // fixed for the shot, so the camera doesn't swing as he turns
+  const yaw = s.__face + ang;
+  const want = new THREE.Vector3(centre.x + Math.cos(yaw) * dist, centre.y + high, centre.z - Math.sin(yaw) * dist);
+  // follow Gino smoothly rather than jerking with every step
+  if (s.__seen) { camera.position.lerp(want, 0.18); controls.target.lerp(centre, 0.18); }
+  else { camera.position.copy(want); controls.target.copy(centre); s.__seen = true; }
+}
+
+function startShot(s) {
+  hourNow = s.hour[0];
+  w.update({ ...job.state, asleep: !!s.asleep, activity: s.activity || job.state.activity });
+  w.setWeather(s.weather || null);
+}
+
+function wrap(text, maxW) {
+  const words = String(text).split(/\s+/), lines = []; let line = '';
+  for (const wd of words) { const tryL = line ? line + ' ' + wd : wd; if (g.measureText(tryL).width > maxW && line) { lines.push(line); line = wd; } else line = tryL; }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function roundRect(x, y, ww, hh, r) { g.beginPath(); g.roundRect(x, y, ww, hh, r); }
+
+function caption(text, a, y, style) {
+  if (a <= 0) return;
+  g.save(); g.globalAlpha = a;
+  const big = style === 'title', size = big ? Math.round(W * 0.075) : Math.round(W * 0.066);
+  g.font = big ? `700 ${size}px Fraunces, Georgia, serif` : `700 ${size}px Caveat, 'Comic Sans MS', cursive`;
+  const lines = wrap(text, W * 0.78), lh = size * (big ? 1.15 : 1.1), pad = size * 0.55;
+  const bw = Math.max(...lines.map(l => g.measureText(l).width)) + pad * 2, bh = lines.length * lh + pad * 1.3;
+  const x = (W - bw) / 2, top = y - bh / 2 + (1 - a) * 18;
+  g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 18; g.shadowOffsetY = 6;
+  g.fillStyle = big ? 'rgba(255,248,232,.94)' : 'rgba(255,255,255,.9)';
+  roundRect(x, top, bw, bh, size * 0.6); g.fill();
+  g.shadowColor = 'transparent';
+  g.fillStyle = big ? '#4a3420' : '#3b2a1a'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  lines.forEach((l, i) => g.fillText(l, W / 2, top + pad * 0.65 + lh * (i + 0.5)));
+  g.restore();
+}
+
+function drawArt(s, t) {
+  const im = art[s.art]; if (!im) return;
+  const a = fade(t, s.t0 + 0.3, s.t1 - 0.1, 0.8), k = clamp01((t - s.t0) / s.dur);
+  if (a <= 0) return;
+  g.save(); g.globalAlpha = a;
+  g.fillStyle = 'rgba(20,14,40,.55)'; g.fillRect(0, 0, W, H);
+  const side = W * 0.72 * (1 + k * 0.05), ratio = (im.naturalHeight || 1) / (im.naturalWidth || 1);
+  const iw = side, ih = side * ratio, x = (W - iw) / 2, y = H * 0.44 - ih / 2;
+  g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 40; g.shadowOffsetY = 12;
+  g.fillStyle = '#fffaf0'; roundRect(x - 18, y - 18, iw + 36, ih + 36, 14); g.fill();
+  g.shadowColor = 'transparent';
+  g.drawImage(im, x, y, iw, ih);
+  g.restore();
+}
+
+function overlays(t) {
+  const s = shotAt(t);
+  if (s.tint) {   // dreamy colours for night and dream shots
+    const a = fade(t, s.t0, s.t1, 0.8) * s.tint;
+    const grd = g.createRadialGradient(W / 2, H / 2, W * 0.2, W / 2, H / 2, H * 0.75);
+    grd.addColorStop(0, 'rgba(120,80,200,0)'); grd.addColorStop(1, `rgba(70,40,150,${0.55 * a})`);
+    g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  }
+  if (s.art) drawArt(s, t);
+  for (const c of s.captions || []) {
+    const a0 = s.t0 + (c.at || 0), a1 = c.until ? s.t0 + c.until : s.t1;
+    caption(c.text, fade(t, a0, a1), c.y === 'top' ? H * 0.17 : c.y === 'middle' ? H * 0.5 : H * 0.7, c.style);
+  }
+  if (job.title) caption(job.title, fade(t, 0.2, 3.4), H * 0.17, 'title');   // below TikTok's own buttons at the top
+  // the last moment: who he is and where to find him
+  const endA = clamp01((t - (total - job.end_seconds)) / 0.6);
+  if (endA > 0) {
+    g.save(); g.globalAlpha = endA * 0.6; g.fillStyle = '#20160c'; g.fillRect(0, 0, W, H); g.restore();
+    caption(job.end[0], endA, H * 0.42, 'title');
+    if (job.end[1]) caption(job.end[1], endA, H * 0.56);
+  }
+}
+
+// the server calls this once per frame and gets a JPEG back
+window.clipFrame = () => {
+  const t = frame / job.fps, i = shots.indexOf(shotAt(t));
+  if (i !== curShot) { curShot = i; startShot(shots[i]); }
+  const s = shots[i], k = clamp01((t - s.t0) / s.dur);
+  hourNow = lerp(s.hour[0], s.hour[1] ?? s.hour[0], k) % 24;
+  window.__advance(1000 / job.fps * (s.speed || 1));
+  g.drawImage(document.querySelector('#world canvas'), 0, 0, W, H);   // the 3D frame just drawn
+  overlays(t);
+  frame++;
+  return out.toDataURL('image/jpeg', job.quality || 0.86);
+};
+window.clipReady = true;
+</script>
+</body></html>
