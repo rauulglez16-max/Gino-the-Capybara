@@ -31,3 +31,11 @@ An entry looks like this:
 
 `tests/test_timeline.py` checks the file is valid (`python -m pytest tests/test_timeline.py`). The page picks up the
 new entry by itself once it's deployed; no code changes are needed.
+
+## Keep the "coming soon" page current
+
+The public page `/roadmap` ("Coming soon for Gino") is built from `gino/roadmap.json`. Each item has `when` (`next`,
+`soon` or `someday`), `emoji`, `title`, `text` and an optional `link`; items show in file order inside each group.
+Same writing and privacy rules as the timeline. **When a pull request builds something that is on the roadmap, remove
+that item from `gino/roadmap.json` in the same pull request** (it moves to the timeline instead). New plans can be
+added any time. `tests/test_roadmap.py` checks the file is valid.

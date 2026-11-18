@@ -114,6 +114,12 @@ CSS = BASE_CSS + """
 .more{text-align:center;padding:30px 0 10px;position:relative;z-index:1}
 .more .bubble{display:inline-block;background:var(--paper);border:2px solid var(--line);border-radius:22px;padding:14px 22px;
   box-shadow:5px 5px 0 var(--shade);font-size:28px;transform:rotate(-1.5deg);transition:background-color .6s}
+.more .next{display:inline-block;margin-top:18px;background:var(--accent);color:var(--accent-ink);border:2px solid var(--line);
+  border-radius:999px;padding:10px 20px;font:700 16px system-ui,sans-serif;text-decoration:none;box-shadow:4px 4px 0 var(--shade);
+  transition:transform .2s,box-shadow .2s}
+.more .next:hover{transform:translate(-2px,-3px);box-shadow:6px 7px 0 var(--shade)}
+.more .next b{display:inline-block;transition:transform .2s}
+.more .next:hover b{transform:translateX(5px)}
 .more .z{position:relative;display:inline-block;margin-top:16px;width:74px}
 .more .zz{left:58px}
 
@@ -171,7 +177,7 @@ def page(today: dt.date | None = None) -> str:
     shop_on = shop.configured()
     bsky = social.profile_url()
 
-    nav = ['<a href="/">Home</a>', '<a href="/live">Live</a>', '<a href="/blog">Diary</a>']
+    nav = ['<a href="/">Home</a>', '<a href="/live">Live</a>', '<a href="/blog">Diary</a>', '<a href="/roadmap">Coming soon</a>']
     if shop_on:
         nav.append('<a href="/blog/shop">Shop</a>')
 
@@ -229,6 +235,7 @@ def page(today: dt.date | None = None) -> str:
             n += 1
     out.append(f"""</section>
 <div class="more rv"><div class="bubble hand">to be continued… Gino's only just getting started</div><br>
+  <a class="next" href="/roadmap">🌱 See what's coming next <b>→</b></a><br>
   <div class="z" aria-hidden="true">{SLEEPY}<div class="zz hand"><span>z</span><span>z</span><span>Z</span></div></div></div>
 </main>
 
@@ -237,7 +244,7 @@ def page(today: dt.date | None = None) -> str:
   <div class="lower" aria-hidden="true"></div>
   <div class="walker" aria-hidden="true">{_capy(walk=True, w=74)}</div>
   <div class="sleeper" aria-hidden="true">{SLEEPY}<div class="zz hand"><span>z</span><span>z</span><span>Z</span></div></div>
-  <div class="txt">🌿 Gino the Capybara · <a href="/">Home</a> · <a href="/live">Live</a> · <a href="/blog">Diary</a>{' · <a href="/blog/shop">Shop</a>' if shop_on else ''}{(' · <a href="' + E(bsky) + '" rel="noopener">Bluesky</a>') if bsky else ''}</div>
+  <div class="txt">🌿 Gino the Capybara · <a href="/">Home</a> · <a href="/live">Live</a> · <a href="/blog">Diary</a> · <a href="/roadmap">Coming soon</a>{' · <a href="/blog/shop">Shop</a>' if shop_on else ''}{(' · <a href="' + E(bsky) + '" rel="noopener">Bluesky</a>') if bsky else ''}</div>
 </footer>
 <script>{SCRIPT}</script>
 </body></html>""")
