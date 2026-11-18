@@ -474,6 +474,9 @@ async function renderTab() {
   if (tab === 'about') {
     const me = lastState?.self || {};
     P.innerHTML = Object.keys(me).length ? Object.entries(me).map(([k, v]) => `<p><strong>${esc(k.replace('_', ' '))}:</strong> ${esc(v)}</p>`).join('') : '<p class="muted">Gino hasn\'t described himself yet.</p>';
+    const n = lastState?.news, today = n?.today, read = (n?.recent || []).filter(r => !today || r.day !== today.day);
+    const headline = r => `<div class="item"><time>${esc(r.day)} · ${esc(r.source)}</time>${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener noreferrer">${esc(r.title)}</a>` : esc(r.title)}${r.thought ? `<div class="muted">💭 ${esc(r.thought)}${r.became && r.became !== 'a thought' && r.became !== 'nothing' ? ` <span class="pill">became ${esc(r.became)}</span>` : ''}</div>` : '<div class="muted">He hasn\'t thought about it yet.</div>'}</div>`;
+    if (today || read.length) P.innerHTML += `<h3>📰 What he read in the news</h3>` + (today ? headline(today) : '') + read.map(headline).join('');
     return;
   }
   if (tab === 'keepsakes' || tab === 'art') { renderLife(P, await api('/api/life')); return; }
