@@ -66,6 +66,11 @@ Then open **http://localhost:8787/private** (that's your own page, where you can
 - **His Bluesky account** (optional, off until you switch it on): Gino posts short updates about his day, at most
   3 a day, sometimes with a real photo of his 3D world (a selfie or his whole home). He can only post. He can't reply, follow, like or read messages there. His latest posts also show on
   his website. Setup is in [deploy/README.md](deploy/README.md#gino-on-bluesky-).
+- **His videos for TikTok** (optional, off until you switch it on): every evening Gino films a 20-second vertical
+  video of his life in his 3D world (a day, a night, a dream turned into a painting, or something he built), with
+  captions and his meadow's sounds. They wait on the private page's *Videos* tab to download and post, and can go
+  to TikTok through TikTok's official posting tools. Free (no AI video), privacy-filtered like his website. Setup is
+  in [deploy/README.md](deploy/README.md#ginos-videos-and-tiktok-).
 - **His shop** (optional, closed until you open it): Gino sells his drawings as downloads at `/blog/shop`. He
   picks what to sell, the name, the description and the price (£1 to £10). Buyers pay through your own Stripe
   account with Managed Payments, so Stripe handles VAT and receipts, and the money goes to you. Setup is in

@@ -596,6 +596,7 @@ export function createWorld(container, tooltip, opts = {}) {
     if (flakes.visible) { const snow = W.snow > 0.3; flakes.material.color.set(snow ? '#ffffff' : '#e08a2e'); flakes.material.size = snow ? 0.22 : 0.3; const cnt = snow ? FN : 140;
       for (let i = 0; i < FN; i++) { const s = flakeSeed[i * 4 + 3]; const y = i < cnt ? 30 - ((flakeSeed[i * 4 + 1] + t * (snow ? 2.6 : 1.5)) % 30) : -50; flakePos.set([cx + flakeSeed[i * 4] + Math.sin(t * 0.8 + s) * 1.5, y, cz + flakeSeed[i * 4 + 2] + Math.cos(t * 0.6 + s) * 1.5], i * 3); } flakeGeo.attributes.position.needsUpdate = true; }
 
+    opts.director?.(t, dt);   // the clip maker (static/clip.html) steers the camera itself, shot by shot
     controls.update();
     sky.position.copy(camera.position);
     if (composer) composer.render(); else renderer.render(scene, camera);
@@ -673,7 +674,7 @@ export function createWorld(container, tooltip, opts = {}) {
     get doing() { return doing(); },
     get where() { return [gino.position.x / CELL + (GW - 1) / 2, gino.position.z / CELL + (GH - 1) / 2]; },   // where he is right now, in grid squares
     pet() { hop = 1; heartT = timer.getElapsed(); },
-    _debug: { scene, camera, controls, gino, roam: R, skip() { intro = 1; camera.position.copy(HOME); },
+    _debug: { scene, camera, controls, gino, roam: R, cellPos: (gx, gy) => new THREE.Vector3(cellX(gx), groundY(cellX(gx), cellZ(gy)), cellZ(gy)), skip() { intro = 1; camera.position.copy(HOME); },
       snap() { target.copy(anchor); gino.position.set(target.x, groundY(target.x, target.z), target.z); R.arrived = true; } },
   };
   return api;

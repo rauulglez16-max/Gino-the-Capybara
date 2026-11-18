@@ -2,7 +2,8 @@
 import re
 import time
 
-from . import artstyle, capsules, config, db, dreams, inventions, public, shop, social, telegram, vitals, whatsapp
+from . import (artstyle, capsules, clips, config, db, dreams, inventions, public, shop, social, telegram, vitals,
+               whatsapp)
 
 GRID_W, GRID_H = 16, 10
 
@@ -157,6 +158,18 @@ SOCIAL_TOOL = _t(
      "photo_description": {**S, "description": "Describe the photo for people who can't see it (alt text)"}},
     ["text"])
 
+CLIP_TOOL = _t(
+    "make_clip", "Film a short video (about 20 seconds, for your TikTok) of your life in your 3D world. Your camera "
+    "films it in the background over the next few minutes, with your meadow's sounds. Pick the story: 'day' (a day "
+    "of yours, morning to night), 'night' (what you do while everyone sleeps), 'dream' (you asleep, then the painting "
+    "you made of a dream: only drawings already on your public website), 'made' (the newest thing you built or "
+    "painted). Do the thing first (build it, paint it, publish it), then film it. Add a caption in your own words if "
+    "you like: anyone on the internet can read it, so the same privacy rules as your website apply. Dad looks at "
+    "your videos and decides what goes on TikTok. One a day is plenty.",
+    {"story": {"type": "string", "enum": list(clips.KINDS)},
+     "caption": {**S, "description": "Optional: the video's caption, up to 300 characters"}},
+    ["story"])
+
 SHOP_TOOLS = [
     _t("shop_list", "Put one of your drawings up for sale in your PUBLIC shop as a digital download. You choose "
        "which drawing, its name, a short description for buyers and the price. Anyone on the internet can see and "
@@ -180,7 +193,8 @@ SERVER_TOOLS = [
 
 
 def all_tools() -> list[dict]:
-    return (TOOLS + ([SOCIAL_TOOL] if social.configured() else []) + (SHOP_TOOLS if shop.configured() else [])
+    return (TOOLS + ([SOCIAL_TOOL] if social.configured() else []) + ([CLIP_TOOL] if clips.available() else [])
+            + (SHOP_TOOLS if shop.configured() else [])
             + (SERVER_TOOLS if config.WEB_ACCESS else []))
 
 
@@ -390,6 +404,19 @@ def run(name: str, a: dict, body: dict) -> str:
         if r.startswith("Posted"):
             body["fun"] = vitals.clamp(body["fun"] + 3)
         return r
+    if name == "make_clip":
+        today = db.q("SELECT COUNT(*) AS n FROM clips WHERE made_by='gino' AND ts>?", (now - 86400,))[0]["n"]
+        if today >= 2:
+            return "You've filmed two videos today already. That's plenty: try again tomorrow."
+        own = str(a.get("caption") or "")
+        if own and public.check(own):
+            return "Not filmed: the caption breaks your privacy rules. " + public.check(own)
+        try:
+            cid = clips.make(str(a.get("story", "")), by="gino", caption=own)
+        except RuntimeError as e:
+            return f"Your camera can't film right now: {e}"
+        body["activity"] = "filming a little video of his life"
+        return f"Filming video #{cid} now. It'll be ready in a few minutes, and dad will see it on his page."
     if name in ("shop_list", "shop_update", "shop_unlist") and not shop.configured():
         return "Your shop is closed right now."
     if name == "shop_list":

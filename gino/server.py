@@ -11,8 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import (artstyle, brain, config, db, dreams, live, public, shop, telegram, timeline, vitals, welcome,
-               whatsapp)
+from . import (artstyle, brain, clips, config, db, dreams, live, public, shop, telegram, tiktok, timeline, vitals,
+               welcome, whatsapp)
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -41,6 +41,10 @@ async def life_loop():
     await asyncio.sleep(2)
     last_shop = 0.0
     while True:
+        try:
+            await asyncio.to_thread(clips.maybe_auto)  # his daily video, filmed in the background
+        except Exception:
+            log.exception("Starting today's video failed; trying again later")
         try:
             if time.time() - last_shop > 600 and not brain.mind_lock.locked():
                 last_shop = time.time()
@@ -236,3 +240,90 @@ def creation(filename: str):
         return FileResponse(path, media_type="image/svg+xml",
                             headers={"Content-Security-Policy": "script-src 'none'"})
     return PlainTextResponse(path.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------- videos (clips) and TikTok
+
+@app.get("/api/clips", dependencies=[Depends(auth)])
+def clip_list():
+    return {"on": clips.available(), "clips": clips.listing(), "kinds": clips.KIND_NAMES, "tiktok": tiktok.status()}
+
+
+class ClipIn(BaseModel):
+    kind: str = ""
+
+
+@app.post("/api/clips", dependencies=[Depends(auth)])
+def clip_make(c: ClipIn):
+    try:
+        return {"id": clips.make(c.kind, by="dad")}
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from None
+
+
+@app.get("/clips/{cid}.mp4", dependencies=[Depends(auth)])
+def clip_video(cid: int, download: int = 0):
+    path = clips.path(cid)
+    if not path:
+        raise HTTPException(404)
+    return FileResponse(path, media_type="video/mp4", filename=path.name if download else None,
+                        content_disposition_type="attachment" if download else "inline")
+
+
+@app.get("/api/tiktok/connect", dependencies=[Depends(auth)])
+def tiktok_connect():
+    try:
+        return {"url": tiktok.connect_url()}
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from None
+
+
+@app.get("/tiktok/callback", response_class=HTMLResponse)
+def tiktok_callback(code: str = "", state: str = "", error: str = ""):
+    """TikTok sends dad back here after he says yes. The one-time 'state' proves he started it from his page."""
+    import html as _h
+    if error or not code:
+        msg = "TikTok wasn't connected (you pressed cancel, or TikTok said no). You can try again from your page."
+    else:
+        try:
+            name = tiktok.finish_connect(code, state)
+            msg = f"🎉 TikTok is connected{(' as ' + name) if name else ''}! You can close this and go back to Gino."
+        except RuntimeError as e:
+            msg = str(e)
+    return HTMLResponse(f"<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+                        f"<title>Gino and TikTok</title><body style='font:18px system-ui;max-width:520px;margin:15vh auto;"
+                        f"padding:0 16px;text-align:center'><p>{_h.escape(msg)}</p><p><a href='/private'>Back to Gino</a></p>",
+                        headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})
+
+
+@app.post("/api/tiktok/disconnect", dependencies=[Depends(auth)])
+def tiktok_disconnect():
+    tiktok.disconnect()
+    return {"ok": True}
+
+
+@app.get("/api/tiktok/creator", dependencies=[Depends(auth)])
+def tiktok_creator():
+    try:
+        return tiktok.creator()
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from None
+
+
+class TikTokIn(BaseModel):
+    title: str = Field(default="", max_length=2200)
+    privacy: str = ""
+    allow_comment: bool = False
+    allow_duet: bool = False
+    allow_stitch: bool = False
+    consent: bool = False
+
+
+@app.post("/api/clips/{cid}/tiktok", dependencies=[Depends(auth)])
+def clip_to_tiktok(cid: int, t: TikTokIn):
+    if not t.consent:
+        raise HTTPException(400, "Please agree to TikTok's terms first.")
+    try:
+        return {"message": tiktok.send(cid, t.title, t.privacy, t.allow_comment, t.allow_duet, t.allow_stitch)}
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from None

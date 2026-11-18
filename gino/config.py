@@ -94,6 +94,25 @@ PHOTO_TIMEOUT = int(_f("GINO_PHOTO_TIMEOUT", 300))  # seconds; no graphics card 
 PHOTO_CHROMIUM = os.environ.get("GINO_PHOTO_CHROMIUM", "")  # optional path to a Chromium binary
 PUBLIC_URL = os.environ.get("GINO_PUBLIC_URL", "").strip()  # e.g. https://203-0-113-7.sslip.io, for links to /blog
 
+# Short vertical videos of his life for TikTok (needs Playwright + Chromium + ffmpeg: `gino clips on`)
+CLIPS_ON = os.environ.get("GINO_CLIPS", "0") == "1"
+CLIPS_PER_DAY = max(0, int(_f("GINO_CLIPS_PER_DAY", 1)))  # he films this many by himself each evening (0 = only on request)
+CLIP_HOUR = max(0, min(23, int(_f("GINO_CLIP_HOUR", 19))))  # local hour after which the daily clip is filmed
+CLIP_FPS = max(23, min(30, int(_f("GINO_CLIP_FPS", 24))))  # TikTok wants 23 to 60 frames a second
+CLIP_SIZE = (720, 1280)  # 9:16, the shape of a phone screen
+CLIP_RENDER_SCALE = max(0.5, min(1.0, _f("GINO_CLIP_RENDER_SCALE", 0.75)))  # 3D drawn smaller, then stretched: quicker
+CLIP_TIMEOUT = int(_f("GINO_CLIP_TIMEOUT", 3600))  # seconds; the server has no graphics card, so filming takes minutes
+FFMPEG = os.environ.get("GINO_FFMPEG", "")  # optional path to ffmpeg
+
+# TikTok (off unless dad sets it up; see deploy/README.md). Needs dad's own TikTok developer app.
+TIKTOK_CLIENT_KEY = os.environ.get("GINO_TIKTOK_CLIENT_KEY", "").strip()
+TIKTOK_CLIENT_SECRET = os.environ.get("GINO_TIKTOK_CLIENT_SECRET", "").strip()
+# how a clip reaches TikTok: "drafts" (lands in the TikTok app's inbox, dad finishes it there) or "direct"
+TIKTOK_MODE = os.environ.get("GINO_TIKTOK_MODE", "drafts").strip().lower()
+TIKTOK_AUTO = os.environ.get("GINO_TIKTOK_AUTO", "0") == "1"  # send each new daily clip without dad pressing the button
+TIKTOK_PRIVACY = os.environ.get("GINO_TIKTOK_PRIVACY", "SELF_ONLY").strip().upper()  # direct + automatic only
+TIKTOK_API = os.environ.get("GINO_TIKTOK_API", "https://open.tiktokapis.com").rstrip("/")
+
 # Gino's shop (off unless dad switches it on; see deploy/README.md). The key is a RESTRICTED Stripe key
 # that can only write Products, Prices and Checkout Sessions: it can't refund, pay out or move money.
 SHOP_ON = os.environ.get("GINO_SHOP", "0") == "1"

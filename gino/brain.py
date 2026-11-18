@@ -6,7 +6,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
-from . import (artstyle, budget, capsules, config, continuity, db, dreams, inventions, keepsakes, public, shop,
+from . import (artstyle, budget, capsules, clips, config, continuity, db, dreams, inventions, keepsakes, public, shop,
                social, tools, vitals)
 
 log = logging.getLogger("gino.brain")
@@ -172,6 +172,8 @@ def context(body: dict, turn: bool = False) -> str:
         lines.append(social.context_lines())
     if shop.configured():
         lines.append(shop.context_lines())
+    if clips.available():
+        lines.append(clips.context_lines())
     lines.append("\n## Chat with dad (latest)\n" + ("\n".join(
         f"- ({ago(c['ts'])}) {'Dad' if c['sender'] == 'dad' else 'You'}: {c['text'][:500]}" for c in chat)
         or "You haven't talked yet."))
@@ -341,7 +343,7 @@ def chat(text: str) -> str:
         vitals.save(body)
         tired = "*yawns* My brain is all thought out for today, dad. Talk tomorrow? 💤"
         chat_tools = [t for t in tools.all_tools()
-                      if t["name"] not in ("sleep", "message_dad", "set_next_wake", "social_post")]
+                      if t["name"] not in ("sleep", "message_dad", "set_next_wake", "social_post", "make_clip")]
         prompt = (context(body) + f"\n\n---\nDad is here chatting with you right now. He just said:\n\n"
                   f"\"{text}\"\n\nReply to him as yourself. Your final plain text is what he sees, "
                   "so keep it natural, like a text message. You can use tools first if you want "
