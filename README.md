@@ -79,7 +79,7 @@ Then open **http://localhost:8787/private** (that's your own page, where you can
 ## How Gino works
 
 ```
-          every ~15 min-6 h (he chooses)                    you
+          every ~15 min-3 h (he chooses)                    you
                      │                                       │
    ┌─────────────────▼──────────────────┐        ┌───────────▼──────────┐
    │ Turn: build "what I know right now" │        │ Chat: same context + │
