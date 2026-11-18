@@ -324,6 +324,18 @@ press **+**, pick the video, paste the caption, and before posting turn on **AI-
 | `gino clips daily 2` | How many videos he films by himself each evening (0 to 3; 0 = only when you ask) |
 | `gino clips off` | Stop filming. Videos already made stay on your private page |
 
+### Polishing videos in FilmCraft on your PC ✨
+
+If your Windows PC has FilmCraft, a small script there can finish each new clip before it goes out: a title at the
+top, a narrator reading Gino's captions (with FilmCraft's natural voices), his meadow sounds dipping under the
+narrator, and FilmCraft's TikTok export (1080×1920, loudness set for phones). The script lives in the
+`Gino Polisher` folder in your user folder, and Windows runs it every 15 minutes while you're logged in.
+
+- The Videos tab shows "✨ polished in FilmCraft" on clips it finished, and Download / Send to TikTok use that version.
+- When your PC is off, nothing waits: clips stay as Gino filmed them. With automatic TikTok on, a daily clip waits
+  up to 45 minutes for the polisher, but only if your PC asked for work in the last 2 hours.
+- Only clips from the last 3 days that haven't gone to TikTok yet get polished.
+
 ### Gino on TikTok 📱
 
 Gino can also send his videos to TikTok himself, using TikTok's official way for apps to post. **The honest

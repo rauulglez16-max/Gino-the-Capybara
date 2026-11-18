@@ -52,7 +52,13 @@ def _schema() -> None:
       filename TEXT NOT NULL DEFAULT '', seconds REAL NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '',
       made_by TEXT NOT NULL DEFAULT 'auto', source TEXT NOT NULL DEFAULT '',
       tiktok_status TEXT NOT NULL DEFAULT '', tiktok_id TEXT NOT NULL DEFAULT '', tiktok_ts REAL,
-      tiktok_note TEXT NOT NULL DEFAULT '')""")
+      tiktok_note TEXT NOT NULL DEFAULT '',
+      script TEXT NOT NULL DEFAULT '', polished TEXT NOT NULL DEFAULT '', polish_note TEXT NOT NULL DEFAULT '')""")
+    have = {r["name"] for r in db.q("PRAGMA table_info(clips)")}
+    # script: the captions and when they show (for the polisher); polished: the FilmCraft version's file name
+    for col in ("script", "polished", "polish_note"):
+        if col not in have:
+            db.x(f"ALTER TABLE clips ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
 
 
 _schema()
@@ -291,11 +297,23 @@ def make(kind: str = "", by: str = "auto", caption: str = "") -> int:
     own = _clean(caption, 300)
     if own:  # Gino wrote his own words for it
         job["caption"] = f"{own} {HASHTAGS}"
-    cid = db.x("INSERT INTO clips(ts,kind,title,caption,status,made_by,source,seconds) VALUES(?,?,?,?,?,?,?,?)",
+    cid = db.x("INSERT INTO clips(ts,kind,title,caption,status,made_by,source,seconds,script) "
+               "VALUES(?,?,?,?,?,?,?,?,?)",
                (time.time(), job["kind"], job["title"], job["caption"], "making", by, job["source"],
-                sum(s["dur"] for s in job["shots"])))
+                sum(s["dur"] for s in job["shots"]), json.dumps(script(job), ensure_ascii=False)))
     threading.Thread(target=_film, args=(cid, job), daemon=True, name=f"clip-{cid}").start()
     return cid
+
+
+def script(job: dict) -> dict:
+    """The words on screen and when they appear (seconds from the start). Already public-safe: from plan()."""
+    lines, t = [], 0.0
+    for shot in job["shots"]:
+        for c in shot.get("captions", []):
+            lines.append({"text": c["text"], "at": round(t + c.get("at", 0), 2),
+                          "until": round(t + c.get("until", shot["dur"]), 2)})
+        t += shot["dur"]
+    return {"seconds": round(t, 2), "lines": sorted(lines, key=lambda l: l["at"])}
 
 
 def _film(cid: int, job: dict) -> None:
@@ -340,23 +358,88 @@ def _film(cid: int, job: dict) -> None:
 
 
 def _tidy() -> None:
-    for r in db.q("SELECT id, filename FROM clips WHERE filename!='' ORDER BY id DESC LIMIT -1 OFFSET ?", (KEEP,)):
+    for r in db.q("SELECT id, filename, polished FROM clips WHERE filename!='' ORDER BY id DESC LIMIT -1 OFFSET ?",
+                  (KEEP,)):
         (CLIPS_DIR / r["filename"]).unlink(missing_ok=True)
-        db.x("UPDATE clips SET filename='' WHERE id=?", (r["id"],))
+        if r["polished"]:
+            (CLIPS_DIR / r["polished"]).unlink(missing_ok=True)
+        db.x("UPDATE clips SET filename='', polished='' WHERE id=?", (r["id"],))
 
 
-def path(cid: int):
-    rows = db.q("SELECT filename FROM clips WHERE id=? AND status='ready' AND filename!=''", (cid,))
-    p = CLIPS_DIR / rows[0]["filename"] if rows else None
-    return p if p and p.exists() else None
+def path(cid: int, raw: bool = False):
+    """The clip's video: the polished one when dad's PC made one (unless raw=True), else the original."""
+    rows = db.q("SELECT filename, polished FROM clips WHERE id=? AND status='ready' AND filename!=''", (cid,))
+    if not rows:
+        return None
+    for name in ([] if raw else [rows[0]["polished"]]) + [rows[0]["filename"]]:
+        if name and (CLIPS_DIR / name).exists():
+            return CLIPS_DIR / name
+    return None
+
+
+# ---------------------------------------------------------------- polishing on dad's PC (FilmCraft)
+# Dad's PC runs a small script (see deploy/README.md, "Polishing videos in FilmCraft") that asks for clips that
+# haven't been polished, edits them in FilmCraft and sends the finished video back. When his PC is off, nothing
+# waits for it: the clips just stay as they are.
+
+POLISH_DAYS = 3        # only fresh clips are worth polishing
+POLISHER_RECENT = 7200  # the polisher counts as "on" if it asked for work in the last 2 hours
+MAX_POLISHED = 64_000_000
+
+
+def polish_queue() -> list[dict]:
+    db.put("polisher_seen", time.time())
+    rows = db.q("SELECT id, kind, title, script FROM clips WHERE status='ready' AND filename!='' AND polished='' "
+                "AND polish_note='' AND tiktok_status='' AND ts>? ORDER BY id DESC LIMIT 5",
+                (time.time() - POLISH_DAYS * 86400,))
+    out = []
+    for r in rows:
+        if path(r["id"], raw=True):
+            try:
+                r["script"] = json.loads(r["script"]) if r["script"] else None
+            except ValueError:
+                r["script"] = None
+            out.append(r)
+    return out
+
+
+def polisher_on(now: float | None = None) -> bool:
+    return (now or time.time()) - float(db.get("polisher_seen", 0) or 0) < POLISHER_RECENT
+
+
+def save_polished(cid: int, data: bytes) -> str:
+    """Keep the polished video dad's PC sent. Raises RuntimeError (in plain words) if it can't be used."""
+    rows = db.q("SELECT kind, filename, tiktok_status FROM clips WHERE id=? AND status='ready'", (cid,))
+    if not rows or not rows[0]["filename"]:
+        raise RuntimeError("That clip isn't here any more.")
+    if rows[0]["tiktok_status"] in ("sending", "sent", "posted"):
+        raise RuntimeError("That clip has already gone to TikTok, so the polished one isn't needed.")
+    if not 10_000 < len(data) <= MAX_POLISHED:
+        raise RuntimeError("That video is the wrong size.")
+    if data[4:8] != b"ftyp":
+        raise RuntimeError("That isn't an MP4 video.")
+    name = f"gino-{cid}-{rows[0]['kind']}-polished.mp4"
+    tmp = CLIPS_DIR / (name + ".part")
+    CLIPS_DIR.mkdir(exist_ok=True)
+    tmp.write_bytes(data)
+    os.replace(tmp, CLIPS_DIR / name)
+    db.x("UPDATE clips SET polished=?, polish_note='' WHERE id=?", (name, cid))
+    db.event("clip", "his clip got polished in FilmCraft on dad's computer")
+    return "Thanks! Gino will use the polished version."
+
+
+def polish_failed(cid: int, note: str) -> None:
+    """The PC couldn't polish it: remember that so it isn't tried again and again."""
+    db.x("UPDATE clips SET polish_note=? WHERE id=? AND polished=''", (("failed: " + " ".join(note.split()))[:300], cid))
 
 
 def listing(limit: int = 30) -> list[dict]:
-    rows = db.q("SELECT id,ts,kind,title,caption,status,seconds,error,made_by,tiktok_status,tiktok_note,tiktok_ts "
-                "FROM clips ORDER BY id DESC LIMIT ?", (limit,))
+    rows = db.q("SELECT id,ts,kind,title,caption,status,seconds,error,made_by,tiktok_status,tiktok_note,tiktok_ts,"
+                "polished FROM clips ORDER BY id DESC LIMIT ?", (limit,))
     for r in rows:
         r["progress"] = progress.get(r["id"], "")
         r["has_video"] = r["status"] == "ready" and path(r["id"]) is not None
+        r["polished"] = bool(r["polished"]) and r["has_video"]
     return rows
 
 

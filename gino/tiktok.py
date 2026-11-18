@@ -279,12 +279,31 @@ def _watch(cid: int, pid: str) -> None:
     _mark(cid, "sent", "Sent; TikTok didn't say when it finished. Check the app.")
 
 
+POLISH_WAIT = 45 * 60  # how long a daily clip waits for dad's PC to polish it before it goes as it is
+
+
 def after_clip(cid: int) -> None:
     """A new clip is ready. With GINO_TIKTOK_AUTO=1, the daily clips go to TikTok by themselves."""
     if not (config.TIKTOK_AUTO and connected()):
         return
     if not db.q("SELECT 1 FROM clips WHERE id=? AND made_by!='dad'", (cid,)):
         return  # clips dad asks for wait for him to send them
+    if clips.polisher_on():  # dad's PC is on: give it a little while to polish the clip in FilmCraft first
+        threading.Thread(target=_send_when_polished, args=(cid,), daemon=True, name=f"tiktok-wait-{cid}").start()
+        return
+    _auto_send(cid)
+
+
+def _send_when_polished(cid: int, wait: float = POLISH_WAIT, step: float = 30) -> None:
+    end = time.time() + wait
+    while time.time() < end:
+        if db.q("SELECT 1 FROM clips WHERE id=? AND (polished!='' OR polish_note!='')", (cid,)):
+            break
+        time.sleep(step)
+    _auto_send(cid)
+
+
+def _auto_send(cid: int) -> None:
     try:
         privacy = ""
         if mode() == "direct":
