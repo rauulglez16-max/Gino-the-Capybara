@@ -159,9 +159,12 @@ export function createWorld(container, tooltip, opts = {}) {
     const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 })); m.position.set(Math.cos(a) * d, h / 2 - 3, Math.sin(a) * d); scene.add(m);
   }
 
-  // grass, wildflowers, forest
+  // grass, wildflowers, forest. His home (the 16 x 10 grid and a little around it) is short, trodden lawn; the tall
+  // meadow grass grows around it, wildest where he never goes.
+  const yardD = (x, z) => Math.hypot(Math.max(0, Math.abs(x) - GW + 1), Math.max(0, Math.abs(z) - GH + 0.5));
+  const yardK = (x, z) => 1 - smooth(0.5, 4.5, yardD(x, z));
   let grassShare = 1;
-  const N = Math.round((small ? 18000 : 60000) * (env.season === 'winter' ? 0.25 : 1));
+  const N = Math.round((small ? 22000 : 72000) * (env.season === 'winter' ? 0.25 : 1));
   const bladeGeo = new THREE.PlaneGeometry(0.11, 0.62, 1, 4); bladeGeo.translate(0, 0.31, 0);
   { const p = bladeGeo.attributes.position, nrm = bladeGeo.attributes.normal, bc = new Float32Array(p.count * 3);
     for (let i = 0; i < p.count; i++) { const t = p.getY(i) / 0.62; p.setX(i, p.getX(i) * (1 - t * 0.88)); p.setZ(i, t * t * 0.2); nrm.setXYZ(i, 0, 1, 0.25 - t * 0.2); const k = 0.5 + t * 0.62; bc.set([k, k, k], i * 3); }
@@ -169,22 +172,68 @@ export function createWorld(container, tooltip, opts = {}) {
   const grass = new THREE.InstancedMesh(bladeGeo, windy(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, vertexColors: true, side: THREE.DoubleSide, envMapIntensity: 0.5 }), 'sway', 0.3), N);
   grass.receiveShadow = true; grass.frustumCulled = false;
   const blades = new Float32Array(N * 5), bladeCol = new Float32Array(N * 3), tint = new THREE.Color(); let nb = 0;
-  for (let i = 0; i < N * 3 && nb < N; i++) {
-    const near = i % 4 !== 0, x = (r0() - 0.5) * (near ? 54 : 130), z = (r0() - 0.5) * (near ? 42 : 130), y = groundY(x, z);
+  for (let i = 0; i < N * 4 && nb < N; i++) {
+    const near = i % 5 !== 0, x = (r0() - 0.5) * (near ? 84 : 170), z = (r0() - 0.5) * (near ? 68 : 170), y = groundY(x, z);
     if (lakeK(x, z) > 0.04 || y > 9) continue;
-    const clump = 0.55 + 0.45 * Math.sin(x * 0.9 + Math.sin(z * 0.7) * 2) * Math.sin(z * 0.8);   // tufts and thinner patches
-    if (r0() > 0.35 + clump * 0.65) continue;
-    blades.set([x, y, z, r0() * 6.28, (0.55 + r0() * 0.8) * (0.8 + clump * 0.5)], nb * 5);
-    groundColor(x, z, y, c).lerp(tint.set(S.blade[Math.floor(r0() * S.blade.length)]), 0.35).multiplyScalar(0.98 + r0() * 0.2); bladeCol.set([c.r, c.g, c.b], nb * 3); nb++;
+    const yk = yardK(x, z), clump = 0.55 + 0.45 * Math.sin(x * 0.9 + Math.sin(z * 0.7) * 2) * Math.sin(z * 0.8);   // tufts and thinner patches
+    if (r0() > (0.35 + clump * 0.65) * (1 - yk * 0.35)) continue;
+    const wild = smooth(1, 12, yardD(x, z));                                  // taller the further from home
+    const h = (0.55 + r0() * 0.8) * (0.8 + clump * 0.5) * THREE.MathUtils.lerp(1.05 + wild * 0.3, 0.36 + r0() * 0.16, yk);
+    blades.set([x, y, z, r0() * 6.28, h], nb * 5);
+    groundColor(x, z, y, c).lerp(tint.set(S.blade[Math.floor(r0() * S.blade.length)]), 0.35 - yk * 0.12).multiplyScalar(0.98 + r0() * 0.2); bladeCol.set([c.r, c.g, c.b], nb * 3); nb++;
   }
   scene.add(grass);
-  function layGrass(clear) {   // skip blades where Gino has put something
+
+  // his trails: worn earth between the things he built (the shortest network joining them all) and a trodden patch
+  // around each one, drawn on a thin layer that lies on the ground of his home
+  const TX = 46, TZ = 32, T0 = [-TX / 2, -TZ / 2 - 1.5], TPX = 16, worn = document.createElement('canvas');
+  worn.width = TX * TPX; worn.height = TZ * TPX;
+  const wornTex = new THREE.CanvasTexture(worn); wornTex.colorSpace = THREE.SRGBColorSpace; wornTex.anisotropy = 4;
+  const wg = new THREE.PlaneGeometry(TX, TZ, TX * 2, TZ * 2); wg.rotateX(-Math.PI / 2); wg.translate(T0[0] + TX / 2, 0, T0[1] + TZ / 2);
+  { const p = wg.attributes.position; for (let i = 0; i < p.count; i++) p.setY(i, groundY(p.getX(i), p.getZ(i)) + 0.05); wg.computeVertexNormals(); }
+  const trails = new THREE.Mesh(wg, new THREE.MeshStandardMaterial({ map: wornTex, transparent: true, depthWrite: false, roughness: 1, envMapIntensity: 0.4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  trails.receiveShadow = true; trails.userData.noAO = true; trails.renderOrder = -1; scene.add(trails);
+  let trailSegs = [];
+  function joinUp(pts) {   // Prim's minimum spanning tree: every spot reachable, with as little trodden ground as possible
+    const segs = [], inTree = [0], left = pts.map((_, i) => i).slice(1);
+    while (left.length) {
+      let best = null;
+      for (const a of inTree) for (const [j, b] of left.entries()) { const d = Math.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1]); if (!best || d < best[0]) best = [d, a, j]; }
+      const b = left.splice(best[2], 1)[0]; inTree.push(b); segs.push([pts[best[1]][0], pts[best[1]][1], pts[b][0], pts[b][1]]);
+    }
+    return segs;
+  }
+  function segDist(x, z, [ax, az, bx, bz]) {
+    const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1)));
+    return Math.hypot(x - ax - dx * t, z - az - dz * t);
+  }
+  function drawTrails(spots) {
+    const x = worn.getContext('2d'), u = v => v * TPX, px = v => (v - T0[0]) * TPX, pz = v => (v - T0[1]) * TPX;
+    const dirt = env.season === 'winter' ? '232,236,240' : env.season === 'autumn' ? '138,112,74' : '146,120,80';
+    x.clearRect(0, 0, worn.width, worn.height); x.lineCap = 'round'; x.lineJoin = 'round';
+    for (const [w, a] of [[2.1, 0.12], [1.5, 0.2], [0.95, 0.3], [0.5, 0.22]]) {     // soft edges that work in every browser
+      x.strokeStyle = `rgba(${dirt},${a})`; x.lineWidth = u(w); x.beginPath();
+      for (const s of trailSegs) { x.moveTo(px(s[0]), pz(s[1])); x.lineTo(px(s[2]), pz(s[3])); }
+      x.stroke();
+    }
+    for (const [sx, sz, r] of spots) {
+      const g = x.createRadialGradient(px(sx), pz(sz), 0, px(sx), pz(sz), u(r + 1.1));
+      g.addColorStop(0, `rgba(${dirt},0.5)`); g.addColorStop(0.55, `rgba(${dirt},0.32)`); g.addColorStop(1, `rgba(${dirt},0)`);
+      x.fillStyle = g; x.beginPath(); x.arc(px(sx), pz(sz), u(r + 1.1), 0, 6.3); x.fill();
+    }
+    wornTex.needsUpdate = true;
+  }
+  function layGrass(clear) {   // skip blades where Gino has put something or walks all the time
+    trailSegs = clear.length > 1 ? joinUp(clear) : []; drawTrails(clear);
     let k = 0;
     for (let i = 0; i < nb; i++) {
-      const x = blades[i * 5], z = blades[i * 5 + 2]; let ok = true;
-      for (const [cx, cz, cr] of clear) if ((x - cx) * (x - cx) + (z - cz) * (z - cz) < cr * cr) { ok = false; break; }
+      const x = blades[i * 5], z = blades[i * 5 + 2]; let ok = true, sc = blades[i * 5 + 4];
+      for (const [cx, cz, cr] of clear) { const d = Math.hypot(x - cx, z - cz); if (d < cr) { ok = false; break; } if (d < cr + 1.2) sc *= 0.55 + 0.45 * (d - cr) / 1.2; }
       if (!ok) continue;
-      const sc = blades[i * 5 + 4]; dummy.position.set(x, blades[i * 5 + 1] - 0.02, z); dummy.rotation.set(0, blades[i * 5 + 3], 0); dummy.scale.set(sc, sc, sc); dummy.updateMatrix();
+      let td = 9; for (const s of trailSegs) td = Math.min(td, segDist(x, z, s));
+      if (td < 0.45) continue;
+      if (td < 1.3) sc *= 0.5 + 0.5 * (td - 0.45) / 0.85;
+      dummy.position.set(x, blades[i * 5 + 1] - 0.02, z); dummy.rotation.set(0, blades[i * 5 + 3], 0); dummy.scale.set(sc, sc, sc); dummy.updateMatrix();
       grass.setMatrixAt(k, dummy.matrix); grass.setColorAt(k, c.fromArray(bladeCol, i * 3)); k++;
     }
     grass.count = Math.round(k * grassShare); grass.userData.full = k; grass.instanceMatrix.needsUpdate = true; if (grass.instanceColor) grass.instanceColor.needsUpdate = true;
@@ -441,8 +490,8 @@ export function createWorld(container, tooltip, opts = {}) {
     for (const [id, o] of itemObjs) if (!seen.has(id)) { itemsGroup.remove(o); dispose(o); itemObjs.delete(id); }
     ponds = [...itemObjs.values()].filter(o => o.userData.kind === 'pond');
     const CLEAR = { pond: 2.3, fountain: 1.4, garden: 1.3, house: 1.6, picnic: 1.3, path: 1.2, bed: 1.2, tent: 1.5, well: 0.9, windmill: 0.9, pumpkins: 1.0, campfire: 0.9 };
-    const gsig = s.habitat.map(i => [i.id, i.x, i.y, i.kind, i.size].join()).join(';');
-    if (gsig !== grass.userData.sig) { grass.userData.sig = gsig; layGrass([...itemObjs.values()].map(o => [o.position.x, o.position.z, (CLEAR[o.userData.kind] || 0.65) * (o.userData.grow || o.scale.x || 1)])); }
+    const gsig = s.habitat.map(i => [i.id, i.x, i.y, i.kind, i.size].join()).join(';') + (board ? ';board' : '');
+    if (gsig !== grass.userData.sig) { grass.userData.sig = gsig; layGrass([...[...itemObjs.values()].map(o => [o.position.x, o.position.z, (CLEAR[o.userData.kind] || 0.65) * (o.userData.grow || o.scale.x || 1)]), ...(board ? [[BOARD_AT.x, BOARD_AT.z + 1.6, 0.6]] : [])]); }
     hangArt();
     anchor.set(cellX(s.pos[0]) + 1.0, 0, cellZ(s.pos[1]) + 1.0);
     const p = ponds.find(o => Math.hypot(o.position.x - cellX(s.pos[0]), o.position.z - cellZ(s.pos[1])) < 0.1);
