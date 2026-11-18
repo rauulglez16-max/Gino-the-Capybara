@@ -7,6 +7,7 @@ os.environ["GINO_FAKE_BRAIN"] = "1"
 os.environ["GINO_DAD_NAME"] = "Raul"
 os.environ["GINO_DAILY_BUDGET_USD"] = "3"
 os.environ["GINO_PRIVATE_WORDS"] = "Valencia, Luna the cat"
+os.environ["GINO_NEWS"] = "0"  # tests never read real news feeds; test_news.py switches it on with fake feeds
 for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "GINO_PASSWORD"):
     os.environ.pop(k, None)
 

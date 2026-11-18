@@ -11,8 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import (artstyle, brain, clips, config, db, dreams, live, public, roadmap, shop, telegram, tiktok, timeline, vitals,
-               welcome, whatsapp)
+from . import (artstyle, brain, clips, config, db, dreams, live, news, public, roadmap, shop, telegram, tiktok, timeline,
+               vitals, welcome, whatsapp)
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -132,6 +132,7 @@ def state():
         "foods": {k: v[2] for k, v in vitals.FOODS.items()},
         "weather": vitals.weather(brain.local_now()),
         "art": [r["filename"] for r in db.q("SELECT filename FROM creations WHERE kind='svg' ORDER BY ts DESC LIMIT 6")],
+        "news": {"today": news.today(brain.local_now()), "recent": news.recent(7)} if news.enabled() else None,
     }
 
 

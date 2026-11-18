@@ -463,6 +463,19 @@ now and then he has a *vision*, a really strange, surreal one.
 - A dream costs about 5 US cents and counts towards his daily budget. No dreams once the budget is used up.
 - Turn them off with `gino dreams off` (and back on with `gino dreams on`).
 
+## Gino reads the news 📰
+
+Every morning (his first turn after 6 am) Gino hears one headline from the real world, picked from free news
+feeds about space, nature, animals and science (NASA, ScienceDaily, BBC Science, Good News Network, Positive News).
+
+- Only gentle news: anything about war, crime, politics, disasters, illness, death or money is filtered out
+  before he ever sees it.
+- He decides what to do with it. He can ignore it, read the whole story, wonder about it, paint it, write about
+  it in his diary or let it turn into a new interest or goal. Nobody tells him to.
+- See what he read (and what he thought about it) under **About him** in his book on your page.
+- It's free: the server reads the feeds, not Claude. Anything he does about it comes out of his normal daily budget.
+- Turn it off with `gino news off` (and back on with `gino news on`).
+
 ## Your own web address 🌐
 
 Instead of `2-29-196-244.sslip.io`, Gino can live at a proper name like `ginothecapybara.com`. It costs about

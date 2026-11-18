@@ -2,8 +2,8 @@
 import re
 import time
 
-from . import (artstyle, capsules, clips, config, db, dreams, inventions, public, shop, social, telegram, vitals,
-               whatsapp)
+from . import (artstyle, capsules, clips, config, db, dreams, inventions, news, public, shop, social, telegram,
+               vitals, whatsapp)
 
 GRID_W, GRID_H = 16, 10
 
@@ -101,6 +101,12 @@ TOOLS = [
     _t("open_time_capsule", "Dig up a time capsule that's ready. The first time shows what's inside and how you've "
        "changed. Then call it again with your reflection: what you think, meeting past you.",
        {"capsule_id": I, "reflection": S}, ["capsule_id"]),
+    _t("ponder_news", "Wonder about today's headline from the outside world: what you think about it, what it makes "
+       "you feel or want to find out. It goes into your memories. Only if it actually interests you.",
+       {"thought": S, "topic": {**S, "description": "One or two topic words for it, e.g. 'the moon', 'whales'. "
+                                "Reuse the same words if it connects to an interest you already have."},
+        "became": {"type": "string", "enum": news.BECAME,
+                   "description": "What it's turning into for you, if anything"}}, ["thought"]),
     _t("write_journal", "Write in your private diary.", {"entry": S}, ["entry"]),
     _t("remember", "Save something to long-term memory so future you knows it.",
        {"text": S, "importance": {**I, "description": "1-5"},
@@ -193,7 +199,8 @@ SERVER_TOOLS = [
 
 
 def all_tools() -> list[dict]:
-    return (TOOLS + ([SOCIAL_TOOL] if social.configured() else []) + ([CLIP_TOOL] if clips.available() else [])
+    return ([t for t in TOOLS if t["name"] != "ponder_news" or news.enabled()]
+            + ([SOCIAL_TOOL] if social.configured() else []) + ([CLIP_TOOL] if clips.available() else [])
             + (SHOP_TOOLS if shop.configured() else [])
             + (SERVER_TOOLS if config.WEB_ACCESS else []))
 
@@ -324,6 +331,9 @@ def run(name: str, a: dict, body: dict) -> str:
         return capsules.seal(body, a)
     if name == "open_time_capsule":
         return capsules.open_capsule(body, a)
+    if name == "ponder_news":
+        from .brain import local_now
+        return news.ponder(body, a, local_now())
     if name == "write_journal":
         db.x("INSERT INTO journal(ts,text,emotion) VALUES(?,?,?)",
              (now, str(a.get("entry", ""))[:5000], body.get("emotion")))
