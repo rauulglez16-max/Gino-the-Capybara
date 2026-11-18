@@ -104,6 +104,19 @@ CLIP_RENDER_SCALE = max(0.5, min(1.0, _f("GINO_CLIP_RENDER_SCALE", 0.75)))  # 3D
 CLIP_TIMEOUT = int(_f("GINO_CLIP_TIMEOUT", 3600))  # seconds; the server has no graphics card, so filming takes minutes
 FFMPEG = os.environ.get("GINO_FFMPEG", "")  # optional path to ffmpeg
 
+# Gino on live TV (off unless dad turns it on; see deploy/README.md, "Gino on live TV"). On dad's PC, OBS shows the
+# page /stream and none of these are used. On the server, gino-stream.service plays freshly filmed scenes on a loop.
+STREAM_YOUTUBE_KEY = os.environ.get("GINO_STREAM_YOUTUBE_KEY", "").strip()  # YouTube Studio, Go live, "Stream key"
+STREAM_YOUTUBE_URL = os.environ.get("GINO_STREAM_YOUTUBE_URL", "rtmp://a.rtmp.youtube.com/live2").strip()
+STREAM_TIKTOK_URL = os.environ.get("GINO_STREAM_TIKTOK_URL", "").strip()  # TikTok gives both: "Server URL"...
+STREAM_TIKTOK_KEY = os.environ.get("GINO_STREAM_TIKTOK_KEY", "").strip()  # ...and "Stream key"
+STREAM_SIZE = os.environ.get("GINO_STREAM_SIZE", "1280x720").strip()  # turned tall (720x1280) for TikTok
+if not __import__("re").fullmatch(r"\d{3,4}x\d{3,4}", STREAM_SIZE):
+    STREAM_SIZE = "1280x720"
+STREAM_FPS = max(15, min(30, int(_f("GINO_STREAM_FPS", 24))))
+STREAM_KBPS = max(800, min(6000, int(_f("GINO_STREAM_KBPS", 2500))))  # YouTube suggests 1500 to 4000 for 720p
+STREAM_RENDER_SCALE = max(0.4, min(1.0, _f("GINO_STREAM_RENDER_SCALE", 0.6)))  # smaller = scenes filmed quicker
+
 # TikTok (off unless dad sets it up; see deploy/README.md). Needs dad's own TikTok developer app.
 TIKTOK_CLIENT_KEY = os.environ.get("GINO_TIKTOK_CLIENT_KEY", "").strip()
 TIKTOK_CLIENT_SECRET = os.environ.get("GINO_TIKTOK_CLIENT_SECRET", "").strip()

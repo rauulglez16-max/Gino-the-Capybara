@@ -397,6 +397,88 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
       *) echo "usage: gino dreams [status|on|off]"; exit 1 ;;
     esac
     ;;
+  stream)
+    need_root
+    run_as_gino() { systemd-run --quiet --wait --pipe --uid=gino --gid=gino -p EnvironmentFile="$ENV_FILE" \
+                      -p WorkingDirectory="$APP" -p Nice=10 -E HOME=/tmp /opt/gino/venv/bin/python -m gino.stream "$@"; }
+    case "${2:-status}" in
+      youtube)
+        echo "Paste Gino's YouTube stream key (YouTube Studio > Create > Go live > Stream > Stream key),"
+        echo "then press Enter. It stays on this server only."
+        read -r -s -p "Stream key: " key; echo
+        key="$(printf '%s' "$key" | tr -d '[:space:]')"
+        [ -n "$key" ] || { echo "Nothing pasted, nothing changed."; exit 1; }
+        set_setting GINO_STREAM_YOUTUBE_KEY "$key"
+        systemctl try-restart gino-stream || true
+        echo "✅ Saved. Test it with: gino stream test   Go live with: gino stream on"
+        ;;
+      tiktok)
+        echo "Paste the two things TikTok shows you for streaming with other software: the Server URL and the Stream key."
+        read -r -p "Server URL (starts with rtmp): " url
+        read -r -s -p "Stream key: " key; echo
+        url="$(printf '%s' "$url" | tr -d '[:space:]')"; key="$(printf '%s' "$key" | tr -d '[:space:]')"
+        case "$url" in rtmp://*|rtmps://*) ;; *) echo "That Server URL doesn't look right (it starts with rtmp://). Nothing changed."; exit 1 ;; esac
+        [ -n "$key" ] || { echo "No stream key pasted, nothing changed."; exit 1; }
+        set_setting GINO_STREAM_TIKTOK_URL "$url"; set_setting GINO_STREAM_TIKTOK_KEY "$key"
+        echo "✅ Saved. TikTok often gives a new key for each live: paste it again before each one."
+        echo "   Go live for 90 minutes with: gino stream tiktok-live 90"
+        ;;
+      install)
+        echo "Installing the TV studio (a headless browser and a video maker, about 400 MB). This takes a few minutes..."
+        apt-get install -y -qq libatomic1 ffmpeg >/dev/null
+        if ! /opt/gino/venv/bin/python -c "import playwright" 2>/dev/null || [ ! -d /opt/gino/browsers ]; then
+          /opt/gino/venv/bin/pip install -q playwright
+          mkdir -p /opt/gino/browsers
+          PLAYWRIGHT_BROWSERS_PATH=/opt/gino/browsers /opt/gino/venv/bin/python -m playwright install --with-deps --only-shell chromium
+          chmod -R a+rX /opt/gino/browsers
+        fi
+        set_setting PLAYWRIGHT_BROWSERS_PATH /opt/gino/browsers
+        install -m 644 "$APP/deploy/systemd/gino-stream.service" /etc/systemd/system/; systemctl daemon-reload
+        echo "📺 Studio installed."
+        ;;
+      test)
+        "$0" stream install
+        out=/opt/gino/data/stream-test.mp4
+        if run_as_gino test "$out" 30 ${3:+--tall}; then
+          echo "Copy it to your computer to watch it (in PowerShell):  scp root@$(server_ip):$out ."
+        fi
+        ;;
+      on)
+        [ -n "$(setting GINO_STREAM_YOUTUBE_KEY)" ] || { echo "First paste YouTube's stream key: gino stream youtube"; exit 1; }
+        cpus="$(nproc)"
+        if [ "$cpus" -lt 4 ]; then
+          echo "⚠️  This server has $cpus processors. The stream works best with 4 or more (see the guide: \"A bigger server\")."
+          read -r -p "Go live anyway? (y/n) " yn; [ "$yn" = "y" ] || exit 1
+        fi
+        "$0" stream install
+        systemctl enable --now gino-stream >/dev/null
+        echo "📺 Gino is going live on YouTube, day and night. The first scene takes a few minutes to film,"
+        echo "   then it appears in YouTube Studio. Stop any time with: gino stream off"
+        ;;
+      off)
+        systemctl disable --now gino-stream >/dev/null 2>&1 || true
+        systemctl stop gino-stream-tiktok >/dev/null 2>&1 || true
+        echo "The live stream is OFF."
+        ;;
+      tiktok-live)
+        mins="${3:-90}"; case "$mins" in ''|*[!0-9]*) echo "usage: gino stream tiktok-live MINUTES"; exit 1 ;; esac
+        [ -n "$(setting GINO_STREAM_TIKTOK_KEY)" ] || { echo "First paste TikTok's server URL and key: gino stream tiktok"; exit 1; }
+        "$0" stream install
+        systemctl stop gino-stream-tiktok >/dev/null 2>&1 || true
+        systemd-run --quiet --unit=gino-stream-tiktok --uid=gino --gid=gino -p EnvironmentFile="$ENV_FILE" \
+          -p WorkingDirectory="$APP" -p Nice=10 -E HOME=/tmp /opt/gino/venv/bin/python -m gino.stream run tiktok --minutes "$mins"
+        echo "📱 Gino goes live on TikTok for $mins minutes (the first scene takes a few minutes to film). Stop early with: gino stream off"
+        ;;
+      logs) journalctl -u gino-stream -u gino-stream-tiktok -n "${3:-60}" --no-pager ;;
+      status)
+        systemctl is-active --quiet gino-stream && echo "📺 LIVE on YouTube, day and night (stop with: gino stream off)" \
+          || echo "The YouTube stream is OFF$( [ -n "$(setting GINO_STREAM_YOUTUBE_KEY)" ] && echo ' (key saved: gino stream on)' || echo ' (set up with: gino stream youtube)')"
+        systemctl is-active --quiet gino-stream-tiktok && echo "📱 LIVE on TikTok right now"
+        echo "   Server processors: $(nproc) (4 or more recommended)"
+        ;;
+      *) echo "usage: gino stream [status|youtube|tiktok|test|on|off|tiktok-live MINUTES|logs]"; exit 1 ;;
+    esac
+    ;;
   domain)
     need_root
     ip="$(server_ip)"; [ -n "$ip" ] || { echo "Couldn't work out this server's IP address. Nothing changed."; exit 1; }
@@ -469,6 +551,7 @@ gino clips       his videos: gino clips on | test | daily N | off
 gino tiktok      send videos to TikTok: gino tiktok setup | mode | auto on/off | off
 gino shop        his shop: gino shop setup | on | off | sales | status
 gino dreams      his dreams at night: gino dreams on | off | status
+gino stream      live TV: gino stream youtube | test | on | off | tiktok | tiktok-live 90 | status
 gino settings    edit all his settings
 EOF
     ;;

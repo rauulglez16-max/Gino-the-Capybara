@@ -463,6 +463,96 @@ now and then he has a *vision*, a really strange, surreal one.
 - A dream costs about 5 US cents and counts towards his daily budget. No dreams once the budget is used up.
 - Turn them off with `gino dreams off` (and back on with `gino dreams on`).
 
+## Gino on live TV 📺
+
+Gino can be on **YouTube Live** day and night, and on **TikTok Live** for special days. People watch his meadow
+with his sounds and a caption saying what he's doing and how he feels. They can chat with each other in the
+stream's chat, but Gino doesn't read it or answer (just like on /live). Only things that are already safe for his
+public website are shown. **It's off until you turn it on.**
+
+There are two ways to run it. Pick one:
+
+| | From your PC | From the server |
+| --- | --- | --- |
+| What viewers see | His world **truly live**: smooth, moving, as it happens | **"Slow TV"**: short scenes filmed a few minutes earlier, played on a loop, with a **live** caption on top |
+| When | Only while your PC is on | Day and night |
+| Cost | Free | A bigger server: about £12 to £15 a month (see below) |
+
+Why the difference? Drawing Gino's 3D world needs a graphics card. Your PC has one; normal servers don't, and
+a 4-processor server draws only about one picture a second. So the server films 30-second scenes slowly in the
+background (like his TikTok videos) and keeps the loop fresh, while the caption, mood bars and time update live.
+Servers with a graphics card can stream truly live, but they cost well over £100 a month.
+
+### Step 1: Turn on live streaming on YouTube (once, 5 minutes + up to 24 hours waiting)
+
+1. Go to **studio.youtube.com** and sign in with the account Gino's channel should be on.
+2. Click **Create** (top right), then **Go live**. The first time, YouTube asks you to verify your phone number,
+   then switching on live streaming **can take up to 24 hours**.
+3. Once it's on, open **Go live** again and choose **Stream** on the left. Give it a title like
+   *Gino the capybara, live from his meadow 🌿*, choose **No, it's not made for kids**, and save.
+4. In **Stream settings**, find **Stream key**, click **Copy**. Keep this key secret: anyone with it can stream
+   to your channel.
+5. Also in **Stream settings**: switch **Auto-start** ON and **Auto-stop** OFF, so the live keeps going by itself.
+   Under **Live chat**, turn on **Hold potentially inappropriate messages for review**.
+
+### Way A: from your PC with OBS (free)
+
+1. Download **OBS Studio** from **obsproject.com** and install it. When it opens, if it offers the
+   *Auto-Configuration Wizard*, click **No** (we'll set it up by hand).
+2. Click **Settings** (bottom right), then **Stream**: Service **YouTube - RTMPS**, then click
+   **Use Stream Key**, and paste the key from Step 1. Click **Apply**.
+3. Still in Settings, click **Video**: set both **Base** and **Output** resolution to **1280x720**,
+   and **Common FPS Values** to **30**. Click **OK**.
+4. In the **Sources** box at the bottom, click **+**, choose **Browser**, name it *Gino*, click **OK**. Then:
+   - URL: `https://ginothecapybara.com/stream`
+   - Width **1280**, Height **720**
+   - tick **Control audio via OBS**
+   - click **OK**. Gino's meadow fills the preview, with his sounds.
+5. Click **Start Streaming**. After a few seconds YouTube Studio shows him live. Click **Stop Streaming** to end.
+
+To keep it going, leave OBS open and stop your PC from going to sleep (Windows Settings > System > Power >
+Screen and sleep: *Never* while plugged in).
+
+### Way B: from the server, day and night
+
+**A bigger server first.** In the Hetzner console click your server (GinoCapy), then **Rescale**, and choose a
+server with **4 processors (vCPU) and 8 GB memory** (about £12 to £15 a month; Hetzner shows the exact price).
+Leave *"CPU and RAM only"* ticked so the disk stays the same and you can go back later. The server switches off for
+a minute while it changes, and Gino carries on afterwards with all his memories. Nothing changes until you do this.
+
+Then log in to the server (`ssh root@<your IP>`) and type:
+
+```bash
+gino stream youtube   # paste the stream key from Step 1 (it won't show as you paste; that's normal)
+gino stream test      # films a 30-second test video (about 10 minutes); nothing goes to YouTube
+gino stream on        # go live, day and night
+```
+
+To watch the test on your PC, in **PowerShell** type the `scp` line it prints, then open `stream-test.mp4`.
+
+| Command | What it does |
+| --- | --- |
+| `gino stream` | Is he live or not |
+| `gino stream on` / `off` | Start / stop the 24/7 YouTube stream (it comes back by itself after a restart) |
+| `gino stream logs` | What the stream has been doing |
+
+New scenes take the server about 10 minutes each, so the loop holds the newest 20 scenes (10 minutes) and keeps
+swapping in fresh ones. Scenes older than 90 minutes are dropped so day and night always match his real time.
+
+### TikTok Live for special days 📱
+
+TikTok only lets accounts with **1,000 followers or more** go live, and it doesn't like never-ending streams, so
+it's best for big moments: his birthday, a new dream painting, the first snow. TikTok shows the picture tall,
+like a phone.
+
+- **From your PC:** in OBS, add a new *Scene* for TikTok with a Browser source of **720x1280** at the same address,
+  and set Settings > Video to 720x1280. TikTok gives you a **Server URL** and **Stream key** when you start a
+  LIVE with streaming software (in the TikTok LIVE Studio app or *LIVE Producer* on tiktok.com, depending on your
+  account). Paste them in OBS Settings > Stream (Service: *Custom*).
+- **From the server:** `gino stream tiktok` (paste the Server URL and Stream key), then
+  `gino stream tiktok-live 90` goes live for 90 minutes and stops by itself. TikTok usually gives a new key each
+  time, so paste it again before each live. The first scene takes a few minutes to film.
+
 ## Your own web address 🌐
 
 Instead of `2-29-196-244.sslip.io`, Gino can live at a proper name like `ginothecapybara.com`. It costs about
