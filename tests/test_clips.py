@@ -179,3 +179,76 @@ def test_direct_posts_are_labelled_ai_and_respect_tiktoks_choices(monkeypatch, t
                                    "total_chunk_count": 1}
     with pytest.raises(RuntimeError, match="already"):
         tiktok.send(cid, privacy="PUBLIC_TO_EVERYONE")
+
+
+# ---------------------------------------------------------------- polishing on dad's PC (FilmCraft)
+
+def ready_clip(tmp_path, kind="day", **cols):
+    (tmp_path / f"gino-x-{kind}.mp4").write_bytes(b"\0\0\0\x18ftypisom" + b"\0" * 20_000)
+    names = ["ts", "kind", "title", "caption", "status", "filename", *cols]
+    vals = [time.time(), kind, "A day in Gino's life", "cap", "ready", f"gino-x-{kind}.mp4", *cols.values()]
+    return db.x(f"INSERT INTO clips({','.join(names)}) VALUES({','.join('?' * len(names))})", tuple(vals))
+
+
+def test_the_script_has_every_caption_at_the_right_moment():
+    job = clips.plan("day")
+    s = clips.script(job)
+    assert s["seconds"] == pytest.approx(sum(sh["dur"] for sh in job["shots"]))
+    texts = [c["text"] for sh in job["shots"] for c in sh.get("captions", [])]
+    assert [l["text"] for l in s["lines"]] == texts
+    assert s["lines"][0]["at"] == 2.0  # "Good morning" shows 2 s into the first shot
+    assert s["lines"][1]["at"] == pytest.approx(job["shots"][0]["dur"] + 0.3)
+    assert all(0 <= l["at"] < l["until"] <= s["seconds"] for l in s["lines"])
+
+
+def test_a_polished_video_replaces_the_original_everywhere(monkeypatch, tmp_path):
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    cid = ready_clip(tmp_path)
+    assert [c["id"] for c in clips.polish_queue()] == [cid] and clips.polisher_on()
+    with pytest.raises(RuntimeError):
+        clips.save_polished(cid, b"<html>not a video</html>" * 1000)
+    video = b"\0\0\0\x18ftypisom" + b"\1" * 30_000
+    clips.save_polished(cid, video)
+    assert clips.path(cid).read_bytes() == video  # the Videos tab and TikTok get the polished one
+    assert clips.path(cid, raw=True).name == "gino-x-day.mp4"
+    assert clips.listing()[0]["polished"] is True
+    assert clips.polish_queue() == []  # not polished twice
+
+
+def test_clips_already_on_tiktok_or_that_failed_arent_polished(monkeypatch, tmp_path):
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    sent = ready_clip(tmp_path, tiktok_status="posted")
+    with pytest.raises(RuntimeError):
+        clips.save_polished(sent, b"\0\0\0\x18ftypisom" + b"\1" * 30_000)
+    bad = ready_clip(tmp_path, "night")
+    clips.polish_failed(bad, "FilmCraft crashed")
+    assert clips.polish_queue() == []
+
+
+def test_the_daily_video_waits_for_the_polisher_only_while_dads_pc_is_on(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "TIKTOK_AUTO", True)
+    monkeypatch.setattr(tiktok, "connected", lambda: True)
+    sent, waited = [], []
+    monkeypatch.setattr(tiktok, "_auto_send", lambda cid: sent.append(cid))
+    monkeypatch.setattr(tiktok.threading, "Thread", lambda target, args, **k: type(
+        "T", (), {"start": lambda self: waited.append(args[0])})())
+    cid = db.x("INSERT INTO clips(ts,kind,title,status,made_by) VALUES(?,?,?,?,?)", (time.time(), "day", "t", "ready", "auto"))
+    db.put("polisher_seen", 0)
+    tiktok.after_clip(cid)
+    assert sent == [cid] and waited == []  # PC off: straight away, as before
+    db.put("polisher_seen", time.time())
+    tiktok.after_clip(cid)
+    assert waited == [cid]
+    db.x("UPDATE clips SET polished='p.mp4' WHERE id=?", (cid,))
+    tiktok._send_when_polished(cid, wait=5, step=0.01)
+    assert sent == [cid, cid]
+
+
+def test_the_polisher_needs_the_password(monkeypatch):
+    from fastapi.testclient import TestClient
+    from gino import server
+    monkeypatch.setattr(config, "PASSWORD", "pw")
+    c = TestClient(server.app)
+    assert c.get("/api/clips/polish").status_code == 401
+    assert c.put("/api/clips/1/polished", content=b"x").status_code == 401
+    assert c.get("/api/clips/polish", headers={"x-gino-key": "pw"}).json() == {"clips": []}

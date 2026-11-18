@@ -262,12 +262,34 @@ def clip_make(c: ClipIn):
 
 
 @app.get("/clips/{cid}.mp4", dependencies=[Depends(auth)])
-def clip_video(cid: int, download: int = 0):
-    path = clips.path(cid)
+def clip_video(cid: int, download: int = 0, raw: int = 0):
+    path = clips.path(cid, raw=bool(raw))
     if not path:
         raise HTTPException(404)
     return FileResponse(path, media_type="video/mp4", filename=path.name if download else None,
                         content_disposition_type="attachment" if download else "inline")
+
+
+@app.get("/api/clips/polish", dependencies=[Depends(auth)])
+def clip_polish_queue():
+    """Dad's PC asks which clips it should polish in FilmCraft."""
+    return {"clips": clips.polish_queue()}
+
+
+@app.put("/api/clips/{cid}/polished", dependencies=[Depends(auth)])
+async def clip_polished(cid: int, request: Request, failed: int = 0):
+    """Dad's PC sends back the polished video (or, with failed=1, a short note saying why it couldn't)."""
+    size = int(request.headers.get("content-length") or 0)
+    if size > clips.MAX_POLISHED:
+        raise HTTPException(413, "That video is too big.")
+    data = await request.body()
+    if failed:
+        clips.polish_failed(cid, data[:300].decode(errors="replace"))
+        return {"message": "Noted. Gino will use the original."}
+    try:
+        return {"message": await asyncio.to_thread(clips.save_polished, cid, data)}
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from None
 
 
 @app.get("/api/tiktok/connect", dependencies=[Depends(auth)])

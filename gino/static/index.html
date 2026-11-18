@@ -286,7 +286,7 @@ async function renderVideos(P) {
       : `<div class="wait">${c.status === 'making' ? `🎥 Filming…<br>${esc(c.progress || '')}` : c.status === 'failed' ? `😕 This one didn't work (${esc(c.error)})` : 'Video deleted to save space'}</div>`;
     const sent = c.tiktok_status ? `<div style="font-size:13px">📱 ${esc({sending: 'Sending to TikTok', sent: 'Sent to TikTok', posted: 'On TikTok', failed: 'TikTok: not sent'}[c.tiktok_status] || c.tiktok_status)}${c.tiktok_note ? ': ' + esc(c.tiktok_note) : ''}</div>` : '';
     const canSend = ready && tt.connected && !['sending', 'sent', 'posted'].includes(c.tiktok_status);
-    return `<div class="clip">${top}<strong>${esc(c.title)}</strong><div class="muted" style="font-size:12px">${when(c.ts)} · ${c.made_by === 'dad' ? 'you asked' : c.made_by === 'gino' ? 'Gino filmed it' : 'his daily video'}</div>`
+    return `<div class="clip">${top}<strong>${esc(c.title)}</strong><div class="muted" style="font-size:12px">${when(c.ts)} · ${c.made_by === 'dad' ? 'you asked' : c.made_by === 'gino' ? 'Gino filmed it' : 'his daily video'}${c.polished ? ' · ✨ polished in FilmCraft' : ''}</div>`
       + `<div class="cap">${esc(c.caption)}</div>`
       + (ready ? `<div class="row"><a class="btn" href="${clipUrl(c.id, 1)}">⬇ Download</a><button class="ghost" data-copy="${c.id}">Copy caption</button>${canSend ? `<button data-tt="${c.id}">Send to TikTok</button>` : ''}</div>` : '') + sent + `</div>`;
   };
