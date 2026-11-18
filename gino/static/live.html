@@ -322,6 +322,7 @@ try {
     onFollow: v => { follow = v; $('#followBtn').textContent = v ? 'Free camera' : 'Follow Gino'; },
     onPiece: p => openPiece(p),
     onItem: it => openKeepsake(it),
+    onCue: c => sound?.cue?.(c),   // his hums, yawns, tummy rumbles and grumbles, when sound is on
   });
   world.update(state); wallKey = null; mapKey = ''; drawWall(state); drawMap(state); world.setFollow(true); window.ginoWorld = world;
   $('#followBtn').onclick = () => { follow = !follow; world.setFollow(follow); $('#followBtn').textContent = follow ? 'Free camera' : 'Follow Gino'; };

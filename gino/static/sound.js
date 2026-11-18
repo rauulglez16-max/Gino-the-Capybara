@@ -54,7 +54,7 @@ export function createSound() {
     // tape wobble: a slow drift in pitch shared by every note
     nodes.wob = ctx.createOscillator(); nodes.wob.frequency.value = 0.35; nodes.wobGain = gain(7); nodes.wob.connect(nodes.wobGain); nodes.wob.start();
 
-    const white = noiseBuffer('white'), brown = noiseBuffer('brown');
+    const white = noiseBuffer('white'), brown = noiseBuffer('brown'); nodes.brownBuf = brown;
     // lake water: low rumble that swells and settles like little waves
     nodes.water = gain(0); loop(brown, filt('lowpass', 420), nodes.water).connect(natureBus); lfo(0.13, 0.06, nodes.water.gain);
     // breeze
@@ -137,6 +137,31 @@ export function createSound() {
     if (step % 16 === 0) { bar++; if (bar % 8 === 0) prog = pick(PROGRESSIONS); }
   }
 
+  // ---------------------------------------------------------------- Gino's own little noises (moods.js decides when)
+  function voice(t, len, vol) { const g = gain(0); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.08); g.gain.setTargetAtTime(0, t + len - 0.15, 0.08); g.connect(natureBus); return g; }
+  const CUES = {
+    hum(t) {          // a happy mm-mm-mmm little tune
+      const notes = pick([[64, 67, 69, 67, 72], [60, 64, 67, 64, 65], [67, 69, 72, 69, 67]]);
+      notes.forEach((n, i) => {
+        const at = t + i * 0.42, o = ctx.createOscillator(), f = filt('lowpass', 900, 1.5), g = voice(at, 0.5, 0.05);
+        o.type = 'triangle'; o.frequency.value = midi(n - 12); lfo(5.5, 4, o.frequency).stop(at + 0.6); o.connect(f); f.connect(g); o.start(at); o.stop(at + 0.6);
+      });
+    },
+    yawn(t) {         // a long breathy aaah that slides down
+      const o = ctx.createOscillator(), f = filt('bandpass', 700, 2.5), g = voice(t, 1.7, 0.07);
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(330, t); o.frequency.exponentialRampToValueAtTime(150, t + 1.6);
+      f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(400, t + 1.6); o.connect(f); f.connect(g); o.start(t); o.stop(t + 1.8);
+    },
+    rumble(t) {       // a deep gurgly tummy rumble
+      const src = ctx.createBufferSource(); src.buffer = nodes.brownBuf; const f = filt('lowpass', 140, 4), g = voice(t, 1.6, 0.5);
+      lfo(7, 60, f.frequency).stop(t + 1.7); src.connect(f); f.connect(g); src.start(t, Math.random() * 2); src.stop(t + 1.7);
+    },
+    grumble(t) {      // a low mrrrmph
+      const o = ctx.createOscillator(), f = filt('lowpass', 520, 3), g = voice(t, 1.1, 0.06);
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(120, t); o.frequency.linearRampToValueAtTime(95, t + 1.1); lfo(13, 9, o.frequency, 'square').stop(t + 1.2); o.connect(f); f.connect(g); o.start(t); o.stop(t + 1.2);
+    },
+  };
+
   // ---------------------------------------------------------------- mixing and scheduling
   function mix() {
     if (!ctx) return;
@@ -178,6 +203,7 @@ export function createSound() {
     setMusic(v) { musicOn = v; mix(); },
     setNature(v) { natureOn = v; mix(); },
     update(s) { world = { ...world, ...s }; mix(); },
+    cue(kind) { if (ctx && on && natureOn && CUES[kind]) CUES[kind](ctx.currentTime + 0.05); },   // hum, yawn, rumble, grumble
     pause(v) { if (ctx && on) v ? ctx.suspend() : ctx.resume(); },
     _debug: { get ctx() { return ctx; }, get master() { return master; } },
   };
