@@ -20,6 +20,7 @@ Off by default (GINO_CLIPS=0). `gino clips on` installs what it needs on the ser
 import base64
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -137,6 +138,94 @@ def _end() -> list[str]:
     return ["Gino the capybara 🌿", f"An AI capybara living his own life · {site}"]
 
 
+# ---- close-ups: every clip opens on his face, cuts back to it between scenes and ends zooming into it
+FACE = [1.75, 0.22, 0.22]  # distance, height and angle of the close-up (angle 0: straight in front of his face)
+END_SHOT = 4.0             # the closing zoom into his face; the name card shows for its last END_SECONDS
+NOT_CARRIED = ("pond", "path", "bridge", "garden", "house", "fountain", "windmill", "tent", "pumpkins")
+GRID = (16, 10)            # his meadow, in squares (as in static/world.js)
+
+
+def _say(text: str, at: float = 0.3, until: float | None = None) -> dict:
+    """Words in a speech bubble beside his face, as if he's saying them."""
+    c = {"text": text, "at": at, "style": "speech"}
+    if until is not None:
+        c["until"] = until
+    return c
+
+
+def _face(dur: float, hour: list, *, frm=None, to=None, say: list | None = None, mood: str = "", pet: bool = False,
+          asleep: bool = False, weather=None, **extra) -> dict:
+    """A close-up of his face (the camera stays in front of it even if he turns)."""
+    shot = {"dur": dur, "hour": hour, "weather": weather, "asleep": asleep, "face": True,
+            "cam": {"around": "face", "track": True, "from": list(frm or FACE), "to": list(to or frm or FACE)},
+            "captions": list(say or []), **extra}
+    if mood:
+        shot["emotion"] = mood
+    if pet:
+        shot["pet"] = True
+    if not asleep and "pose" not in extra and "go" not in extra:
+        shot["pose"] = "idle"
+    return shot
+
+
+def _opener(hour: list, say: str = "", **kw) -> dict:
+    """Open on his face, then pull back to show where he is."""
+    return _face(2.8, hour, frm=FACE, to=[6.5, 2.4, 0.6], say=[_say(say, 0.25, 2.3)] if say else [], **kw)
+
+
+def _react(prev: dict, say: str = "", mood: str = "happy", pet: bool = True, dur: float = 1.6) -> dict:
+    """A quick cut to his face between scenes: a blink, a happy hop, his mood above his head."""
+    h = (prev["hour"][1:] or prev["hour"])[0]
+    asleep = bool(prev.get("asleep"))
+    return _face(dur, [h, h + 0.15], frm=[2.4, 0.4, -0.75], to=[2.0, 0.3, -0.55],
+                 say=[_say(say, 0.15)] if say else [], mood="" if asleep else mood, pet=pet and not asleep,
+                 asleep=asleep, weather=prev.get("weather"), tint=prev.get("tint"))
+
+
+def _ending(prev: dict, say: str = "", mood: str = "proud", hour: list | None = None) -> dict:
+    """End on a slow zoom into his (proud) face: it lands on the same close-up the clip opened with, so it loops."""
+    h = (prev["hour"][1:] or prev["hour"])[0]
+    return _face(END_SHOT, hour or [h, h + 0.4], frm=[6, 2.0, 0.55], to=FACE, mood=mood, weather=prev.get("weather"),
+                 say=[_say(say, 0.15, END_SHOT - END_SECONDS)] if say else [])
+
+
+def _follow(dur: float, hour: list, item: dict | None, captions: list, weather=None, act: str = "look", **extra) -> dict:
+    """The camera tags along behind him as he trots over to one of his things."""
+    shot = {"dur": dur, "hour": hour, "weather": weather, "captions": captions,
+            "cam": {"around": "gino", "track": True, "from": [4.2, 2.1, 3.0], "to": [5.2, 2.6, 2.75]}, **extra}
+    if item:
+        shot["go"] = {"id": item["id"], "act": act, "near": 1.0 + 0.9 * float(item.get("size") or 1)}
+    return shot
+
+
+def _favourite(state: dict, kinds: tuple = ()) -> dict | None:
+    """Something of his to walk over to: one of `kinds` if he has one, else the newest thing he built."""
+    things = [it for it in state.get("habitat") or [] if it.get("kind") not in ("path", "pond", "bridge")]
+    pick = [it for it in things if it.get("kind") in kinds] or things
+    return max(pick, key=lambda it: it["id"]) if pick else None
+
+
+def _carry_spots(item: dict, state: dict) -> dict | None:
+    """For a new thing he built: a free square a little way off where it 'starts', and where Gino stands, so in
+    the clip he walks over, lifts it onto his back and carries it to its real spot."""
+    if (item.get("kind") or "") in NOT_CARRIED:
+        return None
+    ix, iy = item["x"], item["y"]
+    px, py = (state.get("pos") or [7, 5])[:2]
+    taken = {(it["x"], it["y"]) for it in state.get("habitat") or []}
+    base = math.atan2(py - iy, px - ix) if (px, py) != (ix, iy) else math.pi
+    for turn in (0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9, math.pi):
+        a = base + turn
+        dx, dy = math.cos(a), math.sin(a)
+        fx, fy = round(ix + dx * 2.6), round(iy + dy * 2.6)
+        sx, sy = ix + dx * 5.2, iy + dy * 5.2
+        if (0 <= fx < GRID[0] and 0 <= fy < GRID[1] and (fx, fy) not in taken
+                and 0 <= sx <= GRID[0] - 1 and 0 <= sy <= GRID[1] - 1):
+            return {"carry": {"id": item["id"], "from": [fx, fy], "to": [ix, iy]},
+                    "start": {"at": [round(sx, 2), round(sy, 2)], "facing": [fx, fy]}}
+    return None
+
+
 def plan(kind: str, now: float | None = None) -> dict:
     """The shots, captions and the post's text for one clip. Everything in it is safe for the whole world."""
     now = now or time.time()
@@ -149,6 +238,8 @@ def plan(kind: str, now: float | None = None) -> dict:
     lines += [f"He painted '{a['title']}' 🎨" for a in art[:1]]
     note = _clean(live._diary_line(), 90)
     source, art_url, title = "", "", KIND_NAMES.get(kind, "")
+    easel = _favourite(state, ("easel", "gallery"))
+    extra: dict = {}
 
     if kind == "dream":
         pics = [a for a in _public_art(now - 7 * 86400, dream=True) if not _already(f"art:{a['id']}")] or \
@@ -158,18 +249,19 @@ def plan(kind: str, now: float | None = None) -> dict:
         else:
             p = pics[0]
             source, art_url = f"art:{p['id']}", f"/blog/art/{p['id']}.svg"
-            shots = [
-                {"dur": 6.5, "hour": [23.2, 24.6], "asleep": True, "tint": 0.6, "weather": rain,
-                 "cam": {"around": "gino", "from": [11, 6, 0.9], "to": [4.8, 2.2, 0.5]},
-                 "captions": [{"text": "Shh… Gino is asleep 💤", "at": 3.2, "y": "bottom"}]},
-                {"dur": 5.5, "hour": [1.5, 2.5], "asleep": True, "tint": 1.0, "weather": rain,
-                 "cam": {"around": "gino", "from": [4.4, 1.6, 0.2], "to": [3.6, 1.4, -0.2]},
-                 "captions": [{"text": "…and he's dreaming 🌙", "at": 0.4, "y": "bottom"}]},
-                {"dur": 7.5, "hour": [7.5, 8.5], "asleep": False, "activity": "painting",
-                 "cam": {"around": "gino", "from": [7, 3, -0.4], "to": [9, 4, -0.7]}, "art": art_url,
-                 "captions": [{"text": "In the morning, he painted it:", "at": 0.4, "until": 3.6, "y": "top"},
-                              {"text": f"'{p['title']}'", "at": 3.4, "y": "bottom"}]},
-            ]
+            sleep = _face(3.2, [23.2, 23.8], frm=FACE, to=[6, 2.6, 0.7], asleep=True, tint=0.5, weather=rain,
+                          captions=[{"text": "Shh… Gino is asleep 💤", "at": 1.0, "y": "bottom"}])
+            dreaming = {"dur": 4.8, "hour": [1.5, 2.5], "asleep": True, "tint": 1.0, "weather": rain,
+                        "cam": {"around": "gino", "from": [4.4, 1.6, 0.2], "to": [3.6, 1.4, -0.2]},
+                        "captions": [{"text": "…and he's dreaming 🌙", "at": 0.4, "y": "bottom"}]}
+            woke = _face(1.8, [7.2, 7.4], frm=[2.3, 0.35, -0.35], to=[1.9, 0.25, -0.2], mood="excited", pet=True,
+                         say=[_say("I dreamed something! ✨", 0.15)], weather=rain)
+            walk = _follow(3.0, [7.4, 7.9], easel, [{"text": "In the morning, he painted it:", "at": 0.3,
+                                                     "y": "bottom"}], weather=rain, act="look")
+            paint_it = {"dur": 5.8, "hour": [7.9, 8.6], "asleep": False, "activity": "painting", "pose": "look",
+                        "cam": {"around": "gino", "from": [7, 3, -0.4], "to": [9, 4, -0.7]}, "art": art_url,
+                        "weather": rain, "captions": [{"text": f"'{p['title']}'", "at": 1.0, "y": "bottom"}]}
+            shots = [sleep, dreaming, woke, walk, paint_it, _ending(paint_it, "I painted my dream 🥹")]
             text = (f"Last night Gino had a dream, so in the morning he painted it: '{p['title']}' 🌙🎨 "
                     "He's an AI capybara who lives his own life, all on his own.")
             title = "Gino dreamed it, then painted it"
@@ -181,84 +273,91 @@ def plan(kind: str, now: float | None = None) -> dict:
             source = f"item:{item['id']}"
             spot = [item["x"], item["y"]]
             story = f"“{item['story']}”" if item["story"] else "Nobody told him to. He just wanted one."
-            shots = [
-                {"dur": 5.0, "hour": [10, 11], "weather": rain,
-                 "cam": {"around": "home", "from": [36, 22, -0.9], "to": [28, 15, -0.6]},
-                 "captions": [{"text": "Gino had an idea… 💡", "at": 1.2, "y": "bottom"}]},
-                {"dur": 7.5, "hour": [11, 12.5], "weather": rain,
-                 "cam": {"around": spot, "from": [9, 5, 0.3], "to": [6, 3, 1.1]},
-                 "captions": [{"text": f"He built a {item['name']} {item['emoji']}".strip(), "at": 0.4, "until": 4.2,
-                               "y": "bottom"},
-                              {"text": story, "at": 4.0, "y": "bottom"}]},
-                {"dur": 6.5, "hour": [17.2, 18.4], "weather": rain,
-                 "cam": {"around": "gino", "from": [8, 3.5, 0.8], "to": [5, 2.2, 0.3]},
-                 "captions": [{"text": "Proud capybara 🥹", "at": 1.0, "y": "bottom"}]},
-            ]
+            built_line = f"He built a {item['name']} {item['emoji']}".strip()
+            moves = _carry_spots(item, state)
+            opener = _opener([10, 10.5], "I had an idea… 💡", mood="curious", weather=rain)
+            if moves:  # he carries it to its spot: follow him there, then watch up close as he lifts and sets it down
+                extra = moves
+                fetch = {"dur": 3.0, "hour": [10.5, 11.2], "weather": rain, "carry": True,
+                         "cam": {"around": "gino", "track": True, "from": [4.2, 2.1, 3.0], "to": [4.6, 2.3, 2.6]},
+                         "captions": [{"text": built_line, "at": 0.3, "y": "bottom"}]}
+                carry = {"dur": 5.6, "hour": [11.2, 12.4], "weather": rain,
+                         "cam": {"around": "gino", "track": True, "from": [4.6, 2.3, 1.25], "to": [4.0, 2.0, 0.95]},
+                         "captions": [_say("Heave-ho! 💪", 0.2, 2.4), _say("Just a little further…", 2.6)]}
+                middle = [fetch, carry]
+            else:  # too big to carry: follow him over to it
+                middle = [_follow(4.2, [10.5, 11.5], {**item, "size": 1.2}, [{"text": built_line, "at": 0.3,
+                                                                              "y": "bottom"}], weather=rain),
+                          {"dur": 4.0, "hour": [11.5, 12.4], "weather": rain, "pose": "look",
+                           "cam": {"around": spot, "from": [7, 3.4, 0.6], "to": [5.5, 2.6, 1.1]},
+                           "captions": [_say("Look what I made!", 0.3)]}]
+            there = _react(middle[-1], "There! ✨", mood="proud")
+            show = {"dur": 4.4, "hour": [13, 15], "weather": rain, "pose": "look",
+                    "cam": {"around": spot, "from": [9, 5, 0.3], "to": [6, 3, 1.1]},
+                    "captions": [{"text": story, "at": 0.3, "y": "bottom"}]}
+            shots = [opener, *middle, there, show, _ending({**show, "hour": [17.2, 17.4]}, "I'm so proud of it 🥹")]
             why = f"In his words: “{item['story']}”" if item["story"] else "Nobody asked him to."
             text = (f"Gino built a {item['name']} {item['emoji']} today. {why} "
                     "He's an AI capybara who decides everything himself.")
             title = f"Gino built a {item['name']}"
         elif pic:
             source, art_url = f"art:{pic['id']}", f"/blog/art/{pic['id']}.svg"
-            shots = [
-                {"dur": 6.0, "hour": [9.5, 10.5], "weather": rain,
-                 "cam": {"around": "gino", "from": [14, 8, 1.2], "to": [6, 2.6, 0.6]},
-                 "captions": [{"text": "Gino felt like painting today 🎨", "at": 1.2, "y": "bottom"}]},
-                {"dur": 7.0, "hour": [11, 12], "weather": rain, "art": art_url,
-                 "cam": {"around": "gino", "from": [6, 2.6, 0.6], "to": [7, 3, 0.1]},
-                 "captions": [{"text": f"'{pic['title']}'", "at": 1.6, "y": "bottom"}]},
-                {"dur": 6.0, "hour": [17.4, 18.4], "weather": rain,
-                 "cam": {"around": "home", "from": [26, 13, -0.3], "to": [30, 16, -0.8]},
-                 "captions": [{"text": "Nobody asked him to. He just wanted to.", "at": 0.8, "y": "bottom"}]},
-            ]
+            opener = _opener([9.5, 10], "I feel like painting today 🎨", mood="inspired", weather=rain)
+            walk = _follow(3.2, [10, 10.8], easel, [{"text": "Gino felt like painting today 🎨", "at": 0.3,
+                                                     "y": "bottom"}], weather=rain)
+            painted = {"dur": 5.8, "hour": [11, 12], "weather": rain, "art": art_url, "pose": "look",
+                       "activity": "painting", "cam": {"around": "gino", "from": [6, 2.6, 0.6], "to": [7, 3, 0.1]},
+                       "captions": [{"text": f"'{pic['title']}'", "at": 1.2, "y": "bottom"}]}
+            like = _react(painted, "Do you like it? 🥺", mood="hopeful")
+            wide = {"dur": 3.6, "hour": [17.4, 18.2], "weather": rain,
+                    "cam": {"around": "home", "from": [26, 13, -0.3], "to": [30, 16, -0.8]},
+                    "captions": [{"text": "Nobody asked him to. He just wanted to.", "at": 0.4, "y": "bottom"}]}
+            shots = [opener, walk, painted, like, wide, _ending(wide, "I made that! 🥹")]
             text = f"Gino painted '{pic['title']}' today 🎨 He's an AI capybara who makes art when he feels like it."
             title = f"Gino painted '{pic['title']}'"
         else:
             kind = "day"
 
     if kind == "night":
-        shots = [
-            {"dur": 5.5, "hour": [20.5, 22.5], "weather": rain,
-             "cam": {"around": "home", "from": [30, 16, -0.4], "to": [24, 12, -0.9]},
-             "captions": [{"text": "You go to bed… 🌙", "at": 1.0, "y": "bottom"}]},
-            {"dur": 7.0, "hour": [23, 28.5], "asleep": True, "tint": 0.5, "weather": rain, "speed": 1.6,
-             "cam": {"around": "gino", "from": [9, 5, 1.4], "to": [5, 2.4, 0.4]},
-             "captions": [{"text": "Gino curls up under the stars ✨", "at": 0.6, "until": 3.6, "y": "bottom"},
-                          {"text": (f"Tonight's dream: '{art[0]['title']}'" if art and art[0].get('dream_id')
-                                    else "He dreams about his day"), "at": 3.6, "y": "bottom"}]},
-            {"dur": 6.5, "hour": [6.4, 8.2], "asleep": False, "activity": "having a big stretch",
-             "cam": {"around": "gino", "from": [5, 2.2, 0.2], "to": [9, 4, 0.9]},
-             "captions": [{"text": "…and wakes up ready for a new day ☀️", "at": 0.8, "y": "bottom"}]},
-        ]
+        bed = _opener([20.5, 21], "Time for bed… 🥱", mood="sleepy", weather=rain)
+        wide = {"dur": 3.4, "hour": [21, 22.6], "weather": rain,
+                "cam": {"around": "home", "from": [30, 16, -0.4], "to": [24, 12, -0.9]},
+                "captions": [{"text": "You go to bed… 🌙", "at": 0.6, "y": "bottom"}]}
+        night = {"dur": 5.2, "hour": [23, 28.5], "asleep": True, "tint": 0.5, "weather": rain, "speed": 1.6,
+                 "cam": {"around": "gino", "from": [9, 5, 1.4], "to": [5, 2.4, 0.4]},
+                 "captions": [{"text": "Gino curls up under the stars ✨", "at": 0.5, "until": 2.8, "y": "bottom"},
+                              {"text": (f"Tonight's dream: '{art[0]['title']}'" if art and art[0].get('dream_id')
+                                        else "He dreams about his day"), "at": 2.8, "y": "bottom"}]}
+        snooze = _react(night, "zzz… 💤", dur=1.6)
+        wake = _face(3.6, [6.4, 7.6], frm=[2.0, 0.3, 0.3], to=[5, 1.8, 0.8], activity="having a big stretch",
+                     pose="stretch", mood="happy", weather=rain,
+                     captions=[{"text": "…and wakes up ready for a new day ☀️", "at": 0.6, "y": "bottom"}])
+        off = _follow(3.0, [7.6, 8.4], _favourite(state), [], weather=rain)
+        shots = [bed, wide, night, snooze, wake, off, _ending(off, "Good morning! ☀️", mood="happy")]
         text = ("What Gino does while you sleep 🌙 He's an AI capybara who lives in his own little world, "
                 "day and night, even when nobody's watching.")
         title = "What Gino does while you sleep"
 
     if kind == "day":
-        extra = lines + ([note] if note else []) + ([_feeling(state)] if _feeling(state) else [])
-        say = (extra + ["He decides everything himself", "Snack time 🍉", "Just vibing 🌿"])[:3]
-        shots = [
-            {"dur": 4.5, "hour": [6.6, 8.5], "weather": rain,
-             "cam": {"around": "gino", "from": [4.5, 1.8, 0.5], "to": [12, 6, 1.0]},
-             "captions": [{"text": "Good morning, Gino ☀️", "at": 2.0, "y": "bottom"}]},
-            {"dur": 4.5, "hour": [10, 13], "weather": rain, "speed": 1.6,
-             "cam": {"around": "home", "from": [32, 18, -1.1], "to": [27, 14, -0.4]},
-             "captions": [{"text": say[0], "at": 0.3, "y": "bottom"}]},
-            {"dur": 4.5, "hour": [14, 17], "weather": rain, "speed": 1.6,
-             "cam": {"around": "gino", "from": [8, 3.5, -0.6], "to": [6, 2.6, 0.4]},
-             "captions": [{"text": say[1], "at": 0.3, "y": "bottom"}]},
-            {"dur": 5.5, "hour": [17.4, 22.5], "weather": rain,
-             "cam": {"around": "home", "from": [26, 12, 0.2], "to": [34, 18, -0.5]},
-             "captions": [{"text": say[2], "at": 0.3, "until": 2.8, "y": "bottom"},
-                          {"text": "Goodnight, Gino 🌙", "at": 2.8, "y": "bottom"}]},
-        ]
+        extra_lines = lines + ([note] if note else []) + ([_feeling(state)] if _feeling(state) else [])
+        say = (extra_lines + ["He decides everything himself", "Snack time 🍉", "Just vibing 🌿"])[:3]
+        hello = _opener([6.6, 7.2], "Good morning! ☀️", mood="happy", weather=rain)
+        trot = _follow(3.6, [8, 10.5], _favourite(state), [{"text": say[0], "at": 0.3, "y": "bottom"}],
+                       weather=rain, speed=1.4)
+        wide = {"dur": 3.6, "hour": [11, 14], "weather": rain, "speed": 1.6, "pose": "graze",
+                "cam": {"around": "home", "from": [32, 18, -1.1], "to": [27, 14, -0.4]},
+                "captions": [{"text": say[1], "at": 0.3, "y": "bottom"}]}
+        vibe = _react(wide, "This is the life 🌿", mood="content")
+        evening = {"dur": 4.2, "hour": [16.5, 19.5], "weather": rain, "speed": 1.4, "pose": "sit",
+                   "cam": {"around": "gino", "from": [8, 3.5, -0.6], "to": [6, 2.6, 0.4]},
+                   "captions": [{"text": say[2], "at": 0.3, "y": "bottom"}]}
+        shots = [hello, trot, wide, vibe, evening, _ending(evening, "Goodnight! 🌙", mood="happy")]
         what = " ".join(s.rstrip(".") + "." for s in lines[:2])
         text = f"A day in Gino's life 🌿 {what} He's an AI capybara who lives his own life, all on his own."
         title = "A day in Gino's life"
 
-    shots.append({"dur": END_SECONDS, "hour": shots[-1]["hour"][1:] or shots[-1]["hour"],
-                  "asleep": shots[-1].get("asleep", False), "weather": rain,
-                  "cam": {**shots[-1]["cam"], "from": shots[-1]["cam"].get("to") or shots[-1]["cam"]["from"]}})
+    for shot in shots:  # every bubble and caption is checked again, just in case
+        shot["captions"] = [c for c in shot.get("captions", []) if c["text"] and not public.check(c["text"])]
     caption = f"{text} Watch him live at {_end()[1].split(' · ')[-1]} {HASHTAGS}"
     caption = " ".join(caption.split())
     if public.check(caption):  # belt and braces: if anything slipped through, fall back to plain words
@@ -266,7 +365,7 @@ def plan(kind: str, now: float | None = None) -> dict:
     return {"kind": kind, "title": title, "caption": caption[:2000], "source": source,
             "fps": config.CLIP_FPS, "width": config.CLIP_SIZE[0], "height": config.CLIP_SIZE[1],
             "state": state, "shots": shots, "end": _end(), "end_seconds": END_SECONDS, "quality": 0.88,
-            "render_scale": config.CLIP_RENDER_SCALE, "sounds": _sound_plan(shots)}
+            "render_scale": config.CLIP_RENDER_SCALE, "sounds": _sound_plan(shots), **extra}
 
 
 def _sound_plan(shots: list[dict]) -> list[list]:
@@ -310,8 +409,11 @@ def script(job: dict) -> dict:
     lines, t = [], 0.0
     for shot in job["shots"]:
         for c in shot.get("captions", []):
-            lines.append({"text": c["text"], "at": round(t + c.get("at", 0), 2),
-                          "until": round(t + c.get("until", shot["dur"]), 2)})
+            line = {"text": c["text"], "at": round(t + c.get("at", 0), 2),
+                    "until": round(t + c.get("until", shot["dur"]), 2)}
+            if c.get("style") == "speech":
+                line["speech"] = True  # said by Gino in a bubble beside his face
+            lines.append(line)
         t += shot["dur"]
     return {"seconds": round(t, 2), "lines": sorted(lines, key=lambda l: l["at"])}
 
