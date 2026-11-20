@@ -1,26 +1,20 @@
-// Sounds for Gino's live page: nature that follows his day and weather, plus a soft lofi loop.
-// Everything is synthesised in the browser with Web Audio, so there are no audio files and no licences to worry about.
+// Sounds for Gino's live page: nature that follows his day and weather, plus a lofi music mix.
+// The nature sounds are synthesised in the browser with Web Audio. The music is a real recording
+// (static/music/lofi.m4a, about 56 minutes, chosen by Raul) that streams in bit by bit, so phones only download
+// what they actually hear. It starts at a random place each visit and loops.
 // Nothing plays until the visitor turns sound on (browsers block autoplay anyway).
 
 const rand = (a, b) => a + Math.random() * (b - a);
-const pick = a => a[Math.floor(Math.random() * a.length)];
-const midi = n => 440 * Math.pow(2, (n - 69) / 12);
 const smooth = (a, b, v) => { const t = Math.min(1, Math.max(0, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-// four-bar progressions, chords as MIDI notes (all in C major / A minor, the lofi comfort zone)
-const PROGRESSIONS = [
-  [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [48, 52, 55, 59]],   // Fmaj7 Em7 Dm7 Cmaj7
-  [[57, 60, 64, 67], [53, 57, 60, 64], [48, 52, 55, 59], [55, 59, 62, 65]],   // Am7 Fmaj7 Cmaj7 G7
-  [[50, 53, 57, 60], [55, 59, 62, 65], [48, 52, 55, 59], [57, 60, 64, 67]],   // Dm7 G7 Cmaj7 Am7
-];
-const MELODY = [67, 69, 72, 74, 76, 79, 81];
-const BPM = 72, STEP = 60 / BPM / 4, SWING = 0.18;
+const MUSIC_URL = '/static/music/lofi.m4a';
+const MUSIC_LEVEL = 0.25;   // the recording is mastered loud; this sits it under the nature sounds like the old loop
 
 export function createSound() {
-  let ctx = null, master, musicBus, natureBus, nodes = {}, timer = null;
+  let ctx = null, master, musicBus, natureBus, nodes = {}, timer = null, track = null;
   let on = false, musicOn = true, natureOn = true, volume = 0.6;
   let world = { hour: 12, weather: 'clear', asleep: false };
-  let step = 0, nextAt = 0, bar = 0, prog = PROGRESSIONS[0], nextBird = 0, nextCricket = 0, nextDrop = 0;
+  let nextBird = 0, nextCricket = 0, nextDrop = 0;
 
   function noiseBuffer(kind, seconds = 4) {
     const len = ctx.sampleRate * seconds, buf = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -29,7 +23,6 @@ export function createSound() {
       for (let i = 0; i < len; i++) {
         const w = Math.random() * 2 - 1;
         if (kind === 'brown') { last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; }
-        else if (kind === 'crackle') d[i] = Math.random() < 0.0006 ? (Math.random() * 2 - 1) * 0.9 : w * 0.015;
         else d[i] = w;
       }
     }
@@ -50,9 +43,14 @@ export function createSound() {
     master = gain(0); master.connect(ctx.destination);
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 3; const lift = gain(2.6); comp.connect(lift); lift.connect(master);
     natureBus = gain(1); natureBus.connect(comp);
-    musicBus = gain(0); const warm = filt('lowpass', 2400); musicBus.connect(warm); warm.connect(comp);
-    // tape wobble: a slow drift in pitch shared by every note
-    nodes.wob = ctx.createOscillator(); nodes.wob.frequency.value = 0.35; nodes.wobGain = gain(7); nodes.wob.connect(nodes.wobGain); nodes.wob.start();
+    musicBus = gain(0); musicBus.connect(comp);
+    // the lofi mix: an <audio> element that streams the file, played through Web Audio so the volume,
+    // the sound-off fade and the quieter music while he sleeps all work as before
+    track = new Audio(); track.preload = 'none'; track.loop = true; track.src = MUSIC_URL;
+    track.addEventListener('loadedmetadata', () => {
+      if (isFinite(track.duration) && track.duration > 60) track.currentTime = rand(0, track.duration - 30);
+    }, { once: true });
+    const level = gain(MUSIC_LEVEL); ctx.createMediaElementSource(track).connect(level); level.connect(musicBus);
 
     const white = noiseBuffer('white'), brown = noiseBuffer('brown'); nodes.brownBuf = brown;
     // lake water: low rumble that swells and settles like little waves
@@ -62,9 +60,6 @@ export function createSound() {
     // rain: hiss plus a softer body
     nodes.rain = gain(0); loop(white, filt('highpass', 900), filt('lowpass', 7000), nodes.rain).connect(natureBus);
     nodes.rainBody = gain(0); loop(brown, filt('lowpass', 900), nodes.rainBody).connect(natureBus);
-    // record crackle under the music
-    nodes.crackle = gain(0); loop(noiseBuffer('crackle'), filt('highpass', 1500), nodes.crackle).connect(musicBus);
-    nextAt = ctx.currentTime + 0.1;
   }
 
   // ---------------------------------------------------------------- nature events
@@ -93,58 +88,21 @@ export function createSound() {
   }
 
   // ---------------------------------------------------------------- lofi
-  function keys(t, notes, vel, len) {
-    notes.forEach((n, i) => {
-      const s = t + i * 0.025, g = gain(0), lp = filt('lowpass', 1500 + vel * 900);
-      for (const [type, det, lvl] of [['triangle', -5, 0.6], ['sine', 5, 0.5], ['sine', 1200, 0.06]]) {
-        const o = ctx.createOscillator(); o.type = type; o.frequency.value = midi(n); o.detune.value = det; nodes.wobGain.connect(o.detune);
-        const og = gain(lvl); o.connect(og); og.connect(lp); o.start(s); o.stop(s + len + 1.2);
-        o.onended = () => { try { nodes.wobGain.disconnect(o.detune); } catch {} };
-      }
-      g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(0.05 * vel, s + 0.015);
-      g.gain.setTargetAtTime(0.02 * vel, s + 0.02, 0.5); g.gain.setTargetAtTime(0, s + len, 0.3);
-      lp.connect(g); g.connect(musicBus);
-    });
-  }
-  function bass(t, n, len) {
-    const o = ctx.createOscillator(), g = gain(0); o.frequency.value = midi(n);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16, t + 0.02); g.gain.setTargetAtTime(0.08, t + 0.05, 0.3); g.gain.setTargetAtTime(0, t + len, 0.08);
-    o.connect(g); g.connect(musicBus); o.start(t); o.stop(t + len + 0.5);
-  }
-  function kick(t) {
-    const o = ctx.createOscillator(), g = gain(0); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
-    g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.35); o.connect(g); g.connect(musicBus); o.start(t); o.stop(t + 0.4);
-  }
-  function hit(t, kind) {
-    const src = ctx.createBufferSource(); src.buffer = nodes.hitBuf || (nodes.hitBuf = noiseBuffer('white', 1));
-    const f = kind === 'snare' ? filt('bandpass', 1800, 0.8) : filt('highpass', 7000), g = gain(0);
-    const lvl = kind === 'snare' ? 0.12 : rand(0.025, 0.04), dur = kind === 'snare' ? 0.18 : 0.04;
-    g.gain.setValueAtTime(lvl, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
-    src.connect(f); f.connect(g); g.connect(musicBus); src.start(t, rand(0, 0.5)); src.stop(t + dur + 0.02);
-  }
-  function playStep(t) {
-    const s = step % 16, chord = prog[bar % 4];
-    if (s === 0) { keys(t, chord.map(n => n + 12 * (n < 55)), 1, STEP * 7); bass(t, chord[0] - 12, STEP * 6); }
-    if (s === 10) keys(t, chord.slice(1).map(n => n + 12 * (n < 55)), 0.6, STEP * 5);
-    if (s === 11) bass(t, chord[0] - 12, STEP * 4);
-    if (!world.asleep) {
-      if (s === 0 || s === 7 || (s === 10 && Math.random() < 0.5)) kick(t);
-      if (s === 4 || s === 12) hit(t, 'snare');
-      if (s % 2 === 0 || Math.random() < 0.15) hit(t, 'hat');
-    }
-    if (s % 2 === 0 && Math.random() < 0.16) keys(t, [pick(MELODY)], 0.55, STEP * rand(2, 4));
-    step++;
-    if (step % 16 === 0) { bar++; if (bar % 8 === 0) prog = pick(PROGRESSIONS); }
+  // The music only downloads and plays while someone is listening to it.
+  function playTrack() {
+    if (!track) return;
+    if (on && musicOn) { if (track.paused) track.play().catch(e => console.warn('music could not start', e)); }
+    else if (!track.paused) track.pause();
   }
 
   // ---------------------------------------------------------------- Gino's own little noises (moods.js decides when)
   function voice(t, len, vol) { const g = gain(0); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.08); g.gain.setTargetAtTime(0, t + len - 0.15, 0.08); g.connect(natureBus); return g; }
   const CUES = {
     hum(t) {          // a happy mm-mm-mmm little tune
-      const notes = pick([[64, 67, 69, 67, 72], [60, 64, 67, 64, 65], [67, 69, 72, 69, 67]]);
+      const tunes = [[64, 67, 69, 67, 72], [60, 64, 67, 64, 65], [67, 69, 72, 69, 67]], notes = tunes[Math.floor(Math.random() * tunes.length)];
       notes.forEach((n, i) => {
         const at = t + i * 0.42, o = ctx.createOscillator(), f = filt('lowpass', 900, 1.5), g = voice(at, 0.5, 0.05);
-        o.type = 'triangle'; o.frequency.value = midi(n - 12); lfo(5.5, 4, o.frequency).stop(at + 0.6); o.connect(f); f.connect(g); o.start(at); o.stop(at + 0.6);
+        o.type = 'triangle'; o.frequency.value = 440 * Math.pow(2, (n - 12 - 69) / 12); lfo(5.5, 4, o.frequency).stop(at + 0.6); o.connect(f); f.connect(g); o.start(at); o.stop(at + 0.6);
       });
     },
     yawn(t) {         // a long breathy aaah that slides down
@@ -173,14 +131,11 @@ export function createSound() {
     nodes.wind.gain.setTargetAtTime((0.05 + grey * 0.06 + snow * 0.05) * nat, t, 2);
     nodes.rain.gain.setTargetAtTime(0.06 * wet * nat, t, 2); nodes.rainBody.gain.setTargetAtTime(0.12 * wet * nat, t, 2);
     musicBus.gain.setTargetAtTime(musicOn ? (world.asleep ? 0.55 : 0.8) : 0, t, 0.8);
-    nodes.crackle.gain.setTargetAtTime(0.5, t, 1);
     master.gain.setTargetAtTime(on ? volume * volume : 0, t, 0.4);
     return { day, wet, snow };
   }
   function tick() {
-    const m = mix(), now = ctx.currentTime, ahead = now + 0.5;
-    if (musicOn) while (nextAt < ahead) { playStep(nextAt + (step % 2 ? STEP * SWING : 0)); nextAt += STEP; }
-    else nextAt = now + 0.05;
+    const m = mix(), now = ctx.currentTime;
     if (!natureOn) return;
     const birdy = m.day * (1 - m.wet) * (1 - m.snow) * (1 + smooth(5, 6.5, world.hour) * (1 - smooth(7.5, 9, world.hour)) * 2);
     if (now >= nextBird) { if (Math.random() < birdy) chirp(now + rand(0.05, 0.4), rand(-0.9, 0.9)); nextBird = now + rand(0.8, 3.5) / Math.max(0.4, birdy); }
@@ -195,16 +150,19 @@ export function createSound() {
       on = v;
       if (v && !ctx) { build(); timer = setInterval(tick, 200); }
       if (!ctx) return;
-      if (v) await ctx.resume();
+      if (v) { playTrack(); await ctx.resume(); }   // start the music before any wait, while the click still counts
       mix();
-      if (!v) setTimeout(() => { if (!on) ctx.suspend(); }, 600);
+      if (!v) setTimeout(() => { if (!on) { ctx.suspend(); playTrack(); } }, 600);
     },
     setVolume(v) { volume = Math.min(1, Math.max(0, v)); mix(); },
-    setMusic(v) { musicOn = v; mix(); },
+    setMusic(v) { musicOn = v; mix(); if (on) setTimeout(playTrack, v ? 0 : 900); },
     setNature(v) { natureOn = v; mix(); },
     update(s) { world = { ...world, ...s }; mix(); },
     cue(kind) { if (ctx && on && natureOn && CUES[kind]) CUES[kind](ctx.currentTime + 0.05); },   // hum, yawn, rumble, grumble
-    pause(v) { if (ctx && on) v ? ctx.suspend() : ctx.resume(); },
-    _debug: { get ctx() { return ctx; }, get master() { return master; } },
+    pause(v) {
+      if (!ctx || !on) return;
+      if (v) { ctx.suspend(); track?.pause(); } else { ctx.resume(); playTrack(); }
+    },
+    _debug: { get ctx() { return ctx; }, get master() { return master; }, get track() { return track; } },
   };
 }
