@@ -8,6 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { U, env, B, mat, geos, part, rng, windy, buildItem, buildGino, textSprite, waterMat as sharedWater, ripples } from './kit.js';
+import { createMoods, feelingWords } from './moods.js';
 
 const CELL = 2, GW = 16, GH = 10, WATER_Y = -0.3;
 const LAKE = { x: 7, z: -29, r: 13 };
@@ -293,6 +294,7 @@ export function createWorld(container, tooltip, opts = {}) {
   // ---------------------------------------------------------------- Gino and his things
   const gino = buildGino(); scene.add(gino);
   const G = gino.userData;
+  const moods = createMoods(gino, { onCue: c => opts.onCue?.(c) });   // his feelings, shown in his body (moods.js)
   const itemsGroup = new THREE.Group(); scene.add(itemsGroup);
   const itemObjs = new Map(); let ponds = [];
   let state = { pos: [7, 5], asleep: false, activity: '', habitat: [] }, placed = false;
@@ -596,6 +598,7 @@ export function createWorld(container, tooltip, opts = {}) {
     else if (!R.on) { target.copy(anchor); R.cur = R.next = actFor(s.activity, false); R.aw = 1; }
     else if (sig !== R.sig) { R.sig = sig; goHome(placed ? 40 : 6); }
     if (!placed) { gino.position.copy(target); gino.position.y = groundY(target.x, target.z); placed = true; }
+    moods.update(s);
     const em = s.asleep ? '' : (EMOJI[(s.emotion || '').toLowerCase()] || '');
     if (em !== lastEmote) { lastEmote = em; const cv = G.emote.material.map.image, x = cv.getContext('2d'); x.clearRect(0, 0, 128, 128); if (em) { x.fillStyle = 'rgba(255,255,255,.92)'; x.beginPath(); x.arc(64, 64, 58, 0, 6.3); x.fill(); x.font = '72px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(em, 64, 70); } G.emote.material.map.needsUpdate = true; G.emote.userData.pop = 1; }
   }
@@ -671,7 +674,7 @@ export function createWorld(container, tooltip, opts = {}) {
     const moving = R.cur === R.next && (R.cur === 'swim' || R.cur === 'zoom') && R.arrived;
     const d = v3.subVectors(target, gino.position); d.y = 0;
     const dist = d.length(), walking = carry ? hauling && dist > 0.08 : dist > 0.08 && (!asleep || (R.on && !R.arrived)) && (R.aw < 0.25 || moving), down = asleep && !walking && !carry;
-    const speed = carry ? (carry.phase === 'haul' ? 1.7 : dist > 8 ? 4.4 : 2.3) : inPond ? 1.1 : moving && R.cur === 'zoom' ? 6.5 : dist > 8 ? 4.4 : 2.3, run = speed > 4;
+    const speed = carry ? (carry.phase === 'haul' ? 1.7 : dist > 8 ? 4.4 : 2.3) : (inPond ? 1.1 : moving && R.cur === 'zoom' ? 6.5 : dist > 8 ? 4.4 : 2.3) * (inPond ? 1 : moods.pace), run = speed > 4;
     if (walking) {
       const step = Math.min(dist, speed * dt); d.normalize(); gino.position.addScaledVector(d, step);
       let diff = Math.atan2(-d.z, d.x) - gino.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); gino.rotation.y += diff * Math.min(1, dt * (run ? 12 : 8));
@@ -705,6 +708,8 @@ export function createWorld(container, tooltip, opts = {}) {
     G.head.rotation.y = down || walking ? 0 : hY;
     const blink = down || lie > 0.6 || (c === 'roll' && a > 0.5) || (t % 4.2) < 0.13 || hop > 0.2; G.eyes.forEach(e => e.scale.y = blink ? 0.018 : 0.105);
     G.ears.forEach((e, i) => e.rotation.x = (Math.sin(t * 2.3 + i) > 0.96 ? 0.5 : 0));
+    moods.apply(t, dt, { awake: !down && lie < 0.5 && c !== 'roll' && !carry,   // no yawns or grumbles mid-carry
+      still: walking ? 0.6 : ['swim', 'nap', 'dance', 'hops'].includes(c) ? 1 - a : 1 });
     G.orange.visible = inPond && (!walking || moving);
     G.zs.forEach((z, i) => { const k = (t * 0.35 + i / 3) % 1; z.visible = down || (c === 'nap' && a > 0.7); z.position.set(1.0 + k * 0.5, 1.5 + k * 1.3, 0).applyAxisAngle(up, gino.rotation.y); z.scale.setScalar(0.25 + k * 0.4); z.material.opacity = 1 - k; });
     G.hearts.forEach((h, i) => { const k = (t - heartT) / 1.6 - i * 0.08; h.visible = k > 0 && k < 1; if (h.visible) { h.position.set(Math.cos(i * 1.05) * (0.3 + k * 0.7), 1.6 + k * 1.6, Math.sin(i * 1.05) * (0.3 + k * 0.7)); h.scale.setScalar(0.3 + Math.sin(k * Math.PI) * 0.25); h.material.opacity = 1 - k * k; } });
@@ -787,7 +792,7 @@ export function createWorld(container, tooltip, opts = {}) {
   el.addEventListener('pointermove', ev => {
     const nw = performance.now(); if (nw - hoverT < 60) return; hoverT = nw;
     const h = hit(ev); let text = '';
-    if (h.gino) text = 'Gino' + (doing() ? ' · ' + doing() : '') + (opts.petHint ?? ' (click to pet)');
+    if (h.gino) { const fw = state.asleep ? '' : feelingWords(moods.feeling); text = 'Gino' + (doing() ? ' · ' + doing() : '') + (fw ? ' · ' + fw : '') + (opts.petHint ?? ' (click to pet)'); }
     else if (h.piece) text = `${h.piece.kind === 'dream' ? '🌙' : h.piece.img ? '🎨' : '📝'} “${h.piece.title}”, ${h.piece.kind === 'dream' ? 'a painting of a dream' : h.piece.img ? 'a drawing' : 'a ' + h.piece.kind} by Gino · click to ${h.piece.img ? 'look' : 'read'}`;
     else if (h.board) text = "📌 Gino's creations board";
     else if (h.item) text = `${h.item.emoji || ''} ${h.item.name}${h.item.description ? ' — ' + h.item.description : ''}${h.item.story && opts.onItem ? ' · 📖 click for its story' : ''}`;
@@ -823,9 +828,10 @@ export function createWorld(container, tooltip, opts = {}) {
     setWeather(w) { weatherOverride = w; weather = w || state.weather?.kind || 'clear'; },
     photo() { return new Promise(res => { snapshot = res; }); },
     get doing() { return doing(); },
+    get feeling() { return state.asleep ? '' : feelingWords(moods.feeling); },   // e.g. 'his tummy is rumbling'
     get where() { return [gino.position.x / CELL + (GW - 1) / 2, gino.position.z / CELL + (GH - 1) / 2]; },   // where he is right now, in grid squares
     pet() { hop = 1; heartT = timer.getElapsed(); },
-    _debug: { scene, camera, controls, gino, roam: R, get carry() { return carry && carry.phase; }, get queued() { return carries.length; }, cellPos: (gx, gy) => new THREE.Vector3(cellX(gx), groundY(cellX(gx), cellZ(gy)), cellZ(gy)), skip() { intro = 1; camera.position.copy(HOME); },
+    _debug: { scene, camera, controls, gino, roam: R, moods, get carry() { return carry && carry.phase; }, get queued() { return carries.length; }, cellPos: (gx, gy) => new THREE.Vector3(cellX(gx), groundY(cellX(gx), cellZ(gy)), cellZ(gy)), skip() { intro = 1; camera.position.copy(HOME); },
       snap() { target.copy(anchor); gino.position.set(target.x, groundY(target.x, target.z), target.z); R.arrived = true; },
       // the clip maker directs Gino a little: where he stands, where he walks, what he does once he's there
       place(x, z, turn) { target.set(x, 0, z); gino.position.set(x, groundY(x, z), z); if (turn !== undefined) gino.rotation.y = turn; R.arrived = true; R.until = Infinity; },
