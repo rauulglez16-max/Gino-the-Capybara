@@ -220,3 +220,14 @@ def test_practice_brain_runs_with_all_of_it():
         brain.fake_turn(b)
     assert artstyle.current()
     assert db.q("SELECT status FROM inventions")[0]["status"] in ("building", "built")
+
+
+def test_moving_something_means_gino_carries_it_there():
+    b = body()
+    tools.run("build", {"name": "red bench", "emoji": "🪑", "x": 2, "y": 2, "kind": "bench"}, b)
+    iid = db.q("SELECT id FROM habitat")[0]["id"]
+    out = tools.run("move_item", {"item_id": iid, "x": 9, "y": 6}, b)
+    assert "red bench" in out
+    assert (db.q("SELECT x,y FROM habitat WHERE id=?", (iid,))[0]["x"], b["pos"]) == (9, [9, 6])
+    assert b["activity"] == "moving his red bench"
+    assert tools.run("move_item", {"item_id": 9999, "x": 1, "y": 1}, b) == "No item 9999."

@@ -283,10 +283,16 @@ def run(name: str, a: dict, body: dict) -> str:
     if name == "move_item":
         iid = int(a.get("item_id", 0))
         x, y = _cell(a.get("x"), GRID_W), _cell(a.get("y"), GRID_H)
-        if not db.q("SELECT 1 FROM habitat WHERE id=?", (iid,)):
+        rows = db.q("SELECT name FROM habitat WHERE id=?", (iid,))
+        if not rows:
             return f"No item {iid}."
         db.x("UPDATE habitat SET x=?, y=? WHERE id=?", (x, y, iid))
-        return f"Moved item {iid} to ({x},{y})."
+        # he carries it there himself (the 3D world shows him walking over, lifting it and setting it down)
+        body["energy"] = vitals.clamp(body["energy"] - 2)
+        body["pos"] = [x, y]
+        body["activity"] = f"moving his {rows[0]['name']}"
+        db.event("build", f"carried {rows[0]['name']} to a new spot ({x},{y})")
+        return f"Carried {rows[0]['name']} (item {iid}) to ({x},{y})."
     if name == "remove_item":
         rows = db.q("SELECT name FROM habitat WHERE id=?", (int(a.get("item_id", 0)),))
         if not rows:
