@@ -119,6 +119,18 @@ button.pill:hover,button.pill:focus-visible{color:var(--accent)}
 #dock button:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:10px}
 #dock .dot{position:absolute;top:-2px;right:8px;width:12px;height:12px;border-radius:50%;background:var(--live);border:2px solid var(--card);display:none}
 #dock .dot.on{display:block}
+/* the row of buttons slides sideways when they don't all fit; soft edges + an arrow say there's more */
+#dockRow{display:flex;align-items:flex-end;gap:2px;min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;scroll-behavior:smooth;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;padding-top:5px;margin-top:-5px;scroll-snap-type:x proximity}
+#dockRow::-webkit-scrollbar{display:none}
+#dockRow>button{flex:0 0 auto;scroll-snap-align:start}
+#dock.more-r #dockRow{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 46px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 46px),transparent)}
+#dock.more-l #dockRow{-webkit-mask-image:linear-gradient(90deg,transparent,#000 46px);mask-image:linear-gradient(90deg,transparent,#000 46px)}
+#dock.more-l.more-r #dockRow{-webkit-mask-image:linear-gradient(90deg,transparent,#000 46px,#000 calc(100% - 46px),transparent);mask-image:linear-gradient(90deg,transparent,#000 46px,#000 calc(100% - 46px),transparent)}
+#dock .more{all:unset;box-sizing:border-box;position:absolute;top:50%;width:26px;height:26px;margin-top:-13px;border-radius:50%;display:none;place-items:center;cursor:pointer;background:var(--card);border:1.5px solid var(--edge);color:var(--ink);font:700 16px/1 system-ui,sans-serif;box-shadow:1px 1px 0 var(--drop);z-index:1}
+#dock .more.r{right:4px}#dock .more.l{left:4px}
+#dock.more-r .more.r,#dock.more-l .more.l{display:grid}
+#dock.more-r .more.r{animation:nudge 1.6s ease-in-out 3}
+@keyframes nudge{50%{transform:translateX(3px)}}
 .only-narrow,.only-phone{display:none!important}
 
 #book{position:fixed;left:60px;right:430px;top:150px;bottom:112px;display:none;flex-direction:column;padding:0;overflow:hidden;z-index:4}
@@ -195,7 +207,7 @@ dialog::backdrop{background:rgba(40,28,16,.45)}
   #post{left:16px;right:16px;top:auto;bottom:178px;transform:rotate(-.6deg)}
   #me{max-height:none}
   #dock{left:16px}#map,#mapTag,#tools{display:none!important}
-  #dock button{min-width:0;flex:1}#dock{justify-content:space-between}
+  #dockRow{flex:1}#dockRow>button{flex:1 0 auto;min-width:58px}
   #book{left:16px;right:16px;top:16px;bottom:100px}
   #chat{left:16px;right:16px;width:auto;bottom:100px}
 }
@@ -212,7 +224,8 @@ dialog::backdrop{background:rgba(40,28,16,.45)}
   #bubble{left:10px;right:10px;transform:none;bottom:92px;max-width:none;width:auto;padding-right:14px}
   #bubble .av{width:38px;height:38px}#now{font-size:14px}#thought{font-size:12.5px}
   #dock{left:8px;right:8px;bottom:10px;padding:7px 4px 5px}#dock h2{display:none}
-  #dock .b-tab{display:none!important}.only-phone{display:flex!important}
+  .only-phone{display:flex!important}
+  #dockRow>button{flex:0 0 auto;min-width:62px;padding:0 4px;white-space:nowrap}
   #dock button .badge{width:44px;height:44px}
   #book{left:8px;right:8px;top:8px;bottom:92px}
   #tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}#tabs button{white-space:nowrap;font-size:12.5px;padding:6px 9px}
@@ -246,7 +259,7 @@ dialog::backdrop{background:rgba(40,28,16,.45)}
 <section id="bubble" class="card" aria-live="polite"><svg class="av" viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="18" cy="24" rx="13" ry="9" fill="#8a5a33"/><ellipse cx="29" cy="17" rx="8" ry="7" fill="#8a5a33"/><ellipse cx="34" cy="19" rx="3.5" ry="3" fill="#6b4423"/><circle cx="29" cy="15" r="1.5" fill="#1d130b"/><ellipse cx="25" cy="10.5" rx="2" ry="2.4" fill="#6b4423"/></svg>
   <div><p id="now">Finding Gino…</p><p id="thought"></p></div></section>
 
-<nav id="dock" class="card" aria-label="Gino's book"><h2>📖 Gino's book</h2></nav>
+<nav id="dock" class="card" aria-label="Gino's book"><h2>📖 Gino's book</h2><button class="more l" aria-label="Show earlier buttons" tabindex="-1">‹</button><div id="dockRow"></div><button class="more r" aria-label="Show more buttons" tabindex="-1">›</button></nav>
 <div id="scrim"></div>
 <section id="book" class="card" role="dialog" aria-label="Gino's book"><div class="head"><div id="tabs" role="tablist"></div></div><button class="x" id="bookClose" aria-label="Close">✕</button>
   <div id="panel"></div></section>
@@ -431,11 +444,23 @@ const TABS = [['events','Activity','📜','#f2dcb3'],['videos','Videos','🎬','
   ['dreams','Dreams','🌙','#cdd3f5'],['keepsakes','Keepsakes','🎁','#f7cfd8'],['goals','Goals','🎯','#d4ecc0'],['memories','Memories','🧠','#f2dcb3'],['about','About Gino','🐾','#ead8c2']];
 let tab = 'events';
 const dockBtn = (k, label, emoji, c, cls = '') => `<button data-k="${k}" class="${cls}"><span class="badge" style="--c:${c}">${emoji}</span>${label}${k === 'chat' ? '<i class="dot" id="chatDot"></i>' : ''}</button>`;
-$('#dock').insertAdjacentHTML('beforeend',
+$('#dockRow').insertAdjacentHTML('beforeend',
   dockBtn('world', 'World', '🌿', '#d4ecc0', 'only-phone') + dockBtn('chat', 'Chat', '💬', '#c8e3f2', 'only-narrow') + dockBtn('book', 'Book', '📖', '#f3e1a0', 'only-phone')
   + dockBtn('snack', 'Snack', '🥕', '#f6c7a8', 'only-phone') + dockBtn('recap', 'News', '📮', '#f7cfd8', 'only-phone')
   + TABS.map(([k, l, e, c]) => dockBtn(k, l.replace(' Gino', ''), e, c, 'b-tab')).join(''));
 $('#dock [data-k="recap"]').hidden = true;
+// when the buttons don't all fit (phones), the row slides sideways; show soft edges and arrows where more is hidden
+const dockRow = $('#dockRow');
+function dockEdges() {
+  const max = dockRow.scrollWidth - dockRow.clientWidth;
+  $('#dock').classList.toggle('more-l', dockRow.scrollLeft > 4);
+  $('#dock').classList.toggle('more-r', max > 4 && dockRow.scrollLeft < max - 4);
+}
+dockRow.addEventListener('scroll', dockEdges, {passive: true});
+addEventListener('resize', dockEdges);
+if (window.ResizeObserver) new ResizeObserver(dockEdges).observe(dockRow);
+dockEdges();
+function dockShow(b) { if (!b || dockRow.scrollWidth <= dockRow.clientWidth) return; const r = b.getBoundingClientRect(), R = dockRow.getBoundingClientRect(); if (r.left < R.left + 40 || r.right > R.right - 40) dockRow.scrollLeft += (r.left + r.width / 2) - (R.left + R.width / 2); }
 $('#tabs').innerHTML = TABS.map(([k, l, e]) => `<button data-k="${k}" role="tab">${e} ${l}</button>`).join('');
 $('#tabs').onclick = e => { const k = e.target.closest('button')?.dataset.k; if (k) { tab = k; renderTab(); } };
 const bookOpen = () => $('#book').classList.contains('open');
@@ -450,10 +475,12 @@ function openBook(k) {
   else renderTab();
   $('#dock [data-k="' + (tab === 'recap' ? 'recap' : 'book') + '"]')?.classList.add('on');
   $('#dock .b-tab[data-k="' + tab + '"]')?.classList.add('on');
+  dockShow($('#dock .b-tab.on') || $('#dock button.on:not(.more)'));
   $('#bookClose').focus({preventScroll: true});
 }
 function openChat() { closeAll(); $('#chat').classList.add('open'); $('#scrim').classList.add('on'); $('#chatDot').classList.remove('on'); $('#dock [data-k="chat"]').classList.add('on'); $('#msgs').scrollTop = 1e9; $('#chatIn').focus(); }
 $('#dock').onclick = e => {
+  const m = e.target.closest('.more'); if (m) { dockRow.scrollLeft += (m.classList.contains('r') ? 1 : -1) * dockRow.clientWidth * 0.7; return; }
   const b = e.target.closest('button'); if (!b) return; const k = b.dataset.k, was = b.classList.contains('on');
   if (k === 'world' || was) return closeAll();
   if (k === 'chat') return openChat();
