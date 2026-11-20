@@ -477,6 +477,99 @@ export function createWorld(container, tooltip, opts = {}) {
     s.traverse(n => { n.userData.item = o.userData.item; }); o.add(s);
   }
 
+  // ---------------------------------------------------------------- carrying things to a new spot
+  // When his brain moves something, the thing doesn't slide there by itself: Gino trots over, nudges his nose under
+  // it, swings it onto his back, carries it to the new spot and sets it down. Several moves wait their turn.
+  const carries = []; let carry = null;
+  const CLEAR = { pond: 2.3, fountain: 1.4, garden: 1.3, house: 1.6, picnic: 1.3, path: 1.2, bed: 1.2, tent: 1.5, well: 0.9, windmill: 0.9, pumpkins: 1.0, campfire: 0.9 };
+  function regrass() {   // re-trample the grass round his things (waits until nothing is being carried)
+    if (carry || carries.length) return;
+    const gsig = state.habitat.map(i => [i.id, i.x, i.y, i.kind, i.size].join()).join(';') + (board ? ';board' : '');
+    if (gsig !== grass.userData.sig) { grass.userData.sig = gsig; layGrass([...[...itemObjs.values()].map(o => [o.position.x, o.position.z, (CLEAR[o.userData.kind] || 0.65) * (o.userData.grow || o.scale.x || 1)]), ...(board ? [[BOARD_AT.x, BOARD_AT.z + 1.6, 0.6]] : [])]); }
+  }
+  function queueCarry(o, x, z) {
+    const to = new THREE.Vector3(x, groundY(x, z), z), had = carry?.o === o ? carry : carries.find(c => c.o === o);
+    if (had) { had.to.copy(to); return; }
+    if (carries.length >= 6) { o.position.copy(to); return; }    // a big rearrangement: the rest just appear
+    carries.push({ o, to });
+  }
+  function dropCarry(o, snap) {   // the thing vanished or changed shape: forget about carrying it
+    for (let i = carries.length - 1; i >= 0; i--) if (carries[i].o === o) { if (snap) o.position.copy(carries[i].to); carries.splice(i, 1); }
+    if (carry?.o === o) { if (snap) { o.position.copy(carry.to); o.rotation.y = carry.spin; o.scale.setScalar(carry.base); } o.userData.carried = false; carry = null; }
+  }
+  function solidBox(o) {   // its size without the floating book, smoke puffs and sprites
+    const b = new THREE.Box3(), tb = new THREE.Box3(); o.updateWorldMatrix(true, true);
+    o.traverse(n => { if (!n.isMesh || n.isSprite || n.userData.puff || !n.geometry) return; if (!n.geometry.boundingBox) n.geometry.computeBoundingBox(); b.union(tb.copy(n.geometry.boundingBox).applyMatrix4(n.matrixWorld)); });
+    return b.isEmpty() ? b.setFromCenterAndSize(o.position.clone().setY(o.position.y + 0.5), v3.set(1, 1, 1)) : b;
+  }
+  const NOSE = 1.15;   // how far in front of his middle his nose is
+  function besideIt(p, rad) {   // where to stand to reach something at p: on his side of it, nose against it
+    const d = new THREE.Vector3(gino.position.x - p.x, 0, gino.position.z - p.z);
+    if (d.lengthSq() < 1e-4) d.set(1, 0, 0);
+    return d.normalize().multiplyScalar(rad + NOSE).add(p).setY(0);
+  }
+  function startCarry(c) {
+    const o = c.o; carry = c;
+    if (o.userData.grow) { o.scale.setScalar(o.userData.grow); o.userData.grow = 0; }
+    c.from = o.position.clone(); c.spin = o.rotation.y; c.base = o.scale.x;
+    const box = solidBox(o), size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+    c.rad = Math.min(2.6, Math.max(0.35, Math.max(size.x, size.z) / 2));
+    c.k = Math.min(1, 1.25 / Math.max(size.x, size.y * 1.3, size.z, 0.01));        // big things shrink down to fit on his back
+    c.h = size.y * c.k;
+    c.foot = o.worldToLocal(ctr.setY(box.min.y));                               // bottom middle, in its own units
+    c.phase = 'fetch'; c.t0 = 0; c.name = o.userData.item?.name || 'things';
+    target.copy(besideIt(c.from, c.rad));
+    R.label = ''; R.face = null; R.pond = null; R.arrived = true; R.cur = R.next = 'idle'; R.aw = 0;
+  }
+  const backAt = new THREE.Vector3(), bob3 = new THREE.Vector3();
+  function onBack(o, k, scale) {   // put o so its bottom middle sits on his back (k: 0 = where it was, 1 = on his back)
+    G.body.localToWorld(backAt.set(-0.12, 1.3, 0));
+    const turn = THREE.MathUtils.lerp(carry.spin, gino.rotation.y + carry.rel, k);
+    o.rotation.y = turn; o.scale.setScalar(scale);
+    return backAt.sub(bob3.copy(carry.foot).multiplyScalar(scale).applyAxisAngle(up, turn));
+  }
+  function faceTo(p, dt) {
+    let diff = Math.atan2(-(p.z - gino.position.z), p.x - gino.position.x) - gino.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    gino.rotation.y += diff * Math.min(1, dt * 5); return Math.abs(diff);
+  }
+  const ease = k => k * k * (3 - 2 * k);
+  function stepCarry(t, dt) {   // returns how far his head should dip (0..1)
+    const c = carry, o = c.o, near = Math.hypot(target.x - gino.position.x, target.z - gino.position.z) < 0.1;
+    if (c.phase === 'fetch' && near) { c.phase = 'aim'; c.t0 = t; }
+    if (c.phase === 'aim' && (faceTo(c.from, dt) < 0.06 || t - c.t0 > 1.5)) { c.phase = 'lift'; c.t0 = t; c.rel = c.spin - gino.rotation.y; o.userData.carried = true; }
+    if (c.phase === 'lift') {
+      const k = Math.min(1, (t - c.t0) / 1.4), m = ease(Math.max(0, (k - 0.3) / 0.7));
+      const at = onBack(o, m, THREE.MathUtils.lerp(c.base, c.base * c.k, m));
+      o.position.lerpVectors(c.from, at, m); o.position.y += Math.sin(m * Math.PI) * 0.7 + (k < 0.3 ? Math.abs(Math.sin(k * 40)) * 0.04 : 0);
+      if (k >= 1) { c.phase = 'haul'; target.copy(besideIt(c.to, c.rad)); }
+      return k < 0.3 ? ease(k / 0.3) : 1 - ease(Math.min(1, (k - 0.3) / 0.5));
+    }
+    if (c.phase === 'haul') {
+      o.position.copy(onBack(o, 1, c.base * c.k)); o.position.y += Math.sin(t * 9) * 0.015;
+      if (near) { c.phase = 'aim2'; c.t0 = t; }
+      return 0;
+    }
+    if (c.phase === 'aim2') {
+      o.position.copy(onBack(o, 1, c.base * c.k));
+      if (faceTo(c.to, dt) < 0.06 || t - c.t0 > 1.5) { c.phase = 'drop'; c.t0 = t; c.at = o.position.clone(); c.rel2 = o.rotation.y; }
+      return 0;
+    }
+    if (c.phase === 'drop') {
+      const k = Math.min(1, (t - c.t0) / 1.3), m = ease(Math.min(1, k / 0.75));
+      o.position.lerpVectors(c.at, c.to, m); o.position.y += Math.sin(m * Math.PI) * 0.6;
+      o.rotation.y = THREE.MathUtils.lerp(c.rel2, c.spin + Math.round((c.rel2 - c.spin) / 6.2832) * 6.2832, m);
+      o.scale.setScalar(THREE.MathUtils.lerp(c.base * c.k, c.base, m));
+      if (k >= 1) {   // set down: a happy little hop, then he stands back and looks at it
+        o.position.copy(c.to); o.rotation.y = c.spin; o.scale.setScalar(c.base); o.userData.carried = false; carry = null; hop = 0.8;
+        if (R.on) { R.cur = R.next = 'look'; R.face = c.to.clone(); R.arrived = true; R.until = t + 7; R.aw = 0; R.label = `admiring where he put the ${c.name}`; target.copy(gino.position); }
+        else target.copy(anchor);
+        regrass();
+      }
+      return k < 0.75 ? ease(Math.min(1, k / 0.45)) : 1 - ease((k - 0.75) / 0.25);
+    }
+    return 0;
+  }
+
   function update(s) {
     state = s; weather = weatherOverride || s.weather?.kind || 'clear'; env.art = s.art || [];
     const seen = new Set();
@@ -484,22 +577,25 @@ export function createWorld(container, tooltip, opts = {}) {
       seen.add(it.id);
       const sig = [it.name, it.emoji, it.kind, it.color, it.size, !!it.story].join('|');
       let o = itemObjs.get(it.id);
-      if (o && o.userData.sig !== sig) { itemsGroup.remove(o); dispose(o); o = null; }
+      if (o && o.userData.sig !== sig) { dropCarry(o, false); itemsGroup.remove(o); dispose(o); o = null; }
       if (o) o.traverse(n => { n.userData.item = it; });   // a story can change without the shape changing
       if (!o) { o = buildItem(it); o.userData.sig = sig; if (it.story) keepsakeMark(o); itemsGroup.add(o); itemObjs.set(it.id, o); o.scale.setScalar(placed ? 0.01 : Math.min(2.5, Math.max(0.4, it.size || 1))); o.userData.grow = Math.min(2.5, Math.max(0.4, it.size || 1)); }
-      const x = cellX(it.x), z = cellZ(it.y); o.position.set(x, groundY(x, z) + (o.userData.kind === 'boat' ? 0 : 0), z);
+      const x = cellX(it.x), z = cellZ(it.y), cell = it.x + ',' + it.y;
+      if (o.userData.cell && o.userData.cell !== cell && placed && !s.asleep) queueCarry(o, x, z);   // he moved it: go and carry it
+      else if (carry?.o === o || carries.some(c => c.o === o)) { if (o.userData.cell !== cell) queueCarry(o, x, z); }
+      else o.position.set(x, groundY(x, z), z);
+      o.userData.cell = cell;
     }
-    for (const [id, o] of itemObjs) if (!seen.has(id)) { itemsGroup.remove(o); dispose(o); itemObjs.delete(id); }
+    for (const [id, o] of itemObjs) if (!seen.has(id)) { dropCarry(o, false); itemsGroup.remove(o); dispose(o); itemObjs.delete(id); }
     ponds = [...itemObjs.values()].filter(o => o.userData.kind === 'pond');
-    const CLEAR = { pond: 2.3, fountain: 1.4, garden: 1.3, house: 1.6, picnic: 1.3, path: 1.2, bed: 1.2, tent: 1.5, well: 0.9, windmill: 0.9, pumpkins: 1.0, campfire: 0.9 };
-    const gsig = s.habitat.map(i => [i.id, i.x, i.y, i.kind, i.size].join()).join(';') + (board ? ';board' : '');
-    if (gsig !== grass.userData.sig) { grass.userData.sig = gsig; layGrass([...[...itemObjs.values()].map(o => [o.position.x, o.position.z, (CLEAR[o.userData.kind] || 0.65) * (o.userData.grow || o.scale.x || 1)]), ...(board ? [[BOARD_AT.x, BOARD_AT.z + 1.6, 0.6]] : [])]); }
+    regrass();
     hangArt();
     anchor.set(cellX(s.pos[0]) + 1.0, 0, cellZ(s.pos[1]) + 1.0);
     const p = ponds.find(o => Math.hypot(o.position.x - cellX(s.pos[0]), o.position.z - cellZ(s.pos[1])) < 0.1);
     if (p) anchor.set(p.position.x, 0, p.position.z);
     const sig = [s.pos, s.activity, !!s.asleep].join('|');   // his brain decided something new: go there and do it for a while
-    if (!R.on) { target.copy(anchor); R.cur = R.next = actFor(s.activity, false); R.aw = 1; }
+    if (carry) R.sig = sig;   // busy carrying something; he'll get back to his day afterwards
+    else if (!R.on) { target.copy(anchor); R.cur = R.next = actFor(s.activity, false); R.aw = 1; }
     else if (sig !== R.sig) { R.sig = sig; goHome(placed ? 40 : 6); }
     if (!placed) { gino.position.copy(target); gino.position.y = groundY(target.x, target.z); placed = true; }
     moods.update(s);
@@ -560,8 +656,13 @@ export function createWorld(container, tooltip, opts = {}) {
     if (performance.now() > idleAt && !follow) controls.autoRotate = true;
 
     // Gino
-    const asleep = state.asleep, inPond = ponds.some(o => Math.hypot(o.position.x - gino.position.x, o.position.z - gino.position.z) < 1.3 * o.scale.x);
-    if (R.on && placed) {
+    if (!carry && carries.length && placed) {
+      if (state.asleep) { for (const c of carries) c.o.position.copy(c.to); carries.length = 0; regrass(); }
+      else startCarry(carries.shift());
+    }
+    const dip = carry ? stepCarry(t, dt) : 0, hauling = carry && (carry.phase === 'fetch' || carry.phase === 'haul');
+    const asleep = state.asleep, inPond = ponds.some(o => !o.userData.carried && Math.hypot(o.position.x - gino.position.x, o.position.z - gino.position.z) < 1.3 * o.scale.x);
+    if (R.on && placed && !carry) {
       if (asleep) { if (R.next !== 'sleep') { R.next = 'sleep'; R.label = ''; R.face = null; R.arrived = false; target.copy(anchor); } }
       else if (R.next === 'sleep') goHome(6);
       else if (R.arrived && t > R.until) pickNext();
@@ -572,15 +673,15 @@ export function createWorld(container, tooltip, opts = {}) {
     }
     const moving = R.cur === R.next && (R.cur === 'swim' || R.cur === 'zoom') && R.arrived;
     const d = v3.subVectors(target, gino.position); d.y = 0;
-    const dist = d.length(), walking = dist > 0.08 && (!asleep || (R.on && !R.arrived)) && (R.aw < 0.25 || moving), down = asleep && !walking;
-    const speed = (inPond ? 1.1 : moving && R.cur === 'zoom' ? 6.5 : dist > 8 ? 4.4 : 2.3) * (inPond ? 1 : moods.pace), run = speed > 4;
+    const dist = d.length(), walking = carry ? hauling && dist > 0.08 : dist > 0.08 && (!asleep || (R.on && !R.arrived)) && (R.aw < 0.25 || moving), down = asleep && !walking && !carry;
+    const speed = carry ? (carry.phase === 'haul' ? 1.7 : dist > 8 ? 4.4 : 2.3) : (inPond ? 1.1 : moving && R.cur === 'zoom' ? 6.5 : dist > 8 ? 4.4 : 2.3) * (inPond ? 1 : moods.pace), run = speed > 4;
     if (walking) {
       const step = Math.min(dist, speed * dt); d.normalize(); gino.position.addScaledVector(d, step);
       let diff = Math.atan2(-d.z, d.x) - gino.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); gino.rotation.y += diff * Math.min(1, dt * (run ? 12 : 8));
     } else if (R.face && R.arrived && !asleep && R.cur !== 'hops') {
       let diff = Math.atan2(-(R.face.z - gino.position.z), R.face.x - gino.position.x) - gino.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); gino.rotation.y += diff * Math.min(1, dt * 4);
     }
-    if (!R.arrived && dist <= 0.08) { R.arrived = true; R.until = t + R.hold; if (R.next === 'zoom') R.zc = gino.position.clone(); }
+    if (!R.arrived && dist <= 0.08 && !carry) { R.arrived = true; R.until = t + R.hold; if (R.next === 'zoom') R.zc = gino.position.clone(); }
     if (R.cur !== R.next || !R.arrived) { R.aw = Math.max(0, R.aw - dt * 3.5); if (R.aw < 0.02 && R.arrived) R.cur = R.next; }
     else if (!walking || moving) R.aw = Math.min(1, R.aw + dt * 2.2);
     const c = R.cur, a = asleep ? 0 : R.aw * R.aw * (3 - 2 * R.aw);
@@ -597,22 +698,23 @@ export function createWorld(container, tooltip, opts = {}) {
       + 0.63 * (1 - Math.cos(rollX)) + (c === 'dance' ? Math.abs(Math.sin(t * 6)) * 0.14 * a : 0) + (c === 'sit' ? 0.03 * a : 0);
     G.body.position.z = c === 'scratch' ? Math.sin(t * 6) * 0.05 * a : 0;
     G.body.rotation.x = rollX + bRx * a + (inPond ? Math.sin(t * 0.9) * 0.04 : 0);
-    G.body.rotation.z = bRz * a + (run && walking ? Math.sin(t * gait) * 0.05 : 0);
+    G.body.rotation.z = bRz * a + (run && walking ? Math.sin(t * gait) * 0.05 : 0) - dip * 0.14 + (carry?.phase === 'haul' ? 0.035 : 0);   // nose down to scoop things up
     G.body.scale.set(1, 1 + Math.sin(t * (lie > 0.5 ? 1.1 : 1.8)) * 0.022, 1);
     const paws = c === 'roll' ? 0.5 : c === 'dance' ? 0.3 : c === 'swim' ? 0.4 : 0;
     G.legs.forEach((l, i) => { l.rotation.z = walking ? Math.sin(t * gait + (i % 3 ? Math.PI : 0)) * (run ? 0.85 : inPond ? 0.4 : 0.6) : Math.sin(t * 7 + i * 1.7) * paws * a; l.scale.y = (1 - 0.75 * lie) * (i > 1 ? 1 + (rear - 1) * a : 1); });
     const hZ = { graze: -0.4 + Math.sin(t * 7) * 0.12, sniff: -0.3 + Math.sin(t * 11) * 0.04, sit: -0.28, stretch: 0.4, scratch: 0.18, look: 0.26, dance: Math.sin(t * 6) * 0.16, roll: 0.2 }[c] || 0;
     const hY = c === 'look' ? Math.sin(t * 0.8) * 0.6 : c === 'sniff' ? Math.sin(t * 1.3) * 0.25 : c === 'graze' || c === 'roll' ? 0 : Math.sin(t * 0.4) * 0.35;
-    G.head.rotation.z = -0.35 * lie + hZ * a + Math.sin(t * 0.7) * 0.05 * (1 - a) + hop * 0.3;
+    G.head.rotation.z = -0.35 * lie + hZ * a + Math.sin(t * 0.7) * 0.05 * (1 - a) + hop * 0.3 - dip * 0.55 + (carry?.phase === 'haul' ? 0.12 : 0);
     G.head.rotation.y = down || walking ? 0 : hY;
     const blink = down || lie > 0.6 || (c === 'roll' && a > 0.5) || (t % 4.2) < 0.13 || hop > 0.2; G.eyes.forEach(e => e.scale.y = blink ? 0.018 : 0.105);
     G.ears.forEach((e, i) => e.rotation.x = (Math.sin(t * 2.3 + i) > 0.96 ? 0.5 : 0));
-    moods.apply(t, dt, { awake: !down && lie < 0.5 && c !== 'roll', still: walking ? 0.6 : ['swim', 'nap', 'dance', 'hops'].includes(c) ? 1 - a : 1 });
+    moods.apply(t, dt, { awake: !down && lie < 0.5 && c !== 'roll' && !carry,   // no yawns or grumbles mid-carry
+      still: walking ? 0.6 : ['swim', 'nap', 'dance', 'hops'].includes(c) ? 1 - a : 1 });
     G.orange.visible = inPond && (!walking || moving);
     G.zs.forEach((z, i) => { const k = (t * 0.35 + i / 3) % 1; z.visible = down || (c === 'nap' && a > 0.7); z.position.set(1.0 + k * 0.5, 1.5 + k * 1.3, 0).applyAxisAngle(up, gino.rotation.y); z.scale.setScalar(0.25 + k * 0.4); z.material.opacity = 1 - k; });
     G.hearts.forEach((h, i) => { const k = (t - heartT) / 1.6 - i * 0.08; h.visible = k > 0 && k < 1; if (h.visible) { h.position.set(Math.cos(i * 1.05) * (0.3 + k * 0.7), 1.6 + k * 1.6, Math.sin(i * 1.05) * (0.3 + k * 0.7)); h.scale.setScalar(0.3 + Math.sin(k * Math.PI) * 0.25); h.material.opacity = 1 - k * k; } });
     const ep = G.emote.userData.pop = Math.max(0, (G.emote.userData.pop || 0) - dt * 1.5);
-    G.emote.visible = !!lastEmote; G.emote.position.y = 2.15 + Math.sin(t * 1.5) * 0.05 - 0.3 * sleepK; G.emote.scale.setScalar(0.6 + Math.sin(ep * Math.PI) * 0.35);
+    G.emote.visible = !!lastEmote; G.emote.position.y = 2.15 + Math.sin(t * 1.5) * 0.05 - 0.3 * sleepK + (carry?.o.userData.carried ? carry.h + 0.15 : 0); G.emote.scale.setScalar(0.6 + Math.sin(ep * Math.PI) * 0.35);
 
     // living details on built things
     itemsGroup.traverse(nd => {
@@ -676,7 +778,8 @@ export function createWorld(container, tooltip, opts = {}) {
     if (bh && (!ih || bh.distance < ih.distance)) return { board: true, piece: bh.object === boardFace ? boardHit(bh) : null, r };
     return { item: ih?.object.userData.item, obj: ih?.object, r };
   }
-  const doing = () => state.asleep ? 'sleeping' : R.on && R.label ? (R.arrived ? R.label : 'trotting off somewhere') : state.activity;
+  const doing = () => carry ? (carry.phase === 'fetch' || carry.phase === 'aim' ? `going to pick up the ${carry.name}` : carry.phase === 'lift' ? `lifting the ${carry.name}` : carry.phase === 'drop' ? `setting down the ${carry.name}` : `carrying the ${carry.name} to its new spot`)
+    : state.asleep ? 'sleeping' : R.on && R.label ? (R.arrived ? R.label : 'trotting off somewhere') : state.activity;
   const el = renderer.domElement;
   // Mac trackpads in Safari: a pinch sends its own gesture events and zooms the whole page (or flips to the tab
   // overview) unless we take it. Turn the pinch into camera zoom instead. Other browsers send it as ctrl+wheel,
@@ -728,7 +831,7 @@ export function createWorld(container, tooltip, opts = {}) {
     get feeling() { return state.asleep ? '' : feelingWords(moods.feeling); },   // e.g. 'his tummy is rumbling'
     get where() { return [gino.position.x / CELL + (GW - 1) / 2, gino.position.z / CELL + (GH - 1) / 2]; },   // where he is right now, in grid squares
     pet() { hop = 1; heartT = timer.getElapsed(); },
-    _debug: { scene, camera, controls, gino, roam: R, moods, cellPos: (gx, gy) => new THREE.Vector3(cellX(gx), groundY(cellX(gx), cellZ(gy)), cellZ(gy)), skip() { intro = 1; camera.position.copy(HOME); },
+    _debug: { scene, camera, controls, gino, roam: R, moods, get carry() { return carry && carry.phase; }, get queued() { return carries.length; }, cellPos: (gx, gy) => new THREE.Vector3(cellX(gx), groundY(cellX(gx), cellZ(gy)), cellZ(gy)), skip() { intro = 1; camera.position.copy(HOME); },
       snap() { target.copy(anchor); gino.position.set(target.x, groundY(target.x, target.z), target.z); R.arrived = true; } },
   };
   return api;

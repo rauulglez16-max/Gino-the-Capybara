@@ -67,7 +67,7 @@ apply() {  # apply <commit> <previous commit>: put that code in place and restar
   fi
   # Pick up changes to the service files themselves
   local f changed=""
-  for f in gino.service gino-update.service gino-update.timer; do
+  for f in gino.service gino-update.service gino-update.timer gino-stream.service; do
     if ! cmp -s "$APP/deploy/systemd/$f" "/etc/systemd/system/$f"; then
       install -m 644 "$APP/deploy/systemd/$f" /etc/systemd/system/
       changed=1
@@ -76,6 +76,7 @@ apply() {  # apply <commit> <previous commit>: put that code in place and restar
   [ -n "$changed" ] && systemctl daemon-reload
   chmod +x "$APP/deploy/gino"
   systemctl restart gino
+  systemctl try-restart gino-stream 2>/dev/null || true  # only if the live stream is on: picks up the new code
 }
 
 backup_now() {  # backup_now <base> daily|before-update|manual
