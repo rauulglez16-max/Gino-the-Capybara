@@ -55,11 +55,18 @@ window.setupClip = async (j) => {
     key: '', season: j.state.weather?.season, autoQuality: false, lite: true,
     clock: () => hourNow, director: direct });
   w.setQuality('low');
+  // a new thing he made starts beside where it will go: in the clip he carries it to its spot
+  if (j.carry) j.state = { ...j.state, habitat: j.state.habitat.map(it => it.id === j.carry.id ? { ...it, x: j.carry.from[0], y: j.carry.from[1] } : it) };
   w.update(j.state);
-  const { controls, roam, skip, snap } = w._debug;
+  const { controls, roam, skip, snap, place, cellPos } = w._debug;
   controls.enableDamping = false; controls.autoRotate = false; controls.enabled = false;
-  roam.on = true;            // let him wander about like on /live
+  controls.minDistance = 0.5;   // close-ups of his face
+  roam.on = true;            // let him move about like on /live
   skip(); snap();
+  if (j.start) {   // where he stands when the clip begins, already facing where he's about to go
+    const a = cellPos(j.start.at[0], j.start.at[1]), b = j.start.facing ? cellPos(j.start.facing[0], j.start.facing[1]) : null;
+    place(a.x, a.z, b ? Math.atan2(-(b.z - a.z), b.x - a.x) : undefined);
+  }
   let t = 0; shots = j.shots.map(s => { const o = { ...s, t0: t, t1: t + s.dur }; t += s.dur; return o; });
   total = t;
   out = document.createElement('canvas'); out.width = W; out.height = H; g = out.getContext('2d');
@@ -71,28 +78,70 @@ window.setupClip = async (j) => {
 function shotAt(t) { return shots.find(s => t < s.t1) || shots[shots.length - 1]; }
 
 // where the camera is, for this moment of this shot
+//   around: 'gino' (his middle), 'face' (his face, for close-ups), 'home' (the middle of his meadow) or [x, y] grid
+//   from/to: [distance, height, angle] at the start and end of the shot; angle 0 is straight in front of his face,
+//   PI is behind him. track: keep the angle to his face as he turns (follow him, or stay in front of his face).
+const faceV = () => w._debug.face(new THREE.Vector3());
 function direct() {
   const t = frame / job.fps, s = shotAt(t), k = ease(clamp01((t - s.t0) / s.dur));
   const { camera, controls, gino, cellPos } = w._debug;
-  const c = s.cam || {};
+  const c = s.cam || {}, onHim = c.around === 'gino' || c.around === 'face';
   let centre;
-  if (c.around === 'gino') centre = new THREE.Vector3(gino.position.x, gino.position.y + 0.7, gino.position.z);
+  if (c.around === 'face') centre = faceV();
+  else if (c.around === 'gino') centre = new THREE.Vector3(gino.position.x, gino.position.y + 0.7, gino.position.z);
   else if (Array.isArray(c.around)) centre = cellPos(c.around[0], c.around[1]).add(new THREE.Vector3(0, 0.8, 0));
   else centre = new THREE.Vector3(0, 0.6, 0);
   const a = c.from || [24, 12, -0.6], b = c.to || a;
   const dist = lerp(a[0], b[0], k), high = lerp(a[1], b[1], k), ang = lerp(a[2], b[2], k);
-  if (s.__face === undefined) s.__face = c.around === 'gino' ? gino.rotation.y : 0;   // fixed for the shot, so the camera doesn't swing as he turns
+  // which way he faces: fixed for the shot (so the camera doesn't swing with every step), or followed gently
+  if (s.__face === undefined) s.__face = onHim ? gino.rotation.y : 0;
+  else if (c.track && onHim) { let d = gino.rotation.y - s.__face; d = Math.atan2(Math.sin(d), Math.cos(d)); s.__face += d * 0.08; }
   const yaw = s.__face + ang;
   const want = new THREE.Vector3(centre.x + Math.cos(yaw) * dist, centre.y + high, centre.z - Math.sin(yaw) * dist);
-  // follow Gino smoothly rather than jerking with every step
-  if (s.__seen) { camera.position.lerp(want, 0.18); controls.target.lerp(centre, 0.18); }
+  // follow Gino smoothly rather than jerking with every step (close-ups follow more tightly)
+  const f = c.around === 'face' ? 0.35 : 0.18;
+  if (s.__seen) { camera.position.lerp(want, f); controls.target.lerp(centre, f); }
   else { camera.position.copy(want); controls.target.copy(centre); s.__seen = true; }
+  if (onHim) clearView(camera.position, controls.target);
+  else for (const o of w._debug.items.children) o.visible = true;
+}
+
+// in close-ups nothing may stand between the camera and Gino: things in the way step out of the picture
+const FLAT = new Set(['pond', 'path', 'bridge', 'garden']);
+let seg, rel, box, sph;
+function clearView(from, to) {
+  if (!seg) { seg = new THREE.Vector3(); rel = new THREE.Vector3(); box = new THREE.Box3(); sph = new THREE.Sphere(); }
+  seg.subVectors(to, from); const len2 = seg.lengthSq() || 1;
+  for (const o of w._debug.items.children) {
+    if (o.userData.carried || FLAT.has(o.userData.kind)) { o.visible = true; continue; }
+    if (o.userData.r === undefined) { box.setFromObject(o).getBoundingSphere(sph); o.userData.r = Math.min(2.5, sph.radius); o.userData.mid = sph.center.y - o.position.y; }
+    rel.copy(o.position); rel.y += o.userData.mid;
+    const k = clamp01(rel.clone().sub(from).dot(seg) / len2);
+    const d = rel.distanceTo(seg.clone().multiplyScalar(k).add(from));
+    o.visible = !(k < 0.92 && d < o.userData.r * 0.85 + 0.25);
+  }
 }
 
 function startShot(s) {
   hourNow = s.hour[0];
-  w.update({ ...job.state, asleep: !!s.asleep, activity: s.activity || job.state.activity });
+  const st = { ...job.state, asleep: !!s.asleep, activity: s.activity || job.state.activity, emotion: s.emotion || job.state.emotion };
+  if (s.carry && job.carry) {   // put the new thing's real spot back: he picks it up and carries it there
+    job.state = { ...job.state, habitat: job.state.habitat.map(it => it.id === job.carry.id ? { ...it, x: job.carry.to[0], y: job.carry.to[1] } : it) };
+    st.habitat = job.state.habitat;
+  }
+  w.update(st);
   w.setWeather(s.weather || null);
+  const { walkTo, pose, itemPos, gino } = w._debug;
+  if (s.go) {   // walk over to one of his things and stand facing it
+    const p = itemPos(s.go.id);
+    if (p) {
+      const d = new THREE.Vector3(gino.position.x - p.x, 0, gino.position.z - p.z);
+      if (d.lengthSq() < 1e-4) d.set(1, 0, 0);
+      const stand = d.setLength(s.go.near || 1.9).add(p);
+      walkTo(stand.x, stand.z, s.go.act || 'look', p);
+    }
+  } else if (s.pose && !s.carry) pose(s.pose);
+  if (s.pet) w.pet();   // a happy hop and a few hearts
 }
 
 function wrap(text, maxW) {
@@ -118,6 +167,35 @@ function caption(text, a, y, style) {
   g.shadowColor = 'transparent';
   g.fillStyle = big ? '#4a3420' : '#3b2a1a'; g.textAlign = 'center'; g.textBaseline = 'middle';
   lines.forEach((l, i) => g.fillText(l, W / 2, top + pad * 0.65 + lh * (i + 0.5)));
+  g.restore();
+}
+
+// a speech bubble beside his face, with a little tail pointing at him, as if he's saying it
+function speech(text, a) {
+  if (a <= 0) return;
+  const { camera } = w._debug;
+  const p = faceV().project(camera), top = faceV().add(new THREE.Vector3(0, 0.55, 0)).project(camera);
+  if (p.z > 1) return;   // he's behind the camera
+  const fx = (p.x + 1) / 2 * W, fy = (1 - p.y) / 2 * H, headR = Math.max(20, Math.abs((1 - top.y) / 2 * H - fy));
+  g.save(); g.globalAlpha = a;
+  const size = Math.round(W * 0.064);
+  g.font = `700 ${size}px Caveat, 'Comic Sans MS', cursive`;
+  const lines = wrap(text, W * 0.62), lh = size * 1.08, pad = size * 0.5;
+  const bw = Math.max(...lines.map(l => g.measureText(l).width)) + pad * 2, bh = lines.length * lh + pad * 1.2;
+  const gap = Math.min(H * 0.16, headR * 1.15 + size * 0.6);
+  let by = fy - gap - bh, below = false;
+  if (by < H * 0.25) { by = Math.min(H * 0.8 - bh, fy + gap); below = true; }   // no room above: say it from below
+  by += (1 - a) * 14;
+  const bx = Math.max(W * 0.05, Math.min(W * 0.95 - bw, fx - bw * 0.35));
+  const tipX = Math.max(bx + size, Math.min(bx + bw - size, fx)), tipY = below ? fy + headR * 0.45 : fy - headR * 0.45;
+  const baseY = below ? by : by + bh;
+  g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 18; g.shadowOffsetY = 6;
+  g.fillStyle = 'rgba(255,255,255,.95)';
+  roundRect(bx, by, bw, bh, size * 0.7); g.fill();
+  g.beginPath(); g.moveTo(tipX - size * 0.45, baseY); g.lineTo(lerp(tipX, fx, 0.5), lerp(baseY, tipY, 0.55)); g.lineTo(tipX + size * 0.2, baseY); g.closePath(); g.fill();
+  g.shadowColor = 'transparent';
+  g.fillStyle = '#3b2a1a'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  lines.forEach((l, i) => g.fillText(l, bx + bw / 2, by + pad * 0.6 + lh * (i + 0.5)));
   g.restore();
 }
 
@@ -147,15 +225,20 @@ function overlays(t) {
   if (s.art) drawArt(s, t);
   for (const c of s.captions || []) {
     const a0 = s.t0 + (c.at || 0), a1 = c.until ? s.t0 + c.until : s.t1;
+    if (c.style === 'speech') { speech(c.text, fade(t, a0, a1, 0.3)); continue; }
     caption(c.text, fade(t, a0, a1), c.y === 'top' ? H * 0.17 : c.y === 'middle' ? H * 0.5 : H * 0.7, c.style);
   }
   if (job.title) caption(job.title, fade(t, 0.2, 3.4), H * 0.17, 'title');   // below TikTok's own buttons at the top
-  // the last moment: who he is and where to find him
+  // the last moment: who he is and where to find him, near the top, so his face stays in view as the camera
+  // closes in on it (and the clip loops back to the close-up it opened with)
   const endA = clamp01((t - (total - job.end_seconds)) / 0.6);
   if (endA > 0) {
-    g.save(); g.globalAlpha = endA * 0.6; g.fillStyle = '#20160c'; g.fillRect(0, 0, W, H); g.restore();
-    caption(job.end[0], endA, H * 0.42, 'title');
-    if (job.end[1]) caption(job.end[1], endA, H * 0.56);
+    g.save(); g.globalAlpha = endA;
+    const grd = g.createLinearGradient(0, 0, 0, H * 0.42);
+    grd.addColorStop(0, 'rgba(32,22,12,.55)'); grd.addColorStop(1, 'rgba(32,22,12,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, W, H * 0.42); g.restore();
+    caption(job.end[0], endA, H * 0.16, 'title');
+    if (job.end[1]) caption(job.end[1], endA, H * 0.255);
   }
 }
 

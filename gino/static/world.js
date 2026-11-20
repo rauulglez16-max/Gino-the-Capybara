@@ -665,7 +665,7 @@ export function createWorld(container, tooltip, opts = {}) {
     if (R.on && placed && !carry) {
       if (asleep) { if (R.next !== 'sleep') { R.next = 'sleep'; R.label = ''; R.face = null; R.arrived = false; target.copy(anchor); } }
       else if (R.next === 'sleep') goHome(6);
-      else if (R.arrived && t > R.until) pickNext();
+      else if (R.arrived && t > R.until && !opts.director) pickNext();   // in a clip, the director decides where he goes
       if (R.arrived && R.cur === R.next) {
         if (R.cur === 'swim' && R.pond) target.set(R.pond.position.x + Math.cos(t * 0.45) * 0.6 * R.pond.scale.x, 0, R.pond.position.z + Math.sin(t * 0.45) * 0.6 * R.pond.scale.x);
         if (R.cur === 'zoom' && Math.hypot(target.x - gino.position.x, target.z - gino.position.z) < 0.4) { const a = Math.random() * 6.283; target.set(THREE.MathUtils.clamp(R.zc.x + Math.cos(a) * 5, -16, 16), 0, THREE.MathUtils.clamp(R.zc.z + Math.sin(a) * 5, -10, 10)); }
@@ -832,7 +832,14 @@ export function createWorld(container, tooltip, opts = {}) {
     get where() { return [gino.position.x / CELL + (GW - 1) / 2, gino.position.z / CELL + (GH - 1) / 2]; },   // where he is right now, in grid squares
     pet() { hop = 1; heartT = timer.getElapsed(); },
     _debug: { scene, camera, controls, gino, roam: R, moods, get carry() { return carry && carry.phase; }, get queued() { return carries.length; }, cellPos: (gx, gy) => new THREE.Vector3(cellX(gx), groundY(cellX(gx), cellZ(gy)), cellZ(gy)), skip() { intro = 1; camera.position.copy(HOME); },
-      snap() { target.copy(anchor); gino.position.set(target.x, groundY(target.x, target.z), target.z); R.arrived = true; } },
+      snap() { target.copy(anchor); gino.position.set(target.x, groundY(target.x, target.z), target.z); R.arrived = true; },
+      // the clip maker directs Gino a little: where he stands, where he walks, what he does once he's there
+      place(x, z, turn) { target.set(x, 0, z); gino.position.set(x, groundY(x, z), z); if (turn !== undefined) gino.rotation.y = turn; R.arrived = true; R.until = Infinity; },
+      walkTo(x, z, act = 'look', face = null) { target.set(x, 0, z); R.next = act; R.label = ''; R.hold = 1e6; R.arrived = false; R.pond = null; R.face = face ? new THREE.Vector3(face.x, 0, face.z) : null; },
+      pose(act = 'idle', face = null) { target.copy(gino.position).setY(0); R.next = act; R.label = ''; R.arrived = true; R.until = Infinity; R.pond = null; R.face = face ? new THREE.Vector3(face.x, 0, face.z) : null; },
+      itemPos: id => itemObjs.get(id)?.position.clone() || null,
+      items: itemsGroup,
+      face: (out = new THREE.Vector3()) => G.head.localToWorld(out.set(0.16, 0.08, 0)) },   // the middle of his face
   };
   return api;
 }

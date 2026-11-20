@@ -196,8 +196,8 @@ def test_the_script_has_every_caption_at_the_right_moment():
     assert s["seconds"] == pytest.approx(sum(sh["dur"] for sh in job["shots"]))
     texts = [c["text"] for sh in job["shots"] for c in sh.get("captions", [])]
     assert [l["text"] for l in s["lines"]] == texts
-    assert s["lines"][0]["at"] == 2.0  # "Good morning" shows 2 s into the first shot
-    assert s["lines"][1]["at"] == pytest.approx(job["shots"][0]["dur"] + 0.3)
+    assert s["lines"][0] == {"text": "Good morning! ☀️", "at": 0.25, "until": 2.3, "speech": True}  # he says it
+    assert s["lines"][1]["at"] == pytest.approx(job["shots"][0]["dur"] + 0.3) and "speech" not in s["lines"][1]
     assert all(0 <= l["at"] < l["until"] <= s["seconds"] for l in s["lines"])
 
 
@@ -252,3 +252,48 @@ def test_the_polisher_needs_the_password(monkeypatch):
     assert c.get("/api/clips/polish").status_code == 401
     assert c.put("/api/clips/1/polished", content=b"x").status_code == 401
     assert c.get("/api/clips/polish", headers={"x-gino-key": "pw"}).json() == {"clips": []}
+
+
+@pytest.mark.parametrize("kind", clips.KINDS)
+def test_every_clip_opens_and_ends_on_his_face(kind):
+    paint("Moon soup", dream=True)
+    job = clips.plan(kind)
+    first, last = job["shots"][0], job["shots"][-1]
+    assert first["cam"]["around"] == "face" and first["cam"]["from"] == clips.FACE  # opens close on his face...
+    assert first["cam"]["to"][0] > first["cam"]["from"][0]                           # ...then pulls back
+    assert last["cam"]["around"] == "face" and last["cam"]["to"] == clips.FACE      # ends zoomed back in: it loops
+    assert last["dur"] > job["end_seconds"] and not last.get("asleep")
+    # a quick cut to his face somewhere in the middle, and (when awake) words beside his face
+    assert any(s.get("face") for s in job["shots"][1:-1])
+    assert any(c.get("style") == "speech" for s in job["shots"] for c in s["captions"])
+
+
+def build(name, kind, x, y, story=""):
+    db.x("INSERT INTO habitat(ts,name,emoji,x,y,kind,story) VALUES(?,?,?,?,?,?,?)",
+         (time.time(), name, "✨", x, y, kind, story))
+
+
+def test_a_new_thing_he_built_gets_carried_to_its_spot():
+    build("Little Burrow House", "house", 3, 2)
+    build("Star lamp", "lamp", 10, 7)
+    job = clips.plan("made")
+    item = db.q("SELECT id FROM habitat WHERE name='Star lamp'")[0]["id"]
+    assert job["carry"]["id"] == item and job["carry"]["to"] == [10, 7]
+    fx, fy = job["carry"]["from"]
+    assert (fx, fy) != (10, 7) and 0 <= fx < 16 and 0 <= fy < 10 and (fx, fy) != (3, 2)  # a free square nearby
+    assert job["start"]["facing"] == [fx, fy]
+    assert sum(1 for s in job["shots"] if s.get("carry")) == 1
+    follow = next(s for s in job["shots"] if s.get("carry"))
+    assert follow["cam"]["around"] == "gino" and follow["cam"]["track"]  # the camera tags along behind him
+
+
+def test_big_things_arent_carried_but_he_still_walks_over():
+    build("Big pond", "pond", 9, 5)
+    job = clips.plan("made")
+    assert "carry" not in job
+    assert any(s.get("go") for s in job["shots"])
+
+
+def test_private_words_never_reach_a_speech_bubble():
+    build("Valencia lamp", "lamp", 10, 7)
+    assert public.check(words(clips.plan("made"))) is None
