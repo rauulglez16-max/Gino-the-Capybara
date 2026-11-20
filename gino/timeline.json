@@ -205,6 +205,7 @@
     "emoji": "📱",
     "title": "Gino's world fits every phone",
     "text": "On small phones, the buttons under Gino's world now always fit on the screen, and where there are more choices than room, the row slides sideways with a little arrow so nothing gets left behind.",
-    "link": "/live"
+    "link": "/live",
+    "pr": 31
   }
 ]
