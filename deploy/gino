@@ -48,6 +48,27 @@ write_caddyfile() {  # write_caddyfile MAIN [OTHER-ADDRESSES...]: MAIN serves Gi
   cat "$tmp" > /etc/caddy/Caddyfile; rm -f "$tmp"
   systemctl reload caddy || systemctl restart caddy
 }
+install_narrator() {  # the offline voice that reads Gino's captions in polished videos (Piper, about 120 MB)
+  local dir=/opt/gino/voices voice=/opt/gino/voices/en_US-lessac-medium.onnx tmp
+  if /opt/gino/venv/bin/python -c "import piper" 2>/dev/null && [ -s "$voice" ] && [ -s "$voice.json" ]; then
+    set_setting GINO_POLISH_VOICE "$voice"; return 0
+  fi
+  echo "Installing the narrator's voice (about 120 MB). This takes a minute or two..."
+  /opt/gino/venv/bin/pip install -q piper-tts || return 1
+  mkdir -p "$dir"; tmp="$(mktemp -d)"
+  local hf=https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+  if curl -fsSL --retry 3 -o "$tmp/v.onnx" "$hf" && curl -fsSL --retry 3 -o "$tmp/v.onnx.json" "$hf.json"; then :
+  elif curl -fsSL --retry 3 -o "$tmp/v.tgz" \
+         https://github.com/rhasspy/piper/releases/download/v0.0.2/voice-en-us-lessac-medium.tar.gz \
+       && tar -xzf "$tmp/v.tgz" -C "$tmp"; then
+    mv "$tmp/en-us-lessac-medium.onnx" "$tmp/v.onnx"; mv "$tmp/en-us-lessac-medium.onnx.json" "$tmp/v.onnx.json"
+  else
+    rm -rf "$tmp"; return 1
+  fi
+  mv "$tmp/v.onnx" "$voice"; mv "$tmp/v.onnx.json" "$voice.json"; rm -rf "$tmp"
+  chmod -R a+rX "$dir"
+  set_setting GINO_POLISH_VOICE "$voice"
+}
 use_address() {  # use_address NAME: remember NAME as Gino's main address everywhere
   printf '%s\n' "$1" > /var/lib/gino-deploy/domain
   if [ -n "$(setting GINO_PUBLIC_URL)" ]; then set_setting GINO_PUBLIC_URL "https://$1"; fi
@@ -290,6 +311,48 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
           || echo "The video camera is OFF (turn on with: gino clips on)"
         ;;
       *) echo "usage: gino clips [status|on|test|daily N|off]"; exit 1 ;;
+    esac
+    ;;
+  polish)
+    need_root
+    case "${2:-status}" in
+      server|pc)
+        [ "$(setting GINO_CLIPS)" = "1" ] || echo "(Note: the video camera is off. Turn it on with: gino clips on)"
+        install_narrator || echo "⚠️  Couldn't install the narrator's voice this time. Videos still get polished, just without a narrator. Try again later with: gino polish $2"
+        set_setting GINO_POLISHER "$2"; systemctl restart gino
+        if [ "$2" = server ]; then
+          echo "✨ The SERVER now polishes every new video, day and night (it takes the server a few minutes)."
+          echo "   Your PC's FilmCraft script will find nothing to do, so it doesn't matter if your PC is on or off."
+        else
+          echo "✨ Your PC (FilmCraft) polishes new videos. When your PC is off, or hasn't finished a video"
+          echo "   within about 40 minutes, the server polishes it instead so nothing waits forever."
+        fi
+        ;;
+      off)
+        set_setting GINO_POLISHER off; systemctl restart gino
+        echo "Polishing is OFF. New videos stay exactly as Gino films them. (Turn it back on with: gino polish server  or  gino polish pc)"
+        ;;
+      voice)
+        case "${3:-}" in
+          on)  unset_setting GINO_POLISH_NARRATOR; install_narrator || echo "⚠️  Couldn't install the voice this time."; systemctl restart gino
+               echo "🗣️  The narrator reads the captions in videos the server polishes." ;;
+          off) set_setting GINO_POLISH_NARRATOR 0; systemctl restart gino
+               echo "The narrator is OFF: the server polishes videos without reading the captions aloud." ;;
+          *)   echo "usage: gino polish voice on|off"; exit 1 ;;
+        esac
+        ;;
+      status)
+        case "$(setting GINO_POLISHER)" in
+          server) echo "✨ Videos are polished on the SERVER (change with: gino polish pc  or  gino polish off)" ;;
+          off)    echo "Polishing is OFF (turn on with: gino polish server  or  gino polish pc)" ;;
+          *)      echo "✨ Videos are polished by FilmCraft on your PC, with the server as backup when your PC is off"
+                  echo "   (change with: gino polish server  or  gino polish off)" ;;
+        esac
+        if [ "$(setting GINO_POLISH_NARRATOR)" = "0" ]; then echo "   Narrator on the server: off (gino polish voice on)"
+        elif [ -s "$(setting GINO_POLISH_VOICE)" ]; then echo "   Narrator on the server: on 🗣️"
+        else echo "   Narrator on the server: not installed yet (it installs with: gino polish server  or  gino polish pc)"; fi
+        ;;
+      *) echo "usage: gino polish [status|server|pc|off|voice on|voice off]"; exit 1 ;;
     esac
     ;;
   tiktok)
@@ -556,6 +619,7 @@ gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / te
 gino social      Bluesky posting: gino social setup | on | off | status
 gino photos      photos in his posts: gino photos on | test | off
 gino clips       his videos: gino clips on | test | daily N | off
+gino polish      who polishes his videos: gino polish server | pc | off (and: gino polish voice on/off)
 gino tiktok      send videos to TikTok: gino tiktok setup | mode | auto on/off | off
 gino shop        his shop: gino shop setup | on | off | sales | status
 gino dreams      his dreams at night: gino dreams on | off | status
