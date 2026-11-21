@@ -11,8 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import (artstyle, brain, clips, config, db, dreams, live, news, public, roadmap, shop, stream, telegram, tiktok,
-               timeline, vitals, welcome, whatsapp)
+from . import (artstyle, brain, clips, config, db, dreams, live, news, polish, public, roadmap, shop, stream, telegram,
+               tiktok, timeline, vitals, welcome, whatsapp)
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -45,6 +45,10 @@ async def life_loop():
             await asyncio.to_thread(clips.maybe_auto)  # his daily video, filmed in the background
         except Exception:
             log.exception("Starting today's video failed; trying again later")
+        try:
+            await asyncio.to_thread(polish.maybe_polish)  # the finishing touch for new videos (see gino polish)
+        except Exception:
+            log.exception("Polishing a video failed; trying again later")
         try:
             if time.time() - last_shop > 600 and not brain.mind_lock.locked():
                 last_shop = time.time()
@@ -249,7 +253,8 @@ def creation(filename: str):
 
 @app.get("/api/clips", dependencies=[Depends(auth)])
 def clip_list():
-    return {"on": clips.available(), "clips": clips.listing(), "kinds": clips.KIND_NAMES, "tiktok": tiktok.status()}
+    return {"on": clips.available(), "clips": clips.listing(), "kinds": clips.KIND_NAMES, "tiktok": tiktok.status(),
+            "polisher": polish.mode()}
 
 
 class ClipIn(BaseModel):

@@ -54,10 +54,12 @@ def _schema() -> None:
       made_by TEXT NOT NULL DEFAULT 'auto', source TEXT NOT NULL DEFAULT '',
       tiktok_status TEXT NOT NULL DEFAULT '', tiktok_id TEXT NOT NULL DEFAULT '', tiktok_ts REAL,
       tiktok_note TEXT NOT NULL DEFAULT '',
-      script TEXT NOT NULL DEFAULT '', polished TEXT NOT NULL DEFAULT '', polish_note TEXT NOT NULL DEFAULT '')""")
+      script TEXT NOT NULL DEFAULT '', polished TEXT NOT NULL DEFAULT '', polish_note TEXT NOT NULL DEFAULT '',
+      polished_by TEXT NOT NULL DEFAULT '')""")
     have = {r["name"] for r in db.q("PRAGMA table_info(clips)")}
-    # script: the captions and when they show (for the polisher); polished: the FilmCraft version's file name
-    for col in ("script", "polished", "polish_note"):
+    # script: the captions and when they show (for the polisher); polished: the finished version's file name;
+    # polished_by: who finished it ('pc' = FilmCraft on dad's PC, 'server' = polish.py)
+    for col in ("script", "polished", "polish_note", "polished_by"):
         if col not in have:
             db.x(f"ALTER TABLE clips ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
 
@@ -451,6 +453,8 @@ def _film(cid: int, job: dict) -> None:
         log.info("Clip %s ready (%s, %.0f s to make)", cid, job["kind"], time.time() - started)
         _tidy()
         from . import tiktok
+        from . import polish
+        polish.maybe_polish()
         tiktok.after_clip(cid)
     else:
         reason = "it took too long" if time.time() - started >= config.CLIP_TIMEOUT else "the camera didn't work"
@@ -481,8 +485,8 @@ def path(cid: int, raw: bool = False):
 
 # ---------------------------------------------------------------- polishing on dad's PC (FilmCraft)
 # Dad's PC runs a small script (see deploy/README.md, "Polishing videos in FilmCraft") that asks for clips that
-# haven't been polished, edits them in FilmCraft and sends the finished video back. When his PC is off, nothing
-# waits for it: the clips just stay as they are.
+# haven't been polished, edits them in FilmCraft and sends the finished video back. Dad chooses who polishes with
+# `gino polish pc|server|off`; in "pc" mode the server (polish.py) steps in when his PC is off or slow.
 
 POLISH_DAYS = 3        # only fresh clips are worth polishing
 POLISHER_RECENT = 7200  # the polisher counts as "on" if it asked for work in the last 2 hours
@@ -491,6 +495,8 @@ MAX_POLISHED = 64_000_000
 
 def polish_queue() -> list[dict]:
     db.put("polisher_seen", time.time())
+    if config.POLISHER != "pc":  # dad chose the server's polish (or none): the PC has nothing to do
+        return []
     rows = db.q("SELECT id, kind, title, script FROM clips WHERE status='ready' AND filename!='' AND polished='' "
                 "AND polish_note='' AND tiktok_status='' AND ts>? ORDER BY id DESC LIMIT 5",
                 (time.time() - POLISH_DAYS * 86400,))
@@ -525,7 +531,10 @@ def save_polished(cid: int, data: bytes) -> str:
     CLIPS_DIR.mkdir(exist_ok=True)
     tmp.write_bytes(data)
     os.replace(tmp, CLIPS_DIR / name)
-    db.x("UPDATE clips SET polished=?, polish_note='' WHERE id=?", (name, cid))
+    old = db.q("SELECT polished FROM clips WHERE id=?", (cid,))[0]["polished"]
+    db.x("UPDATE clips SET polished=?, polished_by='pc', polish_note='' WHERE id=?", (name, cid))
+    if old and old != name:  # FilmCraft's version replaces the server's
+        (CLIPS_DIR / old).unlink(missing_ok=True)
     db.event("clip", "his clip got polished in FilmCraft on dad's computer")
     return "Thanks! Gino will use the polished version."
 
@@ -537,11 +546,13 @@ def polish_failed(cid: int, note: str) -> None:
 
 def listing(limit: int = 30) -> list[dict]:
     rows = db.q("SELECT id,ts,kind,title,caption,status,seconds,error,made_by,tiktok_status,tiktok_note,tiktok_ts,"
-                "polished FROM clips ORDER BY id DESC LIMIT ?", (limit,))
+                "polished,polished_by,polish_note FROM clips ORDER BY id DESC LIMIT ?", (limit,))
     for r in rows:
         r["progress"] = progress.get(r["id"], "")
         r["has_video"] = r["status"] == "ready" and path(r["id"]) is not None
         r["polished"] = bool(r["polished"]) and r["has_video"]
+        r["polished_by"] = (r["polished_by"] or "pc") if r["polished"] else ""
+        r["polishing"] = r.pop("polish_note") == "server: polishing"
     return rows
 
 

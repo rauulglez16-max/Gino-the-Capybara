@@ -336,6 +336,27 @@ narrator, and FilmCraft's TikTok export (1080×1920, loudness set for phones). T
   up to 45 minutes for the polisher, but only if your PC asked for work in the last 2 hours.
 - Only clips from the last 3 days that haven't gone to TikTok yet get polished.
 
+### Choosing who polishes the videos: your PC or the server ✨
+
+The server has its own video editor too, so videos can be finished even when your PC is off. It gives each clip a
+narrator reading the captions (a free voice that runs on the server; Gino's own lines are read in a higher, little
+voice), lowers his meadow sounds while someone talks, sets the loudness for phones, makes the picture 1080×1920 and
+gives it a warm colour touch. It takes the server two or three minutes per video and costs nothing.
+
+You choose with one command. Log in to the server (in PowerShell: `ssh root@<your IP>`) and type one of these:
+
+| Command | What it does |
+| --- | --- |
+| `gino polish` | Shows which one is in charge right now |
+| `gino polish pc` | **Your PC (FilmCraft) polishes** (this is the default). If your PC is off, or hasn't finished a video about 40 minutes after Gino started filming it, the server does it instead so nothing waits forever |
+| `gino polish server` | **The server polishes** every new video straight away, day and night. Your PC script finds nothing to do |
+| `gino polish off` | Nobody polishes: videos stay exactly as Gino films them |
+| `gino polish voice off` | The server polishes without the narrator (`gino polish voice on` brings it back) |
+
+The first time you type `gino polish server` or `gino polish pc`, the server downloads the narrator's voice (about
+120 MB, a minute or two). On your private page, the Videos tab says "✨ polished in FilmCraft" or "✨ polished on the
+server" under each video, so you can always tell which one finished it.
+
 ### Gino on TikTok 📱
 
 Gino can also send his videos to TikTok himself, using TikTok's official way for apps to post. **The honest
