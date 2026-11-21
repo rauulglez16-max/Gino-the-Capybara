@@ -279,7 +279,7 @@ def _watch(cid: int, pid: str) -> None:
     _mark(cid, "sent", "Sent; TikTok didn't say when it finished. Check the app.")
 
 
-POLISH_WAIT = 45 * 60  # how long a daily clip waits for dad's PC to polish it before it goes as it is
+POLISH_WAIT = 45 * 60  # how long a daily clip waits for its finishing touch before it goes as it is
 
 
 def after_clip(cid: int) -> None:
@@ -288,7 +288,8 @@ def after_clip(cid: int) -> None:
         return
     if not db.q("SELECT 1 FROM clips WHERE id=? AND made_by!='dad'", (cid,)):
         return  # clips dad asks for wait for him to send them
-    if clips.polisher_on():  # dad's PC is on: give it a little while to polish the clip in FilmCraft first
+    from . import polish
+    if polish.expected(cid):  # FilmCraft or the server will polish it soon: give them a little while first
         threading.Thread(target=_send_when_polished, args=(cid,), daemon=True, name=f"tiktok-wait-{cid}").start()
         return
     _auto_send(cid)

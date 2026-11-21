@@ -107,6 +107,12 @@ CLIP_SIZE = (720, 1280)  # 9:16, the shape of a phone screen
 CLIP_RENDER_SCALE = max(0.5, min(1.0, _f("GINO_CLIP_RENDER_SCALE", 0.75)))  # 3D drawn smaller, then stretched: quicker
 CLIP_TIMEOUT = int(_f("GINO_CLIP_TIMEOUT", 3600))  # seconds; the server has no graphics card, so filming takes minutes
 FFMPEG = os.environ.get("GINO_FFMPEG", "")  # optional path to ffmpeg
+# Who gives his videos their finishing touch: "pc" (FilmCraft on dad's PC, with the server as a backup when the PC
+# is off or slow), "server" (the server does it straight away, day and night) or "off" (videos stay as filmed).
+POLISHER = os.environ.get("GINO_POLISHER", "pc").strip().lower()
+POLISHER = POLISHER if POLISHER in ("pc", "server", "off") else "pc"
+POLISH_VOICE = os.environ.get("GINO_POLISH_VOICE", "")  # the narrator's voice file (a Piper .onnx); none = no narrator
+POLISH_NARRATOR = os.environ.get("GINO_POLISH_NARRATOR", "1") != "0"
 
 # Gino on live TV (off unless dad turns it on; see deploy/README.md, "Gino on live TV"). On dad's PC, OBS shows the
 # page /stream and none of these are used. On the server, gino-stream.service plays freshly filmed scenes on a loop.
