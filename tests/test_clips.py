@@ -322,6 +322,8 @@ def test_a_cute_clip_is_quick_cuts_of_his_poses():
     acts = {a for a, *_ in clips.CUTE_FREE} | {a for a, *_ in clips.CUTE_AT}
     assert all(s["pose"] in acts for s in poses)
     assert {"roll", "swim"} <= {s["pose"] for s in poses}  # the cutest ones are always in
+    assert all(s.get("cute") in ("hop", "roll", "orange", "stretch", "sit", "dance", "curl", "sniff")
+               for s in poses if not s.get("near"))  # his own cute poses, struck facing the camera
     for s in poses:
         if s.get("near"):  # done at one of his things: right in the pond for a soak, else beside it
             item = db.q("SELECT kind FROM habitat WHERE id=?", (s["near"]["id"],))[0]["kind"]

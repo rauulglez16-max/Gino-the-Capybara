@@ -154,7 +154,8 @@ function startShot(s) {
       const stand = d.setLength(s.go.near || 1.9).add(p);
       walkTo(stand.x, stand.z, s.go.act || 'look', p);
     }
-  } else if (s.pose && !s.carry) pose(s.pose, faceIt);
+  } else if (s.cute && w._debug.cutePose) w._debug.cutePose(s.cute);   // he turns to the camera and strikes a cute pose
+  else if (s.pose && !s.carry) pose(s.pose, faceIt);
   if (s.pet) w.pet();   // a happy hop and a few hearts
 }
 

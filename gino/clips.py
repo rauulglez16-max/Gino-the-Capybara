@@ -243,9 +243,11 @@ def _carry_spots(item: dict, state: dict) -> dict | None:
 
 
 # "cute" clips: little moments, in a different order each day. Acts are the ones he does in static/world.js.
-CUTE_FREE = [("sit", "Sitting pretty 🌼", "content", None), ("roll", "Belly up! 🙃", "happy", None),
-             ("stretch", "A big, big stretch 🙆", "sleepy", None), ("dance", "Dance break! 💃", "excited", None),
-             ("hops", "Happy hops! 🐾", "excited", None), ("nap", "Just resting my eyes… 💤", "sleepy", None)]
+# (act, words, mood, cute pose): the cute poses are the ones he strikes in static/world.js (_debug.cutePose)
+CUTE_FREE = [("sit", "Sitting pretty 🌼", "content", "sit"), ("roll", "Belly up! 🙃", "happy", "roll"),
+             ("stretch", "A big, big stretch 🙆", "proud", "stretch"), ("dance", "Dance break! 💃", "excited", "dance"),
+             ("hops", "Happy hops! 💛", "excited", "hop"), ("nap", "Just resting my eyes… 💤", "sleepy", "curl"),
+             ("orange", "Balancing act 🍊", "calm", "orange")]
 CUTE_AT = [("swim", "Spa day 🍊", "relaxed", ("pond",)),
            ("sniff", "Sniff sniff 🌷", "curious", ("flowers", "bush", "mushroom")),
            ("nap", "Hammock nap 💤", "sleepy", ("hammock", "bed")),
@@ -421,26 +423,28 @@ def plan(kind: str, now: float | None = None) -> dict:
 
     if kind == "cute":
         rng = random.Random(int(now // 86400))
-        pool = list(CUTE_FREE)
+        pool = [(act, cap, mood, None, cute) for act, cap, mood, cute in CUTE_FREE]
         for act, cap, mood, kinds in CUTE_AT:
             mine = [it for it in state.get("habitat") or [] if it.get("kind") in kinds]
             if mine:
-                pool.append((act, cap, mood, rng.choice(mine)))
+                pool.append((act, cap, mood, rng.choice(mine), ""))
         rng.shuffle(pool)
         # the ones you can't miss come first: a belly-up roll, and a soak in his pond (or happy hops)
         must = [m for m in pool if m[0] == "roll"][:1] + ([m for m in pool if m[0] == "swim"] or
-                                                          [m for m in pool if m[0] == "hops"])[:1]
+                                                          [m for m in pool if m[0] == "orange"])[:1]
         picks = list(must)
         for m in pool:  # then a few more, each a different thing to do
             if len(picks) < 5 and m[0] not in {x[0] for x in picks}:
                 picks.append(m)
         rng.shuffle(picks)
         moments, h = [], 9.0
-        for i, (act, cap, mood, it) in enumerate(picks):
-            ang = (0.55, -0.6, 1.0, -1.1, 0.3)[i % 5]
+        for i, (act, cap, mood, it, cute) in enumerate(picks):
+            ang = (0.35, -0.4, 0.6, -0.7, 0.2)[i % 5]
             shot = {"dur": 2.6, "hour": [h, h + 0.5], "weather": rain, "pose": act, "emotion": mood,
                     "cam": {"around": "gino", "from": [4.8, 1.7, ang], "to": [4.0, 1.4, ang + 0.25]},
                     "captions": [{"text": cap, "at": 0.2, "y": "bottom"}]}
+            if cute:  # he turns to the camera and strikes the pose
+                shot["cute"] = cute
             if it:  # he does it at one of his things: he's beside it (or in the pond), and the camera sees both
                 shot["near"] = {"id": it["id"], "dist": 0 if act == "swim" else _near(it),
                                 "side": rng.uniform(0, 6.28)}
