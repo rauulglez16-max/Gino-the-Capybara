@@ -322,6 +322,7 @@ def test_a_cute_clip_is_quick_cuts_of_his_poses():
     acts = {a for a, *_ in clips.CUTE_FREE} | {a for a, *_ in clips.CUTE_AT}
     assert all(s["pose"] in acts for s in poses)
     assert {"roll", "swim"} <= {s["pose"] for s in poses}  # the cutest ones are always in
+    assert poses[-1]["pose"] == "swim"  # the soak is last, so he isn't left standing in the pond
     assert all(s.get("cute") in ("hop", "roll", "orange", "stretch", "sit", "dance", "curl", "sniff")
                for s in poses if not s.get("near"))  # his own cute poses, struck facing the camera
     for s in poses:

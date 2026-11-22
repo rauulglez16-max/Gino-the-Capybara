@@ -250,7 +250,6 @@ CUTE_FREE = [("sit", "Sitting pretty 🌼", "content", "sit"), ("roll", "Belly u
              ("orange", "Balancing act 🍊", "calm", "orange")]
 CUTE_AT = [("swim", "Spa day 🍊", "relaxed", ("pond",)),
            ("sniff", "Sniff sniff 🌷", "curious", ("flowers", "bush", "mushroom")),
-           ("nap", "Hammock nap 💤", "sleepy", ("hammock", "bed")),
            ("sit", "My favourite spot 🪑", "content", ("bench", "picnic", "campfire")),
            ("dance", "Music time 🎹", "excited", ("piano",))]
 BIG_NEAR = {"house": 1.0, "tent": 0.8, "fountain": 0.7, "garden": 0.7, "picnic": 0.5, "windmill": 0.6,
@@ -437,6 +436,7 @@ def plan(kind: str, now: float | None = None) -> dict:
             if len(picks) < 5 and m[0] not in {x[0] for x in picks}:
                 picks.append(m)
         rng.shuffle(picks)
+        picks.sort(key=lambda m: m[0] == "swim")  # the pond soak comes last, so he isn't left standing in the water
         moments, h = [], 9.0
         for i, (act, cap, mood, it, cute) in enumerate(picks):
             ang = (0.35, -0.4, 0.6, -0.7, 0.2)[i % 5]
