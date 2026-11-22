@@ -302,7 +302,7 @@ export function createWorld(container, tooltip, opts = {}) {
 
   // Between his brain's decisions Gino lives a little life of his own: he wanders to the things he built and does
   // something there. `anchor` is where his brain put him; `target` is where his feet are heading right now.
-  const R = { on: opts.roam !== false && !opts.lite, cur: 'idle', next: 'idle', aw: 0, until: 0, hold: 8, arrived: true, face: null, label: '', last: [], pond: null, n: 0, sincePond: 9, sig: '', zc: null };
+  const R = { on: opts.roam !== false && !opts.lite, cur: 'idle', next: 'idle', aw: 0, until: 0, hold: 8, arrived: true, face: null, label: '', last: [], pond: null, n: 0, sincePond: 9, sig: '', zc: null, pose: null };
   const ACT = { pond: ['swim', 'paddling around the'], bench: ['sit', 'sitting by the'], picnic: ['sit', 'sitting at the'], campfire: ['sit', 'warming up by the'], table: ['sit', 'sitting at the'],
     tent: ['sit', 'sitting outside the'], house: ['sit', 'sitting outside the'], hammock: ['nap', 'dozing by the'], bed: ['nap', 'having a quick doze on the'], flowers: ['sniff', 'sniffing the'],
     mushroom: ['sniff', 'sniffing the'], bush: ['sniff', 'sniffing the'], beehive: ['sniff', 'carefully sniffing the'], garden: ['graze', 'nibbling in the'], pumpkins: ['graze', 'nibbling at the'],
@@ -311,8 +311,29 @@ export function createWorld(container, tooltip, opts = {}) {
   const FREE = [['roll', 'rolling in the grass'], ['graze', 'grazing'], ['zoom', 'having the zoomies'], ['sit', 'sitting in the sun'], ['stretch', 'having a big stretch'], ['look', 'watching the birds'], ['hops', 'hopping about'], ['nap', 'dozing in the grass'], ['roll', 'rolling in the grass']];
   const BIG = { house: 2.0, tent: 1.7, fountain: 1.6, garden: 1.5, picnic: 1.4, windmill: 1.4, gallery: 1.4, bed: 1.3, piano: 1.3, pumpkins: 1.2, campfire: 1.2 };
   const any = a => a[Math.floor(Math.random() * a.length)];
+  // Cute poses: now and then Gino stops, turns to whoever is watching and strikes a pose that fits his mood.
+  // hearts: little hops with hearts floating up; orange: balances an orange on his head.
+  const POSES = {
+    hop: { act: 'idle', name: 'a happy hop', hearts: true }, roll: { act: 'roll', name: 'a belly-up wiggle' },
+    orange: { act: 'sit', name: 'balancing an orange on his head', orange: true }, stretch: { act: 'stretch', name: 'a big proud stretch' },
+    sit: { act: 'sit', name: 'sitting pretty' }, dance: { act: 'dance', name: 'a little dance' }, curl: { act: 'nap', name: 'a sleepy curl-up' },
+    sniff: { act: 'sniff', name: 'a curious sniff' } };
+  const MOOD_POSES = [
+    [/happy|joy|love|grateful|excit|hope|amaz/, ['hop', 'hop', 'dance']], [/playful|silly|bored|goof/, ['roll', 'roll', 'hop']],
+    [/content|peace|calm|relax|cozy|nostalg/, ['orange', 'orange', 'sit']], [/proud|determin|confident/, ['stretch', 'stretch', 'sit']],
+    [/tired|sleepy/, ['curl']], [/curious|thought|wonder/, ['sniff', 'sit']], [/creative|inspired/, ['dance', 'orange']],
+    [/sad|lonely|anxious|scared|grumpy|frustrat|angry/, ['sit']] ];
+  function poseFor(mood) {
+    const m = (mood || '').toLowerCase(), hit = MOOD_POSES.find(([re]) => re.test(m));
+    return POSES[any(hit ? hit[1] : Object.keys(POSES).filter(k => k !== 'curl'))];
+  }
+  function strikePose(p = poseFor(state.emotion)) {   // right where he is, facing the camera
+    target.copy(gino.position).setY(0); R.next = p.act; R.pose = p; R.face = camera.position; R.pond = null; R.arrived = false;
+    R.label = `striking a cute pose: ${p.name}`; R.hold = p.act === 'stretch' ? 6 : 8 + Math.random() * 4;
+  }
   function actFor(text, onPond) {
     const a = (text || '').toLowerCase();
+    if (/\bpos(e|ing)\b|cute|show(ing)? off|selfie/.test(a) && R.on && !onPond) return 'pose';
     if (/munch|eat|forag|graz|snack|nibbl/.test(a)) return 'graze';
     if (!R.on) return 'idle';
     if (onPond) return 'swim';
@@ -325,11 +346,13 @@ export function createWorld(container, tooltip, opts = {}) {
   }
   function goHome(hold) {
     target.copy(anchor); R.pond = ponds.find(o => Math.hypot(o.position.x - anchor.x, o.position.z - anchor.z) < 0.1) || null;
-    R.next = actFor(state.activity, !!R.pond); R.label = ''; R.hold = hold; R.arrived = false; R.face = null; if (R.pond) R.sincePond = 0;
+    R.next = actFor(state.activity, !!R.pond); R.label = ''; R.hold = hold; R.arrived = false; R.face = null; R.pose = null; if (R.pond) R.sincePond = 0;
+    if (R.next === 'pose') { const p = poseFor(state.emotion); R.next = p.act; R.pose = p; R.face = camera.position; }
   }
   function pickNext() {
-    R.sincePond++;
+    R.sincePond++; R.pose = null;
     if (++R.n % 4 === 0) return goHome(22);
+    if (Math.random() < 0.16) return strikePose();
     const spots = [...itemObjs.values(), ...(board ? [board] : [])].filter(o => !R.last.includes(o) && (o.userData.kind !== 'pond' || R.sincePond > 3));
     R.face = null; R.pond = null; R.arrived = false;
     if (!spots.length || Math.random() < 0.38) {
@@ -519,7 +542,7 @@ export function createWorld(container, tooltip, opts = {}) {
     c.foot = o.worldToLocal(ctr.setY(box.min.y));                               // bottom middle, in its own units
     c.phase = 'fetch'; c.t0 = 0; c.name = o.userData.item?.name || 'things';
     target.copy(besideIt(c.from, c.rad));
-    R.label = ''; R.face = null; R.pond = null; R.arrived = true; R.cur = R.next = 'idle'; R.aw = 0;
+    R.label = ''; R.face = null; R.pond = null; R.pose = null; R.arrived = true; R.cur = R.next = 'idle'; R.aw = 0;
   }
   const backAt = new THREE.Vector3(), bob3 = new THREE.Vector3();
   function onBack(o, k, scale) {   // put o so its bottom middle sits on his back (k: 0 = where it was, 1 = on his back)
@@ -561,7 +584,7 @@ export function createWorld(container, tooltip, opts = {}) {
       o.scale.setScalar(THREE.MathUtils.lerp(c.base * c.k, c.base, m));
       if (k >= 1) {   // set down: a happy little hop, then he stands back and looks at it
         o.position.copy(c.to); o.rotation.y = c.spin; o.scale.setScalar(c.base); o.userData.carried = false; carry = null; hop = 0.8;
-        if (R.on) { R.cur = R.next = 'look'; R.face = c.to.clone(); R.arrived = true; R.until = t + 7; R.aw = 0; R.label = `admiring where he put the ${c.name}`; target.copy(gino.position); }
+        if (R.on) { R.cur = R.next = 'look'; R.pose = null; R.face = c.to.clone(); R.arrived = true; R.until = t + 7; R.aw = 0; R.label = `admiring where he put the ${c.name}`; target.copy(gino.position); }
         else target.copy(anchor);
         regrass();
       }
@@ -663,7 +686,7 @@ export function createWorld(container, tooltip, opts = {}) {
     const dip = carry ? stepCarry(t, dt) : 0, hauling = carry && (carry.phase === 'fetch' || carry.phase === 'haul');
     const asleep = state.asleep, inPond = ponds.some(o => !o.userData.carried && Math.hypot(o.position.x - gino.position.x, o.position.z - gino.position.z) < 1.3 * o.scale.x);
     if (R.on && placed && !carry) {
-      if (asleep) { if (R.next !== 'sleep') { R.next = 'sleep'; R.label = ''; R.face = null; R.arrived = false; target.copy(anchor); } }
+      if (asleep) { if (R.next !== 'sleep') { R.next = 'sleep'; R.pose = null; R.label = ''; R.face = null; R.arrived = false; target.copy(anchor); } }
       else if (R.next === 'sleep') goHome(6);
       else if (R.arrived && t > R.until && !opts.director) pickNext();   // in a clip, the director decides where he goes
       if (R.arrived && R.cur === R.next) {
@@ -686,6 +709,8 @@ export function createWorld(container, tooltip, opts = {}) {
     else if (!walking || moving) R.aw = Math.min(1, R.aw + dt * 2.2);
     const c = R.cur, a = asleep ? 0 : R.aw * R.aw * (3 - 2 * R.aw);
     if (c === 'hops' && a > 0.6) { if (hop <= 0.02) hop = 1; gino.rotation.y += dt * 2.2; }
+    const posing = R.pose && R.arrived && c === R.next && !walking && !carry ? a : 0;
+    if (R.pose?.hearts && posing > 0.6 && t - heartT > 2.4) { hop = 1; heartT = t; }   // a happy hop, hearts and all
     hop = Math.max(0, hop - dt * 1.6);
     const gy = groundY(gino.position.x, gino.position.z) + (inPond ? -0.46 : 0);
     gino.position.y += (gy - gino.position.y) * Math.min(1, dt * 6);
@@ -708,10 +733,10 @@ export function createWorld(container, tooltip, opts = {}) {
     G.head.rotation.y = down || walking ? 0 : hY;
     const blink = down || lie > 0.6 || (c === 'roll' && a > 0.5) || (t % 4.2) < 0.13 || hop > 0.2; G.eyes.forEach(e => e.scale.y = blink ? 0.018 : 0.105);
     G.ears.forEach((e, i) => e.rotation.x = (Math.sin(t * 2.3 + i) > 0.96 ? 0.5 : 0));
-    moods.apply(t, dt, { awake: !down && lie < 0.5 && c !== 'roll' && !carry,   // no yawns or grumbles mid-carry
+    moods.apply(t, dt, { awake: !down && lie < 0.5 && c !== 'roll' && !carry && posing < 0.3,   // no yawns or grumbles mid-carry or mid-pose
       still: walking ? 0.6 : ['swim', 'nap', 'dance', 'hops'].includes(c) ? 1 - a : 1 });
-    G.orange.visible = inPond && (!walking || moving);
-    G.zs.forEach((z, i) => { const k = (t * 0.35 + i / 3) % 1; z.visible = down || (c === 'nap' && a > 0.7); z.position.set(1.0 + k * 0.5, 1.5 + k * 1.3, 0).applyAxisAngle(up, gino.rotation.y); z.scale.setScalar(0.25 + k * 0.4); z.material.opacity = 1 - k; });
+    G.orange.visible = (inPond && (!walking || moving)) || (!!R.pose?.orange && posing > 0.4);
+    G.zs.forEach((z, i) => { const k = (t * 0.35 + i / 3) % 1; z.visible = down || (c === 'nap' && a > 0.7); z.position.set(1.0 + k * 0.5, 1.5 + k * 1.3, 0); z.scale.setScalar(0.25 + k * 0.4); z.material.opacity = 1 - k; });
     G.hearts.forEach((h, i) => { const k = (t - heartT) / 1.6 - i * 0.08; h.visible = k > 0 && k < 1; if (h.visible) { h.position.set(Math.cos(i * 1.05) * (0.3 + k * 0.7), 1.6 + k * 1.6, Math.sin(i * 1.05) * (0.3 + k * 0.7)); h.scale.setScalar(0.3 + Math.sin(k * Math.PI) * 0.25); h.material.opacity = 1 - k * k; } });
     const ep = G.emote.userData.pop = Math.max(0, (G.emote.userData.pop || 0) - dt * 1.5);
     G.emote.visible = !!lastEmote; G.emote.position.y = 2.15 + Math.sin(t * 1.5) * 0.05 - 0.3 * sleepK + (carry?.o.userData.carried ? carry.h + 0.15 : 0); G.emote.scale.setScalar(0.6 + Math.sin(ep * Math.PI) * 0.35);
@@ -837,6 +862,7 @@ export function createWorld(container, tooltip, opts = {}) {
       place(x, z, turn) { target.set(x, 0, z); gino.position.set(x, groundY(x, z), z); if (turn !== undefined) gino.rotation.y = turn; R.arrived = true; R.until = Infinity; },
       walkTo(x, z, act = 'look', face = null) { target.set(x, 0, z); R.next = act; R.label = ''; R.hold = 1e6; R.arrived = false; R.pond = null; R.face = face ? new THREE.Vector3(face.x, 0, face.z) : null; },
       pose(act = 'idle', face = null) { target.copy(gino.position).setY(0); R.next = act; R.label = ''; R.arrived = true; R.until = Infinity; R.pond = null; R.face = face ? new THREE.Vector3(face.x, 0, face.z) : null; },
+      cutePose(name) { strikePose(POSES[name] || poseFor(state.emotion)); R.arrived = true; R.until = Infinity; },
       itemPos: id => itemObjs.get(id)?.position.clone() || null,
       items: itemsGroup,
       face: (out = new THREE.Vector3()) => G.head.localToWorld(out.set(0.16, 0.08, 0)) },   // the middle of his face
