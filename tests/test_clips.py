@@ -71,7 +71,7 @@ def test_private_names_never_reach_a_clip():
 
 
 def test_the_daily_pick_prefers_fresh_dreams_then_new_things():
-    assert clips.best_kind() in ("day", "night")
+    assert clips.best_kind() in clips.EVERYDAY
     tools.run("build", {"name": "lantern", "emoji": "🏮", "x": 1, "y": 1}, body())
     assert clips.best_kind() == "made"
     paint("Starfish rain", dream=True)
@@ -297,3 +297,83 @@ def test_big_things_arent_carried_but_he_still_walks_over():
 def test_private_words_never_reach_a_speech_bubble():
     build("Valencia lamp", "lamp", 10, 7)
     assert public.check(words(clips.plan("made"))) is None
+
+
+def test_ordinary_days_take_turns_between_the_everyday_stories():
+    day = 86400
+    # an empty home can't fill a tour or a "watch it grow" clip yet
+    assert {clips.best_kind(time.time() + d * day) for d in range(30)} == {"day", "cute", "night"}
+    for i, (kind, x) in enumerate([("bench", 2), ("lamp", 5), ("hammock", 8), ("flowers", 11), ("pond", 13)]):
+        build(f"thing {i}", kind, x, 3)
+    db.x("UPDATE habitat SET ts=0")  # not new any more, so they don't need a "made" clip
+    assert {clips.best_kind(time.time() + d * day) for d in range(30)} == set(clips.EVERYDAY)
+    # the story he filmed last isn't picked again straight away
+    db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "cute", "x", "ready"))
+    assert "cute" not in {clips.best_kind(time.time() + d * day) for d in range(30)}
+
+
+def test_a_cute_clip_is_quick_cuts_of_his_poses():
+    build("Lily pond", "pond", 12, 6)
+    build("Tulips", "flowers", 4, 7)
+    job = clips.plan("cute")
+    assert job["kind"] == "cute"
+    poses = [s for s in job["shots"] if not s.get("face")]
+    assert len(poses) == 5 and len({s["pose"] for s in poses}) >= 4  # different moments, not the same one again
+    acts = {a for a, *_ in clips.CUTE_FREE} | {a for a, *_ in clips.CUTE_AT}
+    assert all(s["pose"] in acts for s in poses)
+    assert {"roll", "swim"} <= {s["pose"] for s in poses}  # the cutest ones are always in
+    for s in poses:
+        if s.get("near"):  # done at one of his things: right in the pond for a soak, else beside it
+            item = db.q("SELECT kind FROM habitat WHERE id=?", (s["near"]["id"],))[0]["kind"]
+            assert (s["near"]["dist"] == 0) == (s["pose"] == "swim") and (item == "pond") == (s["pose"] == "swim")
+    # a different day, a different order
+    orders = {tuple(s["pose"] for s in clips.plan("cute", d * 86400)["shots"] if not s.get("face")) for d in range(5)}
+    assert len(orders) > 1
+
+
+def test_a_home_tour_visits_his_things_and_tells_their_stories():
+    build("Old bench", "bench", 2, 2, story="I sat here the day it first snowed.")
+    build("Lantern", "lamp", 9, 3)
+    build("Hammock", "hammock", 13, 6)
+    build("Path", "path", 6, 6)
+    job = clips.plan("tour")
+    assert job["kind"] == "tour"
+    stops = [s for s in job["shots"] if s.get("near")]
+    assert len(stops) == 3  # the path isn't a stop
+    first = db.q("SELECT id FROM habitat WHERE name='Old bench'")[0]["id"]
+    assert stops[0]["near"]["id"] == first  # things with a story come first
+    text = words(job)
+    assert "This is my Old bench" in text and "first snowed" in text
+    for s in stops:  # the camera looks at the thing, with Gino standing beside it
+        it = db.q("SELECT x, y FROM habitat WHERE id=?", (s["near"]["id"],))[0]
+        assert s["cam"]["around"] == [it["x"], it["y"]] and s["near"]["dist"] > 1
+
+
+def test_a_tour_needs_a_few_things_to_show():
+    build("Lantern", "lamp", 9, 3)
+    assert clips.plan("tour")["kind"] == "cute"
+    assert clips.plan("grow")["kind"] == "cute"
+
+
+def test_watch_my_home_grow_starts_empty_and_counts_the_days():
+    b = vitals.load()
+    b["born"] = time.time() - 10 * 86400
+    vitals.save(b)
+    for i in range(6):
+        build(f"thing {i}", "lamp", i * 2, 4)
+    db.x("UPDATE habitat SET ts=? WHERE name='thing 0'", (time.time() - 9.5 * 86400,))
+    job = clips.plan("grow")
+    assert job["kind"] == "grow"
+    ids = [r["id"] for r in db.q("SELECT id FROM habitat ORDER BY id")]
+    assert [job["grow"]["order"][str(i)] for i in ids] == list(range(6))  # in the order he built them
+    assert job["grow"]["labels"][0] == "Day 1" and job["grow"]["labels"][-1] == "Day 11"
+    assert job["shots"][0]["grown"] == 0 and sum(1 for s in job["shots"] if s.get("grow")) == 1
+    assert "6 things" in words(job)
+
+
+def test_gino_can_choose_every_kind_of_video():
+    schema = str(tools.CLIP_TOOL)
+    for k in clips.KINDS:
+        assert f"'{k}'" in schema
+    for k in clips.KINDS:
+        assert k in clips.KIND_NAMES

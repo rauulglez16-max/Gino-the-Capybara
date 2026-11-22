@@ -169,7 +169,9 @@ CLIP_TOOL = _t(
     "films it in the background over the next few minutes, with your meadow's sounds. Pick the story: 'day' (a day "
     "of yours, morning to night), 'night' (what you do while everyone sleeps), 'dream' (you asleep, then the painting "
     "you made of a dream: only drawings already on your public website), 'made' (the newest thing you built or "
-    "painted). Do the thing first (build it, paint it, publish it), then film it. Add a caption in your own words if "
+    "painted), 'cute' (quick cuts of you sitting, rolling, stretching, dancing, soaking, napping), 'tour' (you show "
+    "visitors round your favourite things and their stories), 'grow' (your meadow starts empty and everything you "
+    "built pops up in the order you made it). Do the thing first (build it, paint it, publish it), then film it. Add a caption in your own words if "
     "you like: anyone on the internet can read it, so the same privacy rules as your website apply. Dad looks at "
     "your videos and decides what goes on TikTok. One a day is plenty.",
     {"story": {"type": "string", "enum": list(clips.KINDS)},
