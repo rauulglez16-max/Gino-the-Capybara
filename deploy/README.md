@@ -320,7 +320,7 @@ press **+**, pick the video, paste the caption, and before posting turn on **AI-
 | Command | What it does |
 | --- | --- |
 | `gino clips` | Is the video camera on or off |
-| `gino clips test` | Film a test video now (add `day`, `night`, `dream` or `made` to choose) |
+| `gino clips test` | Film a test video now (add `day`, `night`, `dream`, `made`, `cute`, `tour` or `grow` to choose) |
 | `gino clips daily 2` | How many videos he films by himself each evening (0 to 3; 0 = only when you ask) |
 | `gino clips off` | Stop filming. Videos already made stay on your private page |
 
