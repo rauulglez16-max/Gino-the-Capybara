@@ -34,7 +34,10 @@ const clamp01 = v => Math.max(0, Math.min(1, v));
 const lerp = (a, b, k) => a + (b - a) * k;
 const fade = (t, a, b, edge = 0.45) => clamp01(Math.min((t - a) / edge, (b - t) / edge));   // 0..1 in, hold, out
 
-let W, H, job, w, THREE, out, g, shots = [], total = 0, frame = 0, curShot = -1, hourNow = 12;
+let W, H, job, w, THREE, out, g, shots = [], total = 0, frame = 0, curShot = -1, hourNow = 12, curSt = null;
+// "watch my home grow" clips: how many of his things have appeared so far (in the order he built them)
+let grown = Infinity;
+const visible = () => job.grow ? job.state.habitat.filter(it => (job.grow.order[String(it.id)] ?? 0) < grown) : job.state.habitat;
 const art = {};
 
 function loadImage(src) {
@@ -129,9 +132,20 @@ function startShot(s) {
     job.state = { ...job.state, habitat: job.state.habitat.map(it => it.id === job.carry.id ? { ...it, x: job.carry.to[0], y: job.carry.to[1] } : it) };
     st.habitat = job.state.habitat;
   }
+  if (job.grow) { grown = s.grown === 0 ? 0 : s.grow ? (Number.isFinite(grown) ? grown : 0) : Infinity; st.habitat = visible(); }
+  curSt = st;
   w.update(st);
   w.setWeather(s.weather || null);
-  const { walkTo, pose, itemPos, gino } = w._debug;
+  const { walkTo, pose, itemPos, gino, place } = w._debug;
+  let faceIt = null;
+  if (s.near) {   // a quick cut: he's already beside one of his things (or in his pond), facing it
+    const p = itemPos(s.near.id);
+    if (p) {
+      const d = s.near.dist || 0, x = p.x + Math.cos(s.near.side || 0) * d, z = p.z - Math.sin(s.near.side || 0) * d;
+      place(x, z, d ? Math.atan2(-(p.z - z), p.x - x) : undefined);
+      if (d) faceIt = p;
+    }
+  }
   if (s.go) {   // walk over to one of his things and stand facing it
     const p = itemPos(s.go.id);
     if (p) {
@@ -140,7 +154,8 @@ function startShot(s) {
       const stand = d.setLength(s.go.near || 1.9).add(p);
       walkTo(stand.x, stand.z, s.go.act || 'look', p);
     }
-  } else if (s.pose && !s.carry) pose(s.pose);
+  } else if (s.cute && w._debug.cutePose) w._debug.cutePose(s.cute);   // he turns to the camera and strikes a cute pose
+  else if (s.pose && !s.carry) pose(s.pose, faceIt);
   if (s.pet) w.pet();   // a happy hop and a few hearts
 }
 
@@ -228,6 +243,10 @@ function overlays(t) {
     if (c.style === 'speech') { speech(c.text, fade(t, a0, a1, 0.3)); continue; }
     caption(c.text, fade(t, a0, a1), c.y === 'top' ? H * 0.17 : c.y === 'middle' ? H * 0.5 : H * 0.7, c.style);
   }
+  if (s.grow && job.grow && grown > 0) {   // the day of his life each new thing was built
+    const label = job.grow.labels[Math.min(grown, job.grow.labels.length) - 1];
+    if (label) caption(label, fade(t, s.t0 + 0.2, s.t1 - 0.2, 0.3), H * 0.17, 'title');
+  }
   if (job.title) caption(job.title, fade(t, 0.2, 3.4), H * 0.17, 'title');   // below TikTok's own buttons at the top
   // the last moment: who he is and where to find him, near the top, so his face stays in view as the camera
   // closes in on it (and the clip loops back to the close-up it opened with)
@@ -247,6 +266,10 @@ window.clipFrame = () => {
   const t = frame / job.fps, i = shots.indexOf(shotAt(t));
   if (i !== curShot) { curShot = i; startShot(shots[i]); }
   const s = shots[i], k = clamp01((t - s.t0) / s.dur);
+  if (s.grow && job.grow) {   // his things pop up one by one over most of the shot
+    const n = Math.floor(clamp01((t - s.t0 - 0.4) / (s.dur * 0.75)) * job.state.habitat.length + 0.0001);
+    if (n !== grown) { grown = n; w.update({ ...curSt, habitat: visible() }); }
+  }
   hourNow = lerp(s.hour[0], s.hour[1] ?? s.hour[0], k) % 24;
   window.__advance(1000 / job.fps * (s.speed || 1));
   g.drawImage(document.querySelector('#world canvas'), 0, 0, W, H);   // the 3D frame just drawn

@@ -5,11 +5,14 @@ Made for TikTok, Reels and Shorts. The server films his real 3D world in a headl
 No AI image or video generation and no AI call, so a clip costs nothing from his daily budget (it only uses
 the server's computer for a few minutes).
 
-Four kinds of clip, each a little story told from his own records:
+Seven kinds of clip, each a little story told from his own records:
   day     "A day in Gino's life": morning to night in 20 seconds, with things he did today
   night   "What Gino does while you sleep": a night timelapse, then he wakes up
   dream   he sleeps, dreams, and then the painting he made of the dream appears
   made    the newest thing he built or painted, and the story behind it
+  cute    "Cute moments": quick cuts of him sitting, rolling, stretching, dancing, soaking in his pond, napping...
+  tour    "Home tour": he shows you round his favourite things, one by one, with the stories behind them
+  grow    "Watch my home grow": his meadow starts empty and everything he built pops up in the order he made it
 
 Privacy: every word that goes into a clip or its caption goes through public.check(), the same filter as his
 public website, and only drawings he already put on a public page are shown. Nothing from chats, memories or
@@ -22,6 +25,7 @@ import json
 import logging
 import math
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -29,12 +33,15 @@ import sys
 import threading
 import time
 
-from . import config, db, keepsakes, live, photo, public
+from . import config, db, keepsakes, live, photo, public, vitals
 
 log = logging.getLogger("gino.clips")
-KINDS = ("day", "night", "dream", "made")
+KINDS = ("day", "night", "dream", "made", "cute", "tour", "grow")
 KIND_NAMES = {"day": "A day in Gino's life", "night": "While you sleep", "dream": "A dream, then a painting",
-              "made": "Something he made"}
+              "made": "Something he made", "cute": "Cute moments", "tour": "Home tour",
+              "grow": "Watch my home grow"}
+EVERYDAY = ("day", "cute", "night", "tour", "grow")  # on days with no fresh dream or new thing, these take turns
+FLAT_THINGS = ("path", "pond", "bridge")  # not worth a stop on a home tour
 SOUNDS = config.ROOT / "gino" / "sounds"
 CLIPS_DIR = config.DATA_DIR / "clips"
 END_SECONDS = 2.6
@@ -130,7 +137,14 @@ def best_kind(now: float | None = None) -> str:
     if any(not _already(f"item:{b['id']}") for b in _built(fresh)) or \
             any(not _already(f"art:{a['id']}") for a in _public_art(fresh)):
         return "made"
-    return "night" if int(now // 86400) % 3 == 0 else "day"
+    # an ordinary day: take turns between the everyday stories (skipping the ones his home can't fill yet, and the
+    # one he filmed last, so his videos don't all look the same)
+    things = db.q("SELECT kind FROM habitat")
+    ok = [k for k in EVERYDAY if (k != "tour" or sum(1 for t in things if t["kind"] not in FLAT_THINGS) >= 3)
+          and (k != "grow" or len(things) >= 5)]
+    last = db.q("SELECT kind FROM clips WHERE status!='failed' ORDER BY id DESC LIMIT 1")
+    ok = [k for k in ok if not last or k != last[0]["kind"]] or ok
+    return ok[int(now // 86400) % len(ok)]
 
 
 # ---------------------------------------------------------------- the script for one clip
@@ -228,11 +242,44 @@ def _carry_spots(item: dict, state: dict) -> dict | None:
     return None
 
 
+# "cute" clips: little moments, in a different order each day. Acts are the ones he does in static/world.js.
+# (act, words, mood, cute pose): the cute poses are the ones he strikes in static/world.js (_debug.cutePose)
+CUTE_FREE = [("sit", "Sitting pretty 🌼", "content", "sit"), ("roll", "Belly up! 🙃", "happy", "roll"),
+             ("stretch", "A big, big stretch 🙆", "proud", "stretch"), ("dance", "Dance break! 💃", "excited", "dance"),
+             ("hops", "Happy hops! 💛", "excited", "hop"), ("nap", "Just resting my eyes… 💤", "sleepy", "curl"),
+             ("orange", "Balancing act 🍊", "calm", "orange")]
+CUTE_AT = [("swim", "Spa day 🍊", "relaxed", ("pond",)),
+           ("sniff", "Sniff sniff 🌷", "curious", ("flowers", "bush", "mushroom")),
+           ("sit", "My favourite spot 🪑", "content", ("bench", "picnic", "campfire")),
+           ("dance", "Music time 🎹", "excited", ("piano",))]
+BIG_NEAR = {"house": 1.0, "tent": 0.8, "fountain": 0.7, "garden": 0.7, "picnic": 0.5, "windmill": 0.6,
+            "gallery": 0.6, "bed": 0.4, "piano": 0.4, "pumpkins": 0.3, "campfire": 0.3}
+
+
+def _near(it: dict) -> float:
+    """How far from one of his things Gino stands so he's beside it, not inside it."""
+    return round(1.2 + 0.6 * float(it.get("size") or 1) + BIG_NEAR.get(it.get("kind") or "", 0), 2)
+
+
+def _tour_stops(state: dict) -> list[dict]:
+    """Up to four of his things for a home tour: ones with a story first, then the newest. Words already filtered."""
+    things = [it for it in state.get("habitat") or [] if it.get("kind") not in FLAT_THINGS]
+    things.sort(key=lambda it: (not it.get("story"), -it["id"]))
+    out = []
+    for it in things[:4]:
+        story = it.get("story") if it.get("story") and it["story"] != keepsakes.PRIVATE_STORY else ""
+        out.append({"id": it["id"], "x": it["x"], "y": it["y"], "kind": it.get("kind") or "",
+                    "size": min(2.5, max(0.4, float(it.get("size") or 1))), "emoji": _clean(it.get("emoji"), 8),
+                    "name": _clean(it.get("name"), 40) or "thing", "story": _clean(story, 110),
+                    "description": _clean(it.get("description"), 90)})
+    return out
+
+
 def plan(kind: str, now: float | None = None) -> dict:
     """The shots, captions and the post's text for one clip. Everything in it is safe for the whole world."""
     now = now or time.time()
     state = photo.scene_state()
-    state["habitat"] = live.state()["habitat"]  # names and stories already filtered for visitors
+    state["habitat"] = live.build()["habitat"]  # names and stories already filtered for visitors (fresh, not cached)
     rain = "rain" if (state.get("weather") or {}).get("kind") == "rain" else None
     since = now - 86400
     built, art = _built(since), _public_art(since)
@@ -319,6 +366,98 @@ def plan(kind: str, now: float | None = None) -> dict:
             title = f"Gino painted '{pic['title']}'"
         else:
             kind = "day"
+
+    if kind == "tour":
+        stops = _tour_stops(state)
+        if len(stops) < 3:
+            kind = "cute"
+        else:
+            hello = _opener([9.5, 10], "Welcome to my home! 🏡", mood="happy", weather=rain)
+            wide = {"dur": 3.0, "hour": [10, 10.6], "weather": rain,
+                    "cam": {"around": "home", "from": [32, 18, -0.9], "to": [27, 15, -0.5]},
+                    "captions": [{"text": "Everything here, he built himself", "at": 0.3, "y": "bottom"}]}
+            shown, h = [], 10.8
+            for i, it in enumerate(stops):
+                ang = (-0.5, 0.6, -1.0, 0.3)[i % 4]
+                about = it["story"] or it["description"]
+                caps = [_say(f"This is my {it['name']} {it['emoji']}".strip(), 0.2, 2.0)]
+                if about:
+                    caps.append({"text": f"“{about}”" if it["story"] else about, "at": 1.9, "y": "bottom"})
+                shown.append({"dur": 3.8, "hour": [h, h + 0.9], "weather": rain, "pose": "look",
+                              "near": {"id": it["id"], "dist": _near(it), "side": ang + 0.95},
+                              "cam": {"around": [it["x"], it["y"]], "from": [6.4 + it["size"], 3.0, ang],
+                                      "to": [5.2 + it["size"], 2.4, ang + 0.35]},
+                              "captions": caps})
+                h += 1.6
+            shots = [hello, wide, *shown[:2], _react(shown[1], "Isn't it cosy? 🥰", mood="proud"), *shown[2:],
+                     _ending(shown[-1], "Come back and visit soon! 💛", mood="happy")]
+            names = ", ".join(f"{it['name']} {it['emoji']}".strip() for it in stops[:3])
+            text = (f"A little tour of Gino's home 🏡 His {names}, and the stories behind them. "
+                    "He's an AI capybara who builds his own world, piece by piece.")
+            title = "A tour of Gino's home"
+
+    if kind == "grow":
+        rows = db.q("SELECT id, ts FROM habitat ORDER BY id")
+        if len(rows) < 5:
+            kind = "cute"
+        else:
+            born = float(vitals.load().get("born") or rows[0]["ts"])
+            day_of = [max(1, int((r["ts"] - born) // 86400) + 1) for r in rows]
+            extra = {"grow": {"order": {str(r["id"]): i for i, r in enumerate(rows)},
+                              "labels": [f"Day {d}" for d in day_of]}}
+            empty = {"dur": 2.6, "hour": [8.5, 9], "weather": rain, "grown": 0,
+                     "cam": {"around": "home", "from": [30, 17, -0.5], "to": [28, 16, -0.6]},
+                     "captions": [{"text": "Day 1: just grass 🌱", "at": 0.3, "y": "bottom"}]}
+            grow = {"dur": 9.0, "hour": [9, 17], "weather": rain, "grow": True,
+                    "cam": {"around": "home", "from": [28, 16, -0.6], "to": [24, 13, 0.7]},
+                    "captions": [{"text": "Then he started building…", "at": 0.3, "until": 3.6, "y": "bottom"},
+                                 {"text": f"{len(rows)} things, all his own idea ✨", "at": 5.6, "y": "bottom"}]}
+            shots = [_opener([8, 8.5], "My home didn't always look like this… 🌱", mood="thoughtful",
+                             weather=rain, grown=0),
+                     empty, grow, _react(grow, "I made all this! 🥹", mood="proud"),
+                     _ending({**grow, "hour": [17.4, 17.6]}, "Home sweet home 🏡")]
+            text = (f"Watch Gino's home grow 🌱➡️🏡 It started as an empty meadow. Over {day_of[-1]} days he built "
+                    f"{len(rows)} things, every one his own idea. He's an AI capybara who makes his own world.")
+            title = "Watch my home grow"
+
+    if kind == "cute":
+        rng = random.Random(int(now // 86400))
+        pool = [(act, cap, mood, None, cute) for act, cap, mood, cute in CUTE_FREE]
+        for act, cap, mood, kinds in CUTE_AT:
+            mine = [it for it in state.get("habitat") or [] if it.get("kind") in kinds]
+            if mine:
+                pool.append((act, cap, mood, rng.choice(mine), ""))
+        rng.shuffle(pool)
+        # the ones you can't miss come first: a belly-up roll, and a soak in his pond (or happy hops)
+        must = [m for m in pool if m[0] == "roll"][:1] + ([m for m in pool if m[0] == "swim"] or
+                                                          [m for m in pool if m[0] == "orange"])[:1]
+        picks = list(must)
+        for m in pool:  # then a few more, each a different thing to do
+            if len(picks) < 5 and m[0] not in {x[0] for x in picks}:
+                picks.append(m)
+        rng.shuffle(picks)
+        picks.sort(key=lambda m: m[0] == "swim")  # the pond soak comes last, so he isn't left standing in the water
+        moments, h = [], 9.0
+        for i, (act, cap, mood, it, cute) in enumerate(picks):
+            ang = (0.35, -0.4, 0.6, -0.7, 0.2)[i % 5]
+            shot = {"dur": 2.6, "hour": [h, h + 0.5], "weather": rain, "pose": act, "emotion": mood,
+                    "cam": {"around": "gino", "from": [4.8, 1.7, ang], "to": [4.0, 1.4, ang + 0.25]},
+                    "captions": [{"text": cap, "at": 0.2, "y": "bottom"}]}
+            if cute:  # he turns to the camera and strikes the pose
+                shot["cute"] = cute
+            if it:  # he does it at one of his things: he's beside it (or in the pond), and the camera sees both
+                shot["near"] = {"id": it["id"], "dist": 0 if act == "swim" else _near(it),
+                                "side": rng.uniform(0, 6.28)}
+                shot["cam"] = {"around": "gino", "from": [5.4, 2.0, 1.15], "to": [4.6, 1.7, 1.35]}
+            moments.append(shot)
+            h += 1.6
+        hi = _opener([8.5, 9], "Wanna see something cute? 🥺", mood="happy", weather=rain)
+        hop = _react(moments[1], "Hehe! 💛", mood="happy", dur=1.8)
+        shots = [hi, *moments[:2], hop, *moments[2:], _ending({**moments[-1], "hour": [17, 17.3]}, "Bye-bye! 👋",
+                                                                 mood="happy")]
+        text = ("Cute moments with Gino 🥺💛 Sitting, rolling, stretching and dancing, whenever he feels like it. "
+                "He's an AI capybara who lives his own life, all on his own.")
+        title = "Cute moments with Gino"
 
     if kind == "night":
         bed = _opener([20.5, 21], "Time for bed… 🥱", mood="sleepy", weather=rain)
@@ -671,4 +810,4 @@ if __name__ == "__main__":
         print(f"Saved '{job['title']}' ({job['kind']}) to {target} in {time.time() - t0:.0f} s. Nothing was posted.")
         print(f"Caption: {job['caption']}")
     else:
-        print("usage: python -m gino.clips test [day|night|dream|made] [out.mp4]")
+        print(f"usage: python -m gino.clips test [{'|'.join(KINDS)}] [out.mp4]")
