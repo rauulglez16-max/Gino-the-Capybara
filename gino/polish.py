@@ -85,7 +85,7 @@ def maybe_polish(now: float | None = None) -> int | None:
     if not _reset:  # a restart in the middle of a polish: let it be picked up again
         _reset = True
         db.x("UPDATE clips SET polish_note='' WHERE polish_note=?", (WORKING,))
-    if _lock.locked():
+    if _lock.locked() or clips.camera_wanted():  # new videos go first; polishing can wait
         return None
     for cid in due(now):
         db.x("UPDATE clips SET polish_note=? WHERE id=? AND polished='' AND polish_note=''", (WORKING, cid))
@@ -111,12 +111,21 @@ def _polish(cid: int) -> None:
         out = clips.CLIPS_DIR / name
         err = ""
         try:
-            p = subprocess.run(["nice", "-n", "10", sys.executable, "-m", "gino.polish", "make", str(src), str(out)],
-                               input=json.dumps({"script": script, "voice": narrator()}).encode(),
-                               capture_output=True, timeout=TIMEOUT, cwd=str(config.ROOT))
+            errf = tempfile.TemporaryFile()  # a file, not a pipe: a chatty ffmpeg can't block it
+            p = subprocess.Popen(["nice", "-n", "10", sys.executable, "-m", "gino.polish", "make", str(src), str(out)],
+                                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errf,
+                                 cwd=str(config.ROOT))
+            p.stdin.write(json.dumps({"script": script, "voice": narrator()}).encode()); p.stdin.close()
+            stopped = _wait(p)
+            if stopped:  # a new video wants the camera: it goes first, and this one is polished again later
+                out.unlink(missing_ok=True)
+                db.x("UPDATE clips SET polish_note='' WHERE id=? AND polish_note=?", (cid, WORKING))
+                log.info("Polishing clip %s paused: %s", cid, stopped)
+                return
             ok = p.returncode == 0 and out.exists() and out.stat().st_size > 10_000
-            err = p.stderr.decode(errors="replace")[-1500:]
-        except (OSError, subprocess.TimeoutExpired) as e:
+            errf.seek(0)
+            err = errf.read().decode(errors="replace")[-1500:]
+        except OSError as e:
             ok, err = False, str(e)
         if ok and db.q("SELECT 1 FROM clips WHERE id=? AND polished='' AND tiktok_status=''", (cid,)):
             db.x("UPDATE clips SET polished=?, polished_by='server', polish_note='' WHERE id=?", (name, cid))
@@ -128,6 +137,21 @@ def _polish(cid: int) -> None:
             out.unlink(missing_ok=True)
             db.x("UPDATE clips SET polish_note=? WHERE id=? AND polish_note=?",
                  ("" if ok else "server failed", cid, WORKING))
+
+
+def _wait(p: subprocess.Popen, step: float = 1.0) -> str:
+    """Wait for the polish to finish. Stops it early (and says why) if it runs too long or a new video
+    wants the camera, so dad's "Make a video" never sits waiting behind an old clip's finishing touch."""
+    started = time.time()
+    while p.poll() is None:
+        if clips.camera_wanted():
+            p.kill(); p.wait()
+            return "a new video wanted the camera"
+        if time.time() - started > TIMEOUT:
+            p.kill(); p.wait()
+            return ""  # counts as a failure, like before
+        time.sleep(step)
+    return ""
 
 
 # ---------------------------------------------------------------- the editing itself (separate process)
