@@ -542,6 +542,13 @@ async function renderTab() {
 let clipTimer = null;
 const why = e => { try { return JSON.parse(e.message).detail || e.message; } catch { return e.message; } };
 const clipUrl = (id, dl) => `/clips/${id}.mp4?key=${encodeURIComponent(key())}${dl ? '&download=1' : ''}`;
+// What a video that isn't ready yet is doing: next in line, waiting for the camera (and why), or filming.
+function clipWait(p) {
+  if (/^waiting its turn/.test(p)) return `⏳ Next in line<br>${esc(p)}`;
+  const w = /^waiting for the camera: (.*)$/.exec(p);
+  if (w) return `⏳ Waiting for the camera<br>${esc(w[1])}`;
+  return `🎥 Filming…<br>${esc(p)}`;
+}
 async function renderVideos(P) {
   clearTimeout(clipTimer);
   let d; try { d = await api('/api/clips'); } catch (e) { P.innerHTML = `<p class="muted">${esc(why(e))}</p>`; return; }
@@ -556,7 +563,7 @@ async function renderVideos(P) {
   const card = c => {
     const ready = c.status === 'ready' && c.has_video;
     const top = ready ? `<video controls playsinline preload="metadata" src="${clipUrl(c.id)}#t=4"></video>`
-      : `<div class="wait">${c.status === 'making' ? (/^waiting its turn/.test(c.progress || '') ? `⏳ Next in line<br>${esc(c.progress)}` : `🎥 Filming…<br>${esc(c.progress || '')}`) : c.status === 'failed' ? `😕 This one didn't work (${esc(c.error)})` : 'Video deleted to save space'}</div>`;
+      : `<div class="wait">${c.status === 'making' ? clipWait(c.progress || '') : c.status === 'failed' ? `😕 This one didn't work (${esc(c.error)})` : 'Video deleted to save space'}</div>`;
     const sent = c.tiktok_status ? `<div style="font-size:13px">📱 ${esc({sending: 'Sending to TikTok', sent: 'Sent to TikTok', posted: 'On TikTok', failed: 'TikTok: not sent'}[c.tiktok_status] || c.tiktok_status)}${c.tiktok_note ? ': ' + esc(c.tiktok_note) : ''}</div>` : '';
     const canSend = ready && tt.connected && !['sending', 'sent', 'posted'].includes(c.tiktok_status);
     return `<div class="clip">${top}<strong>${esc(c.title)}</strong><div class="muted" style="font-size:12px">${when(c.ts)} · ${c.made_by === 'dad' ? 'you asked' : c.made_by === 'gino' ? 'Gino filmed it' : 'his daily video'}${c.polished ? (c.polished_by === 'server' ? ' · ✨ polished on the server' : ' · ✨ polished in FilmCraft') : c.polishing ? ' · ✨ polishing…' : ''}</div>`

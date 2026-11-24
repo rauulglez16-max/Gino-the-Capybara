@@ -417,3 +417,35 @@ def test_the_basic_look_is_still_there_for_a_slow_server():
     assert clips.LOOKS["basic"]["detail"] == "low" and clips.LOOKS["basic"]["film"] is None
     job = {"detail": "fur"}
     assert "unsharp" in clips._video_filter(job)[1] and "bt709" in clips._video_filter(job)[1]
+
+
+def test_dads_page_says_what_a_video_is_waiting_for(monkeypatch, tmp_path):
+    """"Waiting for the camera" says why: an old clip's finishing touch, a photo, or another video."""
+    import threading
+    from gino import photo, polish
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    seen = []
+
+    class Render:  # stands in for the browser: notes what dad's page said, then fails quietly
+        def __init__(self, *a, **k):
+            seen.append(clips.progress.get(7))
+            self.stdin = type("In", (), {"write": lambda s, b: None, "close": lambda s: None})()
+            self.stderr, self.returncode = iter([]), 1
+
+        def wait(self):
+            return 1
+    monkeypatch.setattr(clips.subprocess, "Popen", Render)
+    db.x("INSERT OR REPLACE INTO clips(id, ts, kind, title, status) VALUES(7, ?, 'day', 'Day', 'making')", (time.time(),))
+    polish._lock.acquire(); clips._busy.acquire()  # an old clip is being polished
+    t = threading.Thread(target=clips._film, args=(7, {"kind": "day"}))
+    t.start()
+    for _ in range(200):
+        if clips._waiting:
+            break
+        time.sleep(0.01)
+    assert clips.camera_wanted()  # the polish sees this and steps aside
+    assert "finishing touch" in clips.progress[7]
+    clips._busy.release(); polish._lock.release()
+    t.join(5)
+    assert seen == ["setting up the camera (about a minute)"] and clips._waiting == 0
+    db.x("DELETE FROM clips WHERE id=7")

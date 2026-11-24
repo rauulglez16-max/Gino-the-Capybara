@@ -19,6 +19,35 @@ def fresh(monkeypatch, tmp_path):
     yield
 
 
+class FakePolish:
+    """Stands in for the polish process (ffmpeg): writes the finished video, or fails, or runs until stopped."""
+    def __init__(self, code=0, runs=False, on_start=lambda: None):
+        self.code, self.runs, self.on_start = code, runs, on_start
+
+    def __call__(self, cmd, **kw):
+        fake = self
+        if fake.runs:
+            fake.on_start()
+        elif fake.code == 0:
+            open(cmd[-1], "wb").write(b"\0\0\0\x18ftypisom" + b"\2" * 30_000)
+
+        class P:
+            stdin = type("In", (), {"write": lambda s, b: None, "close": lambda s: None})()
+            returncode = None if fake.runs else fake.code
+            killed = False
+
+            def poll(self):
+                return self.returncode
+
+            def kill(self):
+                self.killed, self.returncode = True, -9
+                fake.killed = True
+
+            def wait(self):
+                return self.returncode
+        return P()
+
+
 def clip(tmp_path, age=0.0, **cols):
     n = db.q("SELECT COUNT(*) AS n FROM clips")[0]["n"]
     name = f"gino-{n}-day.mp4"
@@ -59,10 +88,7 @@ def test_clips_on_tiktok_already_polished_or_failed_are_left_alone(tmp_path):
 def test_the_server_polish_is_saved_and_filmcraft_can_still_replace_it(tmp_path, monkeypatch):
     cid = clip(tmp_path)
 
-    def fake_run(cmd, **kw):  # stands in for ffmpeg: writes the finished video
-        open(cmd[-1], "wb").write(b"\0\0\0\x18ftypisom" + b"\2" * 30_000)
-        return subprocess.CompletedProcess(cmd, 0, b"", b"")
-    monkeypatch.setattr(polish.subprocess, "run", fake_run)
+    monkeypatch.setattr(polish.subprocess, "Popen", FakePolish())
     monkeypatch.setattr(polish.threading, "Thread", lambda target, args, **k: type(
         "T", (), {"start": lambda self: target(*args)})())
     assert polish.maybe_polish() == cid
@@ -77,12 +103,32 @@ def test_the_server_polish_is_saved_and_filmcraft_can_still_replace_it(tmp_path,
 
 def test_a_failed_server_polish_isnt_tried_again_and_again(tmp_path, monkeypatch):
     cid = clip(tmp_path)
-    monkeypatch.setattr(polish.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, b"", b"boom"))
+    monkeypatch.setattr(polish.subprocess, "Popen", FakePolish(code=1))
     monkeypatch.setattr(polish.threading, "Thread", lambda target, args, **k: type(
         "T", (), {"start": lambda self: target(*args)})())
     polish.maybe_polish()
     assert db.q("SELECT polish_note FROM clips WHERE id=?", (cid,))[0]["polish_note"] == "server failed"
     assert polish.due() == []
+
+
+def test_new_videos_go_before_polishing_an_old_one(tmp_path, monkeypatch):
+    """Dad's "Make a video" shouldn't sit waiting for the camera while an old clip gets its finishing touch."""
+    monkeypatch.setattr(polish.threading, "Thread", lambda target, args, **k: type(
+        "T", (), {"start": lambda self: target(*args)})())
+    old = clip(tmp_path)
+    waiting = db.x("INSERT INTO clips(ts, kind, title, status) VALUES(?, 'cute', 'Cute', 'making')",
+                   (time.time(),))  # a new video is queued
+    fake = FakePolish(runs=True, on_start=lambda: monkeypatch.setattr(clips, "_waiting", 1))
+    monkeypatch.setattr(polish.subprocess, "Popen", fake)
+    assert polish.maybe_polish() is None  # doesn't even start
+    db.x("UPDATE clips SET status='failed' WHERE id=?", (waiting,))
+    # dad presses "Make a video" while it's polishing (on_start)
+    assert polish.maybe_polish() == old
+    assert getattr(fake, "killed", False)  # it stepped aside straight away...
+    row = db.q("SELECT polished, polish_note FROM clips WHERE id=?", (old,))[0]
+    assert row["polished"] == "" and row["polish_note"] == ""  # ...and will be polished again later, not marked failed
+    monkeypatch.setattr(clips, "_waiting", 0)
+    assert polish.due() == [old]
 
 
 def test_the_daily_tiktok_video_waits_for_its_polish_unless_polishing_is_off(monkeypatch, tmp_path):
