@@ -94,14 +94,49 @@ def _schema() -> None:
     have = {r["name"] for r in db.q("PRAGMA table_info(clips)")}
     # script: the captions and when they show (for the polisher); polished: the finished version's file name;
     # polished_by: who finished it ('pc' = FilmCraft on dad's PC, 'server' = polish.py)
-    for col in ("script", "polished", "polish_note", "polished_by"):
+    # job: the planned shots, so a video cut off by a restart can be filmed again; tries: how often it was started
+    for col in ("script", "polished", "polish_note", "polished_by", "job"):
         if col not in have:
             db.x(f"ALTER TABLE clips ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+    if "tries" not in have:
+        db.x("ALTER TABLE clips ADD COLUMN tries INTEGER NOT NULL DEFAULT 0")
 
 
 _schema()
-# filming happens in this process, so a clip still "making" when the server starts was cut off by a restart
-db.x("UPDATE clips SET status='failed', error='the server restarted while filming' WHERE status='making'")
+MAX_TRIES = 3          # a video cut off by restarts is filmed again, but not forever
+RESUME_DELAY = 45      # after a restart, let Gino wake up properly before the camera starts again
+FILMING_MARK = config.DATA_DIR / "filming"  # while it exists, the 5-minute auto-update waits (deploy/update.sh)
+
+
+def resume(delay: float = RESUME_DELAY) -> list[int]:
+    """Called once when the server starts. Videos still 'making' were cut off by a restart (an update, or a
+    `gino ...` setting change): film them again, in order, instead of giving up on them.
+    Only the server calls this: other processes that import this module (the browser that films, the polish)
+    must never touch the list, or they'd cut off the very videos being filmed."""
+    rows = db.q("SELECT id, job, tries FROM clips WHERE status='making' ORDER BY id")
+    jobs = []
+    for r in rows:
+        try:
+            job = json.loads(r["job"]) if r["job"] else None
+        except ValueError:
+            job = None
+        if not job or not available() or r["tries"] >= MAX_TRIES:
+            why = ("the server restarted while filming, too many times" if job and available()
+                   else "the server restarted while filming")
+            db.x("UPDATE clips SET status='failed', error=? WHERE id=?", (why, r["id"]))
+            continue
+        progress[r["id"]] = "waiting for the camera: the server restarted, so Gino is starting this one again"
+        jobs.append((r["id"], job))
+    if jobs:
+        log.info("Filming %d video(s) again after a restart", len(jobs))
+
+        def later():
+            time.sleep(delay)
+            _film_all(jobs)
+        threading.Thread(target=later, daemon=True, name="clips-resume").start()
+    else:
+        FILMING_MARK.unlink(missing_ok=True)
+    return [cid for cid, _ in jobs]
 
 
 def ffmpeg() -> str:
@@ -586,7 +621,7 @@ def make(kind: str = "", by: str = "auto", caption: str = "") -> int:
         raise RuntimeError("Gino is already filming a clip. One at a time!")
     kind = kind if kind in KINDS else best_kind()
     cid, job = _add(kind, by, caption)
-    threading.Thread(target=_film, args=(cid, job), daemon=True, name=f"clip-{cid}").start()
+    threading.Thread(target=_film_all, args=([(cid, job)],), daemon=True, name=f"clip-{cid}").start()
     return cid
 
 
@@ -611,17 +646,33 @@ def _add(kind: str, by: str, caption: str = "") -> tuple[int, dict]:
     own = _clean(caption, 300)
     if own:  # Gino wrote his own words for it
         job["caption"] = f"{own} {HASHTAGS}"
-    cid = db.x("INSERT INTO clips(ts,kind,title,caption,status,made_by,source,seconds,script) "
-               "VALUES(?,?,?,?,?,?,?,?,?)",
+    cid = db.x("INSERT INTO clips(ts,kind,title,caption,status,made_by,source,seconds,script,job) "
+               "VALUES(?,?,?,?,?,?,?,?,?,?)",
                (time.time(), job["kind"], job["title"], job["caption"], "making", by, job["source"],
-                sum(s["dur"] for s in job["shots"]), json.dumps(script(job), ensure_ascii=False)))
+                sum(s["dur"] for s in job["shots"]), json.dumps(script(job), ensure_ascii=False),
+                json.dumps(job, ensure_ascii=False)))
     return cid, job
 
 
 def _film_all(jobs: list[tuple[int, dict]]) -> None:
     for cid, job in jobs:
-        db.x("UPDATE clips SET ts=? WHERE id=?", (time.time(), cid))  # dated when it's actually filmed
-        _film(cid, job)
+        if not db.q("SELECT 1 FROM clips WHERE id=? AND status='making'", (cid,)):
+            continue
+        db.x("UPDATE clips SET ts=?, tries=tries+1 WHERE id=?", (time.time(), cid))  # dated when it's filmed
+        _mark(cid)
+        try:
+            _film(cid, job)
+        finally:
+            if not db.q("SELECT 1 FROM clips WHERE status='making'"):
+                FILMING_MARK.unlink(missing_ok=True)
+
+
+def _mark(cid: int) -> None:
+    """Tell the auto-update a video is filming, so it doesn't restart the server in the middle of it."""
+    try:
+        FILMING_MARK.write_text(f"{cid}\n")
+    except OSError:
+        pass
 
 
 def script(job: dict) -> dict:

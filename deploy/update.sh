@@ -41,6 +41,15 @@ main() {
     return 0  # this version already failed to start; wait for a newer one
   fi
 
+  # Gino is filming a video: updating now would restart him and cut it off. Wait for the next check (every
+  # 5 minutes), unless the mark is old (over 2.5 hours: something went wrong) or dad typed `gino update` himself.
+  if [ "$force" != "--verbose" ] && [ -n "$(find "$BASE/data/filming" -mmin -150 2>/dev/null)" ]; then
+    return 0
+  fi
+  if [ "$force" = "--verbose" ] && [ -f "$BASE/data/filming" ]; then
+    echo "Gino is filming a video right now. It will start again by itself after the update."
+  fi
+
   echo "New version ${new:0:7} found (was ${current:0:7}). Backing up and updating..."
   backup_now "$BASE" before-update
 
