@@ -398,6 +398,17 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
           *) echo "usage: gino tiktok auto on|off"; exit 1 ;;
         esac
         ;;
+      privacy)
+        case "${3:-}" in
+          everyone) v=PUBLIC_TO_EVERYONE ;; followers) v=FOLLOWER_OF_CREATOR ;; friends) v=MUTUAL_FOLLOW_FRIENDS ;; onlyme|only-me) v=SELF_ONLY ;;
+          *) echo "usage: gino tiktok privacy everyone|followers|friends|onlyme"
+             echo "  Who can see the videos Gino posts by himself in direct mode (now: $(setting GINO_TIKTOK_PRIVACY | sed 's/^$/SELF_ONLY/'))."
+             echo "  TikTok only allows 'everyone' after it has reviewed your developer app; until then his posts stay 'only me'."; exit 1 ;;
+        esac
+        set_setting GINO_TIKTOK_PRIVACY "$v"; systemctl restart gino
+        echo "Videos Gino posts by himself will be visible to: $3."
+        [ "$(setting GINO_TIKTOK_MODE)" = "direct" ] || echo "(This only matters in direct mode: gino tiktok mode direct)"
+        ;;
       off)
         unset_setting GINO_TIKTOK_CLIENT_KEY; unset_setting GINO_TIKTOK_CLIENT_SECRET; set_setting GINO_TIKTOK_AUTO 0
         systemctl restart gino
@@ -405,11 +416,11 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
         ;;
       status)
         if [ -n "$(setting GINO_TIKTOK_CLIENT_KEY)" ]; then
-          echo "📱 TikTok is set up (mode: $(setting GINO_TIKTOK_MODE | sed 's/^$/drafts/'), automatic: $( [ "$(setting GINO_TIKTOK_AUTO)" = "1" ] && echo on || echo off ))."
+          echo "📱 TikTok is set up (mode: $(setting GINO_TIKTOK_MODE | sed 's/^$/drafts/'), automatic: $( [ "$(setting GINO_TIKTOK_AUTO)" = "1" ] && echo on || echo off ), who sees his own posts: $(setting GINO_TIKTOK_PRIVACY | sed 's/^$/SELF_ONLY/'))."
           echo "   Connect or check the account on your private page, in the Videos tab."
         else echo "TikTok isn't set up (gino tiktok setup). You can still download videos from your private page."; fi
         ;;
-      *) echo "usage: gino tiktok [status|setup|mode drafts|direct|auto on|off|off]"; exit 1 ;;
+      *) echo "usage: gino tiktok [status|setup|mode drafts|direct|auto on|off|privacy everyone|followers|friends|onlyme|off]"; exit 1 ;;
     esac
     ;;
   shop)
@@ -629,7 +640,7 @@ gino social      Bluesky posting: gino social setup | on | off | status
 gino photos      photos in his posts: gino photos on | test | off
 gino clips       his videos: gino clips on | test | daily N | quality hd|basic | off
 gino polish      who polishes his videos: gino polish server | pc | off (and: gino polish voice on/off)
-gino tiktok      send videos to TikTok: gino tiktok setup | mode | auto on/off | off
+gino tiktok      send videos to TikTok: gino tiktok setup | mode | auto on/off | privacy | off
 gino shop        his shop: gino shop setup | on | off | sales | status
 gino dreams      his dreams at night: gino dreams on | off | status
 gino stream      live TV: gino stream youtube | test | on | off | tiktok | tiktok-live 90 | status

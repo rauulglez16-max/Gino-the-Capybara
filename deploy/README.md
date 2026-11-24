@@ -412,6 +412,7 @@ part first:**
 | `gino tiktok setup` | Paste the client key and secret |
 | `gino tiktok auto on` | His daily video goes to TikTok by itself (`off` to stop) |
 | `gino tiktok mode direct` | Post straight to the account instead of to your inbox (`mode drafts` to go back) |
+| `gino tiktok privacy everyone` | Who sees the videos Gino posts by himself in direct mode (`followers`, `friends`, `onlyme`). TikTok only allows `everyone` after it has reviewed your app |
 | `gino tiktok off` | Disconnect TikTok. Videos stay on your private page |
 
 Nothing on TikTok can talk to Gino: the server only uploads videos. To delete a video, delete it in the TikTok app.
