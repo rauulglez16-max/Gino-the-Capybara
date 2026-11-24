@@ -259,11 +259,15 @@ def clip_list():
 
 class ClipIn(BaseModel):
     kind: str = ""
+    count: int = 1  # 3: "make 3 at once", each a different story
 
 
 @app.post("/api/clips", dependencies=[Depends(auth)])
 def clip_make(c: ClipIn):
     try:
+        if c.count > 1:
+            ids = clips.make_set(c.count, by="dad", kind=c.kind)
+            return {"id": ids[0], "ids": ids}
         return {"id": clips.make(c.kind, by="dad")}
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from None

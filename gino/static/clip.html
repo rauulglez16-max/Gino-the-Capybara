@@ -34,7 +34,7 @@ const clamp01 = v => Math.max(0, Math.min(1, v));
 const lerp = (a, b, k) => a + (b - a) * k;
 const fade = (t, a, b, edge = 0.45) => clamp01(Math.min((t - a) / edge, (b - t) / edge));   // 0..1 in, hold, out
 
-let W, H, job, w, THREE, out, g, shots = [], total = 0, frame = 0, curShot = -1, hourNow = 12, curSt = null;
+let W, H, px = 1, job, w, THREE, out, g, shots = [], total = 0, frame = 0, curShot = -1, hourNow = 12, curSt = null;
 // "watch my home grow" clips: how many of his things have appeared so far (in the order he built them)
 let grown = Infinity;
 const visible = () => job.grow ? job.state.habitat.filter(it => (job.grow.order[String(it.id)] ?? 0) < grown) : job.state.habitat;
@@ -45,7 +45,7 @@ function loadImage(src) {
 }
 
 window.setupClip = async (j) => {
-  job = j; W = j.width; H = j.height;
+  job = j; W = j.width; H = j.height; px = W / 720;   // shadows and gaps were tuned on a 720-wide video
   THREE = await import('three');
   // the 3D world is drawn a little smaller and stretched to fit (much quicker on a server without a graphics card);
   // the words are drawn at full size on top, so they stay sharp
@@ -55,9 +55,11 @@ window.setupClip = async (j) => {
   for (const s of j.shots) if (s.art && !art[s.art]) art[s.art] = await loadImage(s.art);
   const { createWorld } = await import('/static/world.js');
   w = createWorld(box, document.getElementById('tip'), {
-    key: '', season: j.state.weather?.season, autoQuality: false, lite: true,
+    key: '', season: j.state.weather?.season, autoQuality: false, lite: true, film: j.film || null,
     clock: () => hourNow, director: direct });
-  w.setQuality('low');
+  // 'high': all his fur, all the grass and sharper shadows; smooth edges and colour come from the film effects
+  w.setQuality(j.detail === 'high' ? 'high' : 'low');
+  if (j.detail === 'fur') w._debug.gino.traverse(n => { if (n.userData.shell) n.visible = true; });   // all his fur, the rest light
   // a new thing he made starts beside where it will go: in the clip he carries it to its spot
   if (j.carry) j.state = { ...j.state, habitat: j.state.habitat.map(it => it.id === j.carry.id ? { ...it, x: j.carry.from[0], y: j.carry.from[1] } : it) };
   w.update(j.state);
@@ -73,6 +75,7 @@ window.setupClip = async (j) => {
   let t = 0; shots = j.shots.map(s => { const o = { ...s, t0: t, t1: t + s.dur }; t += s.dur; return o; });
   total = t;
   out = document.createElement('canvas'); out.width = W; out.height = H; g = out.getContext('2d');
+  g.imageSmoothingQuality = 'high';   // the 3D picture is stretched to fit: stretch it smoothly
   curShot = 0; startShot(shots[0]); hourNow = shots[0].hour[0];
   for (let i = 0; i < 2 * j.fps; i++) window.__advance(1000 / j.fps);   // let the sky, lights and Gino settle first
   return Math.round(total * j.fps);
@@ -175,8 +178,8 @@ function caption(text, a, y, style) {
   g.font = big ? `700 ${size}px Fraunces, Georgia, serif` : `700 ${size}px Caveat, 'Comic Sans MS', cursive`;
   const lines = wrap(text, W * 0.78), lh = size * (big ? 1.15 : 1.1), pad = size * 0.55;
   const bw = Math.max(...lines.map(l => g.measureText(l).width)) + pad * 2, bh = lines.length * lh + pad * 1.3;
-  const x = (W - bw) / 2, top = y - bh / 2 + (1 - a) * 18;
-  g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 18; g.shadowOffsetY = 6;
+  const x = (W - bw) / 2, top = y - bh / 2 + (1 - a) * 18 * px;
+  g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 18 * px; g.shadowOffsetY = 6 * px;
   g.fillStyle = big ? 'rgba(255,248,232,.94)' : 'rgba(255,255,255,.9)';
   roundRect(x, top, bw, bh, size * 0.6); g.fill();
   g.shadowColor = 'transparent';
@@ -191,7 +194,7 @@ function speech(text, a) {
   const { camera } = w._debug;
   const p = faceV().project(camera), top = faceV().add(new THREE.Vector3(0, 0.55, 0)).project(camera);
   if (p.z > 1) return;   // he's behind the camera
-  const fx = (p.x + 1) / 2 * W, fy = (1 - p.y) / 2 * H, headR = Math.max(20, Math.abs((1 - top.y) / 2 * H - fy));
+  const fx = (p.x + 1) / 2 * W, fy = (1 - p.y) / 2 * H, headR = Math.max(20 * px, Math.abs((1 - top.y) / 2 * H - fy));
   g.save(); g.globalAlpha = a;
   const size = Math.round(W * 0.064);
   g.font = `700 ${size}px Caveat, 'Comic Sans MS', cursive`;
@@ -200,11 +203,11 @@ function speech(text, a) {
   const gap = Math.min(H * 0.16, headR * 1.15 + size * 0.6);
   let by = fy - gap - bh, below = false;
   if (by < H * 0.25) { by = Math.min(H * 0.8 - bh, fy + gap); below = true; }   // no room above: say it from below
-  by += (1 - a) * 14;
+  by += (1 - a) * 14 * px;
   const bx = Math.max(W * 0.05, Math.min(W * 0.95 - bw, fx - bw * 0.35));
   const tipX = Math.max(bx + size, Math.min(bx + bw - size, fx)), tipY = below ? fy + headR * 0.45 : fy - headR * 0.45;
   const baseY = below ? by : by + bh;
-  g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 18; g.shadowOffsetY = 6;
+  g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 18 * px; g.shadowOffsetY = 6 * px;
   g.fillStyle = 'rgba(255,255,255,.95)';
   roundRect(bx, by, bw, bh, size * 0.7); g.fill();
   g.beginPath(); g.moveTo(tipX - size * 0.45, baseY); g.lineTo(lerp(tipX, fx, 0.5), lerp(baseY, tipY, 0.55)); g.lineTo(tipX + size * 0.2, baseY); g.closePath(); g.fill();
@@ -222,8 +225,8 @@ function drawArt(s, t) {
   g.fillStyle = 'rgba(20,14,40,.55)'; g.fillRect(0, 0, W, H);
   const side = W * 0.72 * (1 + k * 0.05), ratio = (im.naturalHeight || 1) / (im.naturalWidth || 1);
   const iw = side, ih = side * ratio, x = (W - iw) / 2, y = H * 0.44 - ih / 2;
-  g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 40; g.shadowOffsetY = 12;
-  g.fillStyle = '#fffaf0'; roundRect(x - 18, y - 18, iw + 36, ih + 36, 14); g.fill();
+  g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 40 * px; g.shadowOffsetY = 12 * px;
+  g.fillStyle = '#fffaf0'; roundRect(x - 18 * px, y - 18 * px, iw + 36 * px, ih + 36 * px, 14 * px); g.fill();
   g.shadowColor = 'transparent';
   g.drawImage(im, x, y, iw, ih);
   g.restore();
