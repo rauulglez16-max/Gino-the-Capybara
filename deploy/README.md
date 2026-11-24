@@ -350,6 +350,10 @@ narrator reading the captions (a free voice that runs on the server; Gino's own 
 voice), lowers his meadow sounds while someone talks, sets the loudness for phones, makes the picture 1080×1920 and
 gives it a warm colour touch. It takes the server two or three minutes per video and costs nothing.
 
+New videos always go first: if you press "Make a video" while the server is polishing an older one, the polish
+stops straight away, your new video starts filming, and the older one is polished again afterwards. While a video
+waits, the Videos tab says what it's waiting for ("⏳ Waiting for the camera" and the reason).
+
 You choose with one command. Log in to the server (in PowerShell: `ssh root@<your IP>`) and type one of these:
 
 | Command | What it does |

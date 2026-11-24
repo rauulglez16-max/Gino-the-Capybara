@@ -61,6 +61,23 @@ SET_SIZE = 3  # "make 3 at once"
 
 progress: dict[int, str] = {}  # clip id -> "filming 120 of 480 frames", for dad's page
 _busy = threading.Lock()
+_waiting = 0  # clips waiting for the camera: the server's polish steps aside for them (polish.py)
+_waiting_lock = threading.Lock()
+
+
+def camera_wanted() -> bool:
+    """Is a new video waiting for (or about to film with) the camera? Polishing an old one can wait."""
+    return _waiting > 0 or bool(db.q("SELECT 1 FROM clips WHERE status='making'"))
+
+
+def _waiting_for(cid: int) -> str:
+    """What a new video is waiting for, in plain words for dad's page."""
+    from . import polish
+    if polish._lock.locked():
+        return "waiting for the camera: Gino is pausing the finishing touch on his last video (he'll finish it later)"
+    if photo._lock.locked():
+        return "waiting for the camera: Gino is taking a photo"
+    return "waiting for the camera: another video is still filming"
 
 
 def _schema() -> None:
@@ -625,10 +642,20 @@ def _film(cid: int, job: dict) -> None:
     CLIPS_DIR.mkdir(exist_ok=True)
     name = f"gino-{cid}-{job['kind']}.mp4"
     out = CLIPS_DIR / name
-    started = time.time()
-    progress[cid] = "waiting for the camera"
-    with _busy, photo._lock:  # one browser at a time on the small server
-        progress[cid] = "setting up the camera"
+    global _waiting
+    with _waiting_lock:
+        _waiting += 1
+    try:
+        if _busy.locked() or photo._lock.locked():
+            progress[cid] = _waiting_for(cid)
+        _busy.acquire()  # one browser at a time on the small server; polishing steps aside (polish.py)
+        photo._lock.acquire()
+    finally:
+        with _waiting_lock:
+            _waiting -= 1
+    started = time.time()  # the time limit counts from here, not from the wait
+    try:
+        progress[cid] = "setting up the camera (about a minute)"
         try:
             p = subprocess.Popen([sys.executable, "-m", "gino.clips", "render", str(out)], stdin=subprocess.PIPE,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=str(config.ROOT),
@@ -647,6 +674,9 @@ def _film(cid: int, job: dict) -> None:
             ok = p.returncode == 0 and out.exists() and out.stat().st_size > 10_000
         except Exception as e:  # noqa: BLE001
             ok, tail = False, [str(e)]
+    finally:
+        photo._lock.release()
+        _busy.release()
     progress.pop(cid, None)
     if ok:
         db.x("UPDATE clips SET status='ready', filename=? WHERE id=?", (name, cid))
