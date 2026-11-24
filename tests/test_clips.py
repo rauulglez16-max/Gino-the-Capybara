@@ -43,7 +43,8 @@ def test_every_kind_of_clip_is_a_short_vertical_story(kind):
     job = clips.plan(kind)
     total = sum(s["dur"] for s in job["shots"])
     assert 15 <= total <= 30
-    assert (job["width"], job["height"]) == (720, 1280)
+    assert (job["width"], job["height"]) == (1080, 1920)  # full HD by default
+    assert job["detail"] == "fur" and job["film"] and job["crf"] <= 20
     assert 23 <= job["fps"] <= 30
     assert "#capybara" in job["caption"] and len(job["caption"]) <= 2000
     assert public.check(words(job)) is None
@@ -380,3 +381,39 @@ def test_gino_can_choose_every_kind_of_video():
         assert f"'{k}'" in schema
     for k in clips.KINDS:
         assert k in clips.KIND_NAMES
+
+
+def test_three_at_once_are_three_different_stories(monkeypatch):
+    for i in range(6):
+        tools.run("build", {"name": f"thing {i}", "emoji": "🌼", "x": i, "y": 1, "kind": "bench"}, body())
+    kinds = clips.pick_kinds(3)
+    assert len(kinds) == 3 and len(set(kinds)) == 3
+    assert clips.pick_kinds(3, "grow")[0] == "grow"  # dad's choice goes first
+
+
+def test_three_at_once_are_filmed_one_after_another(monkeypatch):
+    monkeypatch.setattr(clips, "available", lambda: True)
+    filmed = []
+    monkeypatch.setattr(clips, "_film", lambda cid, job: filmed.append(cid) or
+                        db.x("UPDATE clips SET status='ready' WHERE id=?", (cid,)))
+    monkeypatch.setattr(clips.threading, "Thread", lambda target, args, **k: type(
+        "T", (), {"start": lambda self: target(*args)})())
+    ids = clips.make_set(3)
+    assert len(ids) == 3 and filmed == ids  # in order, never two at once
+    rows = db.q("SELECT kind, made_by FROM clips ORDER BY id")
+    assert len({r["kind"] for r in rows}) == 3 and all(r["made_by"] == "dad" for r in rows)
+
+
+def test_a_set_waits_while_gino_is_still_filming(monkeypatch):
+    monkeypatch.setattr(clips, "available", lambda: True)
+    db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "day", "x", "making"))
+    with pytest.raises(RuntimeError):
+        clips.make_set(3)
+    with pytest.raises(RuntimeError):
+        clips.make("day")
+
+
+def test_the_basic_look_is_still_there_for_a_slow_server():
+    assert clips.LOOKS["basic"]["detail"] == "low" and clips.LOOKS["basic"]["film"] is None
+    job = {"detail": "fur"}
+    assert "unsharp" in clips._video_filter(job)[1] and "bt709" in clips._video_filter(job)[1]

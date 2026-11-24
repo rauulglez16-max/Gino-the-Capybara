@@ -103,8 +103,10 @@ CLIPS_ON = os.environ.get("GINO_CLIPS", "0") == "1"
 CLIPS_PER_DAY = max(0, int(_f("GINO_CLIPS_PER_DAY", 1)))  # he films this many by himself each evening (0 = only on request)
 CLIP_HOUR = max(0, min(23, int(_f("GINO_CLIP_HOUR", 19))))  # local hour after which the daily clip is filmed
 CLIP_FPS = max(23, min(30, int(_f("GINO_CLIP_FPS", 24))))  # TikTok wants 23 to 60 frames a second
-CLIP_SIZE = (720, 1280)  # 9:16, the shape of a phone screen
-CLIP_RENDER_SCALE = max(0.5, min(1.0, _f("GINO_CLIP_RENDER_SCALE", 0.75)))  # 3D drawn smaller, then stretched: quicker
+CLIP_LOOK = "basic" if os.environ.get("GINO_CLIP_LOOK", "hd") == "basic" else "hd"  # hd: full HD, all the detail
+CLIP_SIZE = (1080, 1920) if CLIP_LOOK == "hd" else (720, 1280)  # 9:16, the shape of a phone screen
+# the 3D is drawn smaller, then stretched to fit (much quicker without a graphics card); the words stay full size
+CLIP_RENDER_SCALE = max(0.5, min(1.0, _f("GINO_CLIP_RENDER_SCALE", 0.67 if CLIP_LOOK == "hd" else 0.75)))
 CLIP_TIMEOUT = int(_f("GINO_CLIP_TIMEOUT", 3600))  # seconds; the server has no graphics card, so filming takes minutes
 FFMPEG = os.environ.get("GINO_FFMPEG", "")  # optional path to ffmpeg
 # Who gives his videos their finishing touch: "pc" (FilmCraft on dad's PC, with the server as a backup when the PC

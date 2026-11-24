@@ -48,6 +48,17 @@ END_SECONDS = 2.6
 KEEP = 40  # the newest clips are kept; older video files are deleted to save disk space
 HASHTAGS = "#capybara #capybaras #cozy #aiart #virtualpet #ai #cute"
 
+# How good the picture is. "hd" (the default): full HD with sharp words, all of his fur, smooth edges, the same warm
+# colours and soft glow as his live page, and a finer video encoding. It costs the server about the same time as the
+# old look (measured: the extra fur and effects are cheap; full grass and big shadows doubled the time, so they're
+# left out). "basic": the old look (for a very slow server). "high" detail (all the grass too) is there for a fast one.
+LOOKS = {
+    "hd": {"detail": "fur", "film": {"glow": True}, "jpeg": 0.94, "crf": 19, "preset": "medium"},
+    "basic": {"detail": "low", "film": None, "jpeg": 0.88, "crf": 23, "preset": "veryfast"},
+}
+LOOK = LOOKS["basic" if config.CLIP_LOOK == "basic" else "hd"]
+SET_SIZE = 3  # "make 3 at once"
+
 progress: dict[int, str] = {}  # clip id -> "filming 120 of 480 frames", for dad's page
 _busy = threading.Lock()
 
@@ -72,6 +83,8 @@ def _schema() -> None:
 
 
 _schema()
+# filming happens in this process, so a clip still "making" when the server starts was cut off by a restart
+db.x("UPDATE clips SET status='failed', error='the server restarted while filming' WHERE status='making'")
 
 
 def ffmpeg() -> str:
@@ -130,21 +143,42 @@ def _feeling(state: dict) -> str:
 
 def best_kind(now: float | None = None) -> str:
     """Pick today's story: a fresh dream painting beats a new thing he built, which beats a plain day."""
+    return _choices(now)[0]
+
+
+def pick_kinds(n: int, first: str = "", now: float | None = None) -> list[str]:
+    """n different stories for a set of videos made together: dad's pick (or today's best) first, then the others
+    his home can fill, so the set isn't three of the same."""
+    order = ([first] if first in KINDS else []) + _choices(now, everyday_all=True)
+    out = []
+    for k in order:
+        if k not in out:
+            out.append(k)
+    return (out * n)[:n]  # a tiny home can't fill n different stories: repeat (each one still differs a little)
+
+
+def _choices(now: float | None = None, everyday_all: bool = False) -> list[str]:
+    """The stories worth filming now, best first."""
     now = now or time.time()
     fresh = now - 3 * 86400
+    out = []
     if any(not _already(f"art:{a['id']}") for a in _public_art(fresh, dream=True)):
-        return "dream"
+        out.append("dream")
     if any(not _already(f"item:{b['id']}") for b in _built(fresh)) or \
             any(not _already(f"art:{a['id']}") for a in _public_art(fresh)):
-        return "made"
+        out.append("made")
     # an ordinary day: take turns between the everyday stories (skipping the ones his home can't fill yet, and the
     # one he filmed last, so his videos don't all look the same)
     things = db.q("SELECT kind FROM habitat")
     ok = [k for k in EVERYDAY if (k != "tour" or sum(1 for t in things if t["kind"] not in FLAT_THINGS) >= 3)
           and (k != "grow" or len(things) >= 5)]
     last = db.q("SELECT kind FROM clips WHERE status!='failed' ORDER BY id DESC LIMIT 1")
-    ok = [k for k in ok if not last or k != last[0]["kind"]] or ok
-    return ok[int(now // 86400) % len(ok)]
+    fresh_ok = [k for k in ok if not last or k != last[0]["kind"]] or ok
+    i = int(now // 86400) % len(fresh_ok)
+    out += fresh_ok[i:] + fresh_ok[:i]  # today's turn first, then the rest in order (for a set of videos)
+    if everyday_all:
+        out += [k for k in ok if k not in out]
+    return out
 
 
 # ---------------------------------------------------------------- the script for one clip
@@ -505,8 +539,9 @@ def plan(kind: str, now: float | None = None) -> dict:
         caption = f"{KIND_NAMES[kind]} 🌿 Gino is an AI capybara who lives his own life. {HASHTAGS}"
     return {"kind": kind, "title": title, "caption": caption[:2000], "source": source,
             "fps": config.CLIP_FPS, "width": config.CLIP_SIZE[0], "height": config.CLIP_SIZE[1],
-            "state": state, "shots": shots, "end": _end(), "end_seconds": END_SECONDS, "quality": 0.88,
-            "render_scale": config.CLIP_RENDER_SCALE, "sounds": _sound_plan(shots), **extra}
+            "state": state, "shots": shots, "end": _end(), "end_seconds": END_SECONDS, "quality": LOOK["jpeg"],
+            "render_scale": config.CLIP_RENDER_SCALE, "detail": LOOK["detail"], "film": LOOK["film"],
+            "crf": LOOK["crf"], "preset": LOOK["preset"], "sounds": _sound_plan(shots), **extra}
 
 
 def _sound_plan(shots: list[dict]) -> list[list]:
@@ -530,9 +565,31 @@ def make(kind: str = "", by: str = "auto", caption: str = "") -> int:
     """Start filming a clip in the background. Returns its id straight away (status 'making')."""
     if not available():
         raise RuntimeError("the video camera isn't set up on this server")
-    if db.q("SELECT 1 FROM clips WHERE status='making' AND ts>?", (time.time() - config.CLIP_TIMEOUT - 60,)):
+    if db.q("SELECT 1 FROM clips WHERE status='making'"):
         raise RuntimeError("Gino is already filming a clip. One at a time!")
     kind = kind if kind in KINDS else best_kind()
+    cid, job = _add(kind, by, caption)
+    threading.Thread(target=_film, args=(cid, job), daemon=True, name=f"clip-{cid}").start()
+    return cid
+
+
+def make_set(n: int = SET_SIZE, by: str = "dad", kind: str = "") -> list[int]:
+    """Start filming n videos in one go, each a different story. They're filmed one after another in the
+    background (the small server can only film one at a time). Returns their ids straight away."""
+    if not available():
+        raise RuntimeError("the video camera isn't set up on this server")
+    if db.q("SELECT 1 FROM clips WHERE status='making'"):
+        raise RuntimeError("Gino is still filming. Wait until he's finished, then ask again!")
+    n = max(1, min(SET_SIZE, int(n)))
+    jobs = [_add(k, by) for k in pick_kinds(n, kind)]
+    for i, (cid, _) in enumerate(jobs[1:], 2):
+        progress[cid] = f"waiting its turn ({i} of {n})"
+    threading.Thread(target=_film_all, args=(jobs,), daemon=True, name=f"clips-{jobs[0][0]}").start()
+    return [cid for cid, _ in jobs]
+
+
+def _add(kind: str, by: str, caption: str = "") -> tuple[int, dict]:
+    """Plan one clip and put it on the list as 'making'."""
     job = plan(kind)
     own = _clean(caption, 300)
     if own:  # Gino wrote his own words for it
@@ -541,8 +598,13 @@ def make(kind: str = "", by: str = "auto", caption: str = "") -> int:
                "VALUES(?,?,?,?,?,?,?,?,?)",
                (time.time(), job["kind"], job["title"], job["caption"], "making", by, job["source"],
                 sum(s["dur"] for s in job["shots"]), json.dumps(script(job), ensure_ascii=False)))
-    threading.Thread(target=_film, args=(cid, job), daemon=True, name=f"clip-{cid}").start()
-    return cid
+    return cid, job
+
+
+def _film_all(jobs: list[tuple[int, dict]]) -> None:
+    for cid, job in jobs:
+        db.x("UPDATE clips SET ts=? WHERE id=?", (time.time(), cid))  # dated when it's actually filmed
+        _film(cid, job)
 
 
 def script(job: dict) -> dict:
@@ -744,6 +806,15 @@ def _audio_args(sounds: list[list], total: float) -> tuple[list[str], str]:
     return args, ";".join(parts)
 
 
+def _video_filter(job: dict) -> list[str]:
+    """The browser's frames are JPEGs (full-range BT.601 colours): turn them into the standard video colours phones
+    expect, so his meadow isn't washed out or too dark on TikTok. The HD look also sharpens the stretched 3D a touch."""
+    vf = "scale=in_range=pc:out_range=tv:in_color_matrix=bt601:out_color_matrix=bt709:flags=lanczos"
+    if job.get("detail") in ("fur", "high"):
+        vf += ",unsharp=5:5:0.45:5:5:0"
+    return ["-vf", vf + ",format=yuv420p"]
+
+
 def _render(job: dict, out: str) -> None:
     from playwright.sync_api import sync_playwright
     url = f"http://127.0.0.1:{config.PORT}/static/clip.html"
@@ -752,9 +823,12 @@ def _render(job: dict, out: str) -> None:
     audio_in, audio_filter = _audio_args(job["sounds"], total)
     cmd = [ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
            "-f", "image2pipe", "-framerate", str(job["fps"]), "-c:v", "mjpeg", "-i", "-", *audio_in,
-           "-filter_complex", audio_filter, "-map", "0:v", "-map", "[aout]",
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-profile:v", "high",
-           "-r", str(job["fps"]), "-c:a", "aac", "-b:a", "128k", "-t", f"{total:.3f}", "-movflags", "+faststart",
+           "-filter_complex", audio_filter, "-map", "0:v", "-map", "[aout]", *_video_filter(job),
+           "-c:v", "libx264", "-preset", job.get("preset", "veryfast"), "-crf", str(job.get("crf", 23)),
+           "-tune", "animation", "-pix_fmt", "yuv420p", "-profile:v", "high", "-g", str(job["fps"] * 2),
+           "-maxrate", "12M", "-bufsize", "24M", "-colorspace", "bt709", "-color_primaries", "bt709",
+           "-color_trc", "bt709", "-color_range", "tv",
+           "-r", str(job["fps"]), "-c:a", "aac", "-b:a", "192k", "-t", f"{total:.3f}", "-movflags", "+faststart",
            out + ".part.mp4"]
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     try:

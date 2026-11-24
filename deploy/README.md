@@ -312,6 +312,12 @@ when something nice happens. To see them, open your private page and click the *
 - **Download**: saves the video to your phone or computer, ready to post.
 - **Copy caption**: copies the words and hashtags to paste into TikTok.
 - **Make a new video**: films one now (pick the story, or let Gino pick).
+- **Make 3 at once**: films three videos in one go, each a different story. They're filmed one after another, so
+  the second and third show "waiting its turn" until the camera is free.
+
+Videos are filmed in **full HD** (1080 × 1920, the size TikTok likes best) with all of Gino's fur, sharp words, smooth
+edges and the same warm colours as his live page. If your server ever feels too slow, `gino clips quality basic`
+switches back to the older, quicker look (and `gino clips quality hd` switches back).
 
 **Posting by hand (easiest, start here):** on your phone, open the Videos tab, press **Download**, open TikTok,
 press **+**, pick the video, paste the caption, and before posting turn on **AI-generated content** (under
@@ -322,6 +328,7 @@ press **+**, pick the video, paste the caption, and before posting turn on **AI-
 | `gino clips` | Is the video camera on or off |
 | `gino clips test` | Film a test video now (add `day`, `night`, `dream`, `made`, `cute`, `tour` or `grow` to choose) |
 | `gino clips daily 2` | How many videos he films by himself each evening (0 to 3; 0 = only when you ask) |
+| `gino clips quality hd` | Full HD videos with all the detail (the default). `basic` = the older, quicker look |
 | `gino clips off` | Stop filming. Videos already made stay on your private page |
 
 ### Polishing videos in FilmCraft on your PC ✨
