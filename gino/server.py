@@ -82,6 +82,7 @@ async def lifespan(app: FastAPI):
     mode = "practice brain (no API key)" if config.FAKE_BRAIN else config.MODEL
     log.info("Gino is awake. Brain: %s. Daily budget: $%.2f", mode, config.DAILY_BUDGET_USD)
     task = asyncio.create_task(life_loop())
+    clips.resume()  # videos cut off by a restart (an update or a setting change) are filmed again
     phone = telegram.start()  # dad's phone line, if set up
     yield
     task.cancel()

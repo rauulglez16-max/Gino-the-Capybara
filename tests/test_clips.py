@@ -449,3 +449,53 @@ def test_dads_page_says_what_a_video_is_waiting_for(monkeypatch, tmp_path):
     t.join(5)
     assert seen == ["setting up the camera (about a minute)"] and clips._waiting == 0
     db.x("DELETE FROM clips WHERE id=7")
+
+
+def test_videos_cut_off_by_a_restart_are_filmed_again(monkeypatch, tmp_path):
+    """An update or a `gino ...` setting restarts the server: the videos it cut off start again by themselves."""
+    monkeypatch.setattr(clips, "available", lambda: True)
+    monkeypatch.setattr(clips, "FILMING_MARK", tmp_path / "filming")
+    filmed = []
+    monkeypatch.setattr(clips, "_film", lambda cid, job: filmed.append((cid, job["kind"])) or
+                        db.x("UPDATE clips SET status='ready' WHERE id=?", (cid,)))
+    monkeypatch.setattr(clips.threading, "Thread", lambda target, args=(), **k: type(
+        "T", (), {"start": lambda self: None})())
+    ids = clips.make_set(3)  # the server restarts before any of them is filmed
+    old = db.q("SELECT id FROM clips WHERE job=''")  # (rows from before this change can't be filmed again)
+    assert not old
+    tired = db.x("INSERT INTO clips(ts,kind,title,status,job,tries) VALUES(?,?,?,?,?,?)",
+                 (time.time(), "day", "x", "making", '{"kind": "day"}', clips.MAX_TRIES))
+    lost = db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "day", "x", "making"))
+    monkeypatch.setattr(clips.threading, "Thread", lambda target, args=(), **k: type(
+        "T", (), {"start": lambda self: target(*args)})())
+    assert clips.resume(delay=0) == ids
+    assert [cid for cid, _ in filmed] == ids  # all three, in order
+    rows = {r["id"]: r for r in db.q("SELECT id, status, error, tries FROM clips")}
+    assert all(rows[i]["status"] == "ready" and rows[i]["tries"] == 1 for i in ids)
+    assert rows[tired]["status"] == "failed" and "too many" in rows[tired]["error"]
+    assert rows[lost]["status"] == "failed"
+    assert not (tmp_path / "filming").exists()  # the auto-update can go ahead again
+
+
+def test_the_auto_update_waits_while_a_video_is_filming(monkeypatch, tmp_path):
+    monkeypatch.setattr(clips, "available", lambda: True)
+    monkeypatch.setattr(clips, "FILMING_MARK", tmp_path / "filming")
+    marked = []
+    monkeypatch.setattr(clips, "_film", lambda cid, job: marked.append((tmp_path / "filming").exists()) or
+                        db.x("UPDATE clips SET status='ready' WHERE id=?", (cid,)))
+    monkeypatch.setattr(clips.threading, "Thread", lambda target, args, **k: type(
+        "T", (), {"start": lambda self: target(*args)})())
+    clips.make_set(3)
+    assert marked == [True, True, True] and not (tmp_path / "filming").exists()
+    update = (clips.config.ROOT / "deploy" / "update.sh").read_text()
+    assert "data/filming" in update
+
+
+def test_the_filming_browser_never_touches_the_list():
+    """The browser that films (and the polish) import this module too: that mustn't fail the videos being made."""
+    import subprocess
+    import sys
+    cid = db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "day", "x", "making"))
+    subprocess.run([sys.executable, "-c", "import gino.clips, gino.polish"], check=True, cwd=str(clips.config.ROOT),
+                   env={**__import__("os").environ, "GINO_DATA_DIR": str(clips.config.DATA_DIR)})
+    assert db.q("SELECT status FROM clips WHERE id=?", (cid,))[0]["status"] == "making"
