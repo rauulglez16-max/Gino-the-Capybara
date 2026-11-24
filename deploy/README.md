@@ -16,6 +16,9 @@ When you're done:
   backup of Gino, switches to the new code and restarts him. His memories, diary, home and creations stay put.
 - If a new version is broken and won't start, the server goes back to the version that worked and leaves the broken
   one alone until something newer arrives. Gino doesn't get stuck offline.
+- While Gino is filming a video, the update waits until he's finished, so it doesn't cut the video off. If the
+  server restarts anyway (for example when you change a setting with a `gino ...` command), the videos that were
+  filming or waiting start again by themselves about a minute later.
 - It keeps a backup of his memories every day (the newest 20 are kept).
 
 **Cost:** the server is about €6/month plus VAT (~£6). Gino's thinking is billed separately by your Claude
