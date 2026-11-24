@@ -306,11 +306,20 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
         set_setting GINO_CLIPS_PER_DAY "$n"; systemctl restart gino
         echo "Gino will film $n video(s) by himself each evening."
         ;;
+      quality)
+        case "${3:-}" in
+          hd) set_setting GINO_CLIP_LOOK hd; systemctl restart gino
+              echo "🎬 New videos will be in full HD with all the detail (the default). Each one takes the server a bit longer to film." ;;
+          basic) set_setting GINO_CLIP_LOOK basic; systemctl restart gino
+              echo "🎬 New videos will use the simpler, quicker look (smaller and less detailed)." ;;
+          *) echo "usage: gino clips quality hd|basic"; exit 1 ;;
+        esac
+        ;;
       status)
-        [ "$(setting GINO_CLIPS)" = "1" ] && echo "🎬 The video camera is ON ($(setting GINO_CLIPS_PER_DAY | sed 's/^$/1/') a day by himself)" \
+        [ "$(setting GINO_CLIPS)" = "1" ] && echo "🎬 The video camera is ON ($(setting GINO_CLIPS_PER_DAY | sed 's/^$/1/') a day by himself, $(setting GINO_CLIP_LOOK | sed 's/^$/hd/') quality)" \
           || echo "The video camera is OFF (turn on with: gino clips on)"
         ;;
-      *) echo "usage: gino clips [status|on|test|daily N|off]"; exit 1 ;;
+      *) echo "usage: gino clips [status|on|test|daily N|quality hd|basic|off]"; exit 1 ;;
     esac
     ;;
   polish)
@@ -618,7 +627,7 @@ gino telegram    connect him to your phone (gino telegram test / gino telegram o
 gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / template / off)
 gino social      Bluesky posting: gino social setup | on | off | status
 gino photos      photos in his posts: gino photos on | test | off
-gino clips       his videos: gino clips on | test | daily N | off
+gino clips       his videos: gino clips on | test | daily N | quality hd|basic | off
 gino polish      who polishes his videos: gino polish server | pc | off (and: gino polish voice on/off)
 gino tiktok      send videos to TikTok: gino tiktok setup | mode | auto on/off | off
 gino shop        his shop: gino shop setup | on | off | sales | status

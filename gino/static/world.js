@@ -7,6 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { U, env, B, mat, geos, part, rng, windy, buildItem, buildGino, textSprite, waterMat as sharedWater, ripples } from './kit.js';
 import { createMoods, feelingWords } from './moods.js';
 
@@ -87,6 +88,12 @@ export function createWorld(container, tooltip, opts = {}) {
     bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.7, 1.0);
     composer.addPass(bloom); composer.addPass(new OutputPass()); composer.addPass(new ShaderPass(Grade));
   } catch (e) { console.warn('Post-processing unavailable', e); composer = null; }
+  else if (opts.film) try {  // the video camera: no heavy effects, but smooth edges, soft glow and the same colour grade
+    composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }));
+    composer.addPass(new RenderPass(scene, camera));
+    if (opts.film.glow) { bloom = new UnrealBloomPass(new THREE.Vector2(128, 128), 0.35, 0.7, 1.0); composer.addPass(bloom); }
+    composer.addPass(new OutputPass()); composer.addPass(new FXAAPass()); composer.addPass(new ShaderPass(Grade));
+  } catch (e) { console.warn('Film effects unavailable', e); composer = null; }
 
   // ---------------------------------------------------------------- sky
   const skyU = { top: { value: C('#3f8fd8') }, horizon: { value: C('#bfe3f5') }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: C('#fff2c0') }, glow: { value: 1 } };
@@ -662,7 +669,7 @@ export function createWorld(container, tooltip, opts = {}) {
     quality = q; const hi = q === 'high';
     gino.traverse(n => { if (n.userData.shell) n.visible = hi || n.userData.shell % 2 === 0; });   // half the fur layers on slow devices
     if (gtao) gtao.enabled = hi; renderer.setPixelRatio(Math.min(devicePixelRatio, hi ? 2 : 1)); grassShare = hi ? 1 : 0.45; grass.count = Math.round((grass.userData.full || 0) * grassShare);
-    sun.shadow.mapSize.set(hi ? 4096 : 1024, hi ? 4096 : 1024); sun.shadow.map?.dispose(); sun.shadow.map = null; resize(); opts.onQuality?.(q);
+    const sm = hi ? (opts.film ? 2048 : 4096) : 1024; sun.shadow.mapSize.set(sm, sm); sun.shadow.map?.dispose(); sun.shadow.map = null; resize(); opts.onQuality?.(q);
   }
   renderer.setAnimationLoop(() => {
     timer.update(); const raw = timer.getDelta(), dt = Math.min(raw, 0.1), t = timer.getElapsed(); U.time.value = t;

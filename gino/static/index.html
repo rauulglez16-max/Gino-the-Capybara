@@ -548,7 +548,7 @@ async function renderVideos(P) {
   if (tab !== 'videos') return;
   const tt = d.tiktok, kinds = Object.entries(d.kinds);
   const head = d.on
-    ? `<div class="row"><select id="clipKind"><option value="">Gino picks the story</option>${kinds.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select><button id="clipMake">🎬 Make a new video</button><span class="muted" style="font-size:13px">About 20 seconds long. Filming takes a few minutes. Finishing touch: ${{pc: 'FilmCraft on your PC (the server helps when your PC is off)', server: 'done on the server', off: 'off'}[d.polisher] || ''}.</span></div>`
+    ? `<div class="row"><select id="clipKind"><option value="">Gino picks the story</option>${kinds.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select><button id="clipMake">🎬 Make a new video</button><button id="clipMake3" title="Three videos in one go, each a different story">🎬🎬🎬 Make 3 at once</button><span class="muted" style="font-size:13px">About 20 seconds long, in full HD. Filming takes a few minutes each. Finishing touch: ${{pc: 'FilmCraft on your PC (the server helps when your PC is off)', server: 'done on the server', off: 'off'}[d.polisher] || ''}.</span></div>`
     : `<p class="muted">Gino's video camera is off. To turn it on, log in to the server and type <code>gino clips on</code>.</p>`;
   const tbox = !tt.configured ? `<div class="tt">📱 <b>TikTok:</b> download a video below and post it from your phone. To let Gino send videos to TikTok himself, follow "Gino on TikTok" in the server guide, then type <code>gino tiktok setup</code>.</div>`
     : !tt.connected ? `<div class="tt">📱 <b>TikTok</b> is set up. <button id="ttConnect">Connect TikTok</button></div>`
@@ -556,7 +556,7 @@ async function renderVideos(P) {
   const card = c => {
     const ready = c.status === 'ready' && c.has_video;
     const top = ready ? `<video controls playsinline preload="metadata" src="${clipUrl(c.id)}#t=4"></video>`
-      : `<div class="wait">${c.status === 'making' ? `🎥 Filming…<br>${esc(c.progress || '')}` : c.status === 'failed' ? `😕 This one didn't work (${esc(c.error)})` : 'Video deleted to save space'}</div>`;
+      : `<div class="wait">${c.status === 'making' ? (/^waiting its turn/.test(c.progress || '') ? `⏳ Next in line<br>${esc(c.progress)}` : `🎥 Filming…<br>${esc(c.progress || '')}`) : c.status === 'failed' ? `😕 This one didn't work (${esc(c.error)})` : 'Video deleted to save space'}</div>`;
     const sent = c.tiktok_status ? `<div style="font-size:13px">📱 ${esc({sending: 'Sending to TikTok', sent: 'Sent to TikTok', posted: 'On TikTok', failed: 'TikTok: not sent'}[c.tiktok_status] || c.tiktok_status)}${c.tiktok_note ? ': ' + esc(c.tiktok_note) : ''}</div>` : '';
     const canSend = ready && tt.connected && !['sending', 'sent', 'posted'].includes(c.tiktok_status);
     return `<div class="clip">${top}<strong>${esc(c.title)}</strong><div class="muted" style="font-size:12px">${when(c.ts)} · ${c.made_by === 'dad' ? 'you asked' : c.made_by === 'gino' ? 'Gino filmed it' : 'his daily video'}${c.polished ? (c.polished_by === 'server' ? ' · ✨ polished on the server' : ' · ✨ polished in FilmCraft') : c.polishing ? ' · ✨ polishing…' : ''}</div>`
@@ -565,10 +565,12 @@ async function renderVideos(P) {
   };
   P.innerHTML = head + tbox + `<div class="clips">${d.clips.map(card).join('') || '<p class="muted">No videos yet.' + (d.on ? ' Make the first one!' : '') + '</p>'}</div>`;
   const byId = Object.fromEntries(d.clips.map(c => [c.id, c]));
-  $('#clipMake') && ($('#clipMake').onclick = async () => {
-    $('#clipMake').disabled = true;
-    try { await api('/api/clips', {method: 'POST', body: JSON.stringify({kind: $('#clipKind').value})}); } catch (e) { alert(why(e)); }
-    renderVideos(P); });
+  const makeClips = count => async () => {
+    $('#clipMake').disabled = $('#clipMake3').disabled = true;
+    try { await api('/api/clips', {method: 'POST', body: JSON.stringify({kind: $('#clipKind').value, count})}); } catch (e) { alert(why(e)); }
+    renderVideos(P); };
+  $('#clipMake') && ($('#clipMake').onclick = makeClips(1));
+  $('#clipMake3') && ($('#clipMake3').onclick = makeClips(3));
   $('#ttConnect') && ($('#ttConnect').onclick = async () => { try { location.href = (await api('/api/tiktok/connect')).url; } catch (e) { alert(why(e)); } });
   $('#ttOff') && ($('#ttOff').onclick = async () => { if (confirm('Disconnect TikTok?')) { await api('/api/tiktok/disconnect', {method: 'POST'}); renderVideos(P); } });
   P.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(byId[b.dataset.copy].caption); b.textContent = 'Copied ✓'; } catch { prompt('Copy this:', byId[b.dataset.copy].caption); } });
