@@ -56,9 +56,12 @@ async def life_loop():
         except Exception:
             log.exception("Checking the shop's sales failed; trying again later")
         try:
-            if not brain.mind_lock.locked():
-                body = vitals.tick(vitals.load())
-                vitals.save(body)
+            if brain.mind_lock.acquire(blocking=False):  # not while he's chatting with dad (that saves his body too)
+                try:
+                    body = vitals.settle(vitals.tick(vitals.load()))  # plus any pets and gifts dad left meanwhile
+                    vitals.save(body)
+                finally:
+                    brain.mind_lock.release()
                 now = time.time()
                 if dreams.due(body, now):
                     await asyncio.to_thread(dreams.dream_now)
@@ -204,27 +207,28 @@ def gift(g: GiftIn):
     food = g.food.lower().strip()
     if food not in vitals.FOODS:
         raise HTTPException(400, "Gino doesn't know that food.")
-    with brain.mind_lock:
-        body = vitals.load()
-        body["pantry"][food] = body["pantry"].get(food, 0) + 1
-        body["social"] = vitals.clamp(body["social"] + 3)
-        vitals.save(body)
+    vitals.leave("gift", food)
     db.event("gift", f"Dad left a {food} in the pantry.")
+    _settle_if_free()
     return {"ok": True}
 
 
 @app.post("/api/pet", dependencies=[Depends(auth)])
 def pet():
     """Dad petted Gino in the 3D world."""
-    now = time.time()
-    with brain.mind_lock:
-        body = vitals.load()
-        if now - body.get("last_pet", 0) > 600:  # a pet only "counts" every 10 minutes
-            body["social"] = vitals.clamp(body["social"] + 4)
-            body["last_pet"] = now
-            vitals.save(body)
-            db.event("pet", "Dad petted Gino. He did a happy little hop.")
+    vitals.leave("pet")
+    _settle_if_free()
     return {"ok": True}
+
+
+def _settle_if_free() -> None:
+    """Hand dad's pet or gift to Gino now if he isn't busy thinking. If he is, never wait: it's written down and
+    he gets it the moment he's free (see vitals.leave). Waiting here used to freeze the whole website."""
+    if brain.mind_lock.acquire(blocking=False):
+        try:
+            vitals.save(vitals.settle(vitals.load()))
+        finally:
+            brain.mind_lock.release()
 
 
 @app.post("/api/nudge", dependencies=[Depends(auth)])

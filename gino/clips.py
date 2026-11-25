@@ -960,6 +960,7 @@ def _render(job: dict, out: str) -> None:
 
 
 if __name__ == "__main__":
+    config.first_to_go()  # heavy helper: if memory runs short, this goes before Gino does
     if sys.argv[1:2] == ["render"]:
         _render(json.loads(sys.stdin.read()), sys.argv[2])
     elif sys.argv[1:2] == ["test"]:  # `python -m gino.clips test [kind] [out.mp4]` films one clip, posts nothing

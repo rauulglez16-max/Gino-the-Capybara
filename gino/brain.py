@@ -307,7 +307,7 @@ def can_think(purpose: str, model: str, prompt: str, tool_list: list) -> bool:
 def take_turn() -> None:
     """One self-directed turn. Called by the scheduler."""
     with mind_lock:
-        body = vitals.tick(vitals.load())
+        body = vitals.settle(vitals.tick(vitals.load()))
         if not vitals.is_asleep(body):
             try:
                 news.refresh(local_now())
@@ -345,7 +345,7 @@ def chat(text: str) -> str:
     """Dad said something. Gino replies (and may do things while replying)."""
     db.x("INSERT INTO chat(ts,sender,text) VALUES(?,?,?)", (time.time(), "dad", text[:4000]))
     with mind_lock:
-        body = vitals.tick(vitals.load())
+        body = vitals.settle(vitals.tick(vitals.load()))
         if vitals.is_asleep(body):
             body["asleep_until"] = time.time()
             body["activity"] = "woke up because dad said hi"
