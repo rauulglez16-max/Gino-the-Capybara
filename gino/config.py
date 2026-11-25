@@ -107,7 +107,9 @@ CLIP_LOOK = "basic" if os.environ.get("GINO_CLIP_LOOK", "hd") == "basic" else "h
 CLIP_SIZE = (1080, 1920) if CLIP_LOOK == "hd" else (720, 1280)  # 9:16, the shape of a phone screen
 # the 3D is drawn smaller, then stretched to fit (much quicker without a graphics card); the words stay full size
 CLIP_RENDER_SCALE = max(0.5, min(1.0, _f("GINO_CLIP_RENDER_SCALE", 0.67 if CLIP_LOOK == "hd" else 0.75)))
-CLIP_TIMEOUT = int(_f("GINO_CLIP_TIMEOUT", 3600))  # seconds; the server has no graphics card, so filming takes minutes
+# seconds for one video; the server has no graphics card, so filming is slow: an HD video takes about an hour on
+# 2 processors (more while Gino is busy thinking), so it gets 3 hours before it counts as stuck
+CLIP_TIMEOUT = int(_f("GINO_CLIP_TIMEOUT", 3 * 3600 if CLIP_LOOK == "hd" else 3600))
 FFMPEG = os.environ.get("GINO_FFMPEG", "")  # optional path to ffmpeg
 # Who gives his videos their finishing touch: "pc" (FilmCraft on dad's PC, with the server as a backup when the PC
 # is off or slow), "server" (the server does it straight away, day and night) or "off" (videos stay as filmed).
@@ -155,3 +157,14 @@ PRICES = {
     "claude-opus-4-8": (5.0, 25.0, 0.50),
 }
 WEB_SEARCH_USD = 0.01
+
+
+def first_to_go() -> None:
+    """Called by the heavy helpers (the browser that films or takes photos, the video polisher). If the server ever
+    runs short of memory, Linux stops one of these first, never Gino himself: a lost video is filmed again later,
+    but a stopped Gino means a frozen website. Raising your own number is always allowed, so this needs no admin."""
+    try:
+        with open("/proc/self/oom_score_adj", "w") as f:
+            f.write("800")
+    except OSError:
+        pass  # not Linux (dad's Windows PC): nothing to do

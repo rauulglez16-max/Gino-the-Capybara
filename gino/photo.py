@@ -24,6 +24,7 @@ log = logging.getLogger("gino.photo")
 MAX_BYTES = 950_000  # Bluesky refuses images over 1,000,000 bytes
 SIZE = (1000, 750)
 _lock = threading.Lock()  # one photo at a time: Chromium is heavy on a small server
+WAIT_FOR_CAMERA = 90  # seconds a photo waits for another photo or a video to finish before giving up
 
 
 def available() -> bool:
@@ -65,13 +66,18 @@ def take(shot: str = "selfie") -> bytes:
     if not available():
         raise RuntimeError("the camera isn't set up on this server")
     job = json.dumps({"state": scene_state(), "shot": "wide" if shot == "wide" else "selfie"})
-    with _lock:
-        try:
-            r = subprocess.run([sys.executable, "-m", "gino.photo", "shoot"], input=job.encode(), capture_output=True,
-                               timeout=config.PHOTO_TIMEOUT, cwd=str(config.ROOT),
-                               env={**os.environ, "HOME": os.environ.get("TMPDIR", "/tmp")})
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("the camera took too long") from None
+    # Never wait long for the camera: a video (or three, with "make 3 at once") can keep it busy for hours, and the
+    # one waiting here is Gino's own turn. Stuck here, his whole mind froze: no replies to dad, no turns, no ticks.
+    if not _lock.acquire(timeout=WAIT_FOR_CAMERA):
+        raise RuntimeError("your camera is busy filming a video right now")
+    try:
+        r = subprocess.run(["nice", "-n", "10", sys.executable, "-m", "gino.photo", "shoot"], input=job.encode(),
+                           capture_output=True, timeout=config.PHOTO_TIMEOUT, cwd=str(config.ROOT),
+                           env={**os.environ, "HOME": os.environ.get("TMPDIR", "/tmp")})
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("the camera took too long") from None
+    finally:
+        _lock.release()
     for line in r.stderr.decode(errors="replace").splitlines():
         if line.startswith("photo:"):
             log.info(line)
@@ -116,6 +122,7 @@ def _shoot(job: dict) -> bytes:
 
 
 if __name__ == "__main__":
+    config.first_to_go()  # heavy helper: if memory runs short, this goes before Gino does
     if sys.argv[1:] == ["shoot"]:
         sys.stdout.buffer.write(_shoot(json.loads(sys.stdin.read())))
     elif sys.argv[1:2] == ["test"]:  # `python -m gino.photo test out.jpg` takes a picture without posting it

@@ -2,6 +2,7 @@
 import datetime as dt
 import hashlib
 import random
+import threading
 import time
 
 from . import config, db
@@ -85,6 +86,43 @@ def tick(s: dict, now: float | None = None) -> dict:
     if not asleep and s.get("activity") in ("sleeping", "napping"):
         s["activity"] = "just woke up"
     s["last_update"] = now
+    return s
+
+
+# ---------------------------------------------------------------- dad's pets and gifts
+# Petting Gino or leaving him food must never wait for him to finish a thought. A turn can take minutes, and every
+# click on him used to sit waiting for it; enough clicks and the whole website (welcome page, /live, the blog)
+# froze for everyone until he finished. Now they're written down straight away and Gino feels them as soon as his
+# mind is free (at the latest within a few seconds of his turn or chat ending).
+
+PET_EVERY = 600  # a pet only "counts" every 10 minutes
+_waiting_lock = threading.Lock()
+
+
+def leave(kind: str, food: str = "") -> None:
+    """Dad petted Gino ('pet') or left him food ('gift'). Kept until settle() hands it to Gino."""
+    with _waiting_lock:
+        waiting = db.get("dad_waiting", []) or []
+        waiting.append({"kind": kind, "food": food, "ts": time.time()})
+        db.put("dad_waiting", waiting[-200:])
+
+
+def settle(s: dict) -> dict:
+    """Give Gino the pets and gifts dad left while he was busy. Call it while holding brain.mind_lock."""
+    with _waiting_lock:
+        waiting = db.get("dad_waiting", []) or []
+        if not waiting:
+            return s
+        db.put("dad_waiting", [])
+    for w in waiting:
+        if w.get("kind") == "gift" and w.get("food") in FOODS:
+            s.setdefault("pantry", {})
+            s["pantry"][w["food"]] = s["pantry"].get(w["food"], 0) + 1
+            s["social"] = clamp(s["social"] + 3)
+        elif w.get("kind") == "pet" and w.get("ts", 0) - s.get("last_pet", 0) > PET_EVERY:
+            s["social"] = clamp(s["social"] + 4)
+            s["last_pet"] = w.get("ts", time.time())
+            db.event("pet", "Dad petted Gino. He did a happy little hop.")
     return s
 
 

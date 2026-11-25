@@ -250,6 +250,7 @@ def make(src: str, out: str, script: dict, voice: str = "") -> None:
 
 
 if __name__ == "__main__":
+    config.first_to_go()  # heavy helper: if memory runs short, this goes before Gino does
     if sys.argv[1:2] == ["make"] and len(sys.argv) == 4:  # used by _polish(): the job comes on stdin
         job = json.loads(sys.stdin.read() or "{}")
         make(sys.argv[2], sys.argv[3], job.get("script") or {}, job.get("voice") or "")

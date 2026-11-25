@@ -14,6 +14,7 @@ Restart=always
 RestartSec=30
 # filming is heavy work: Gino's own thinking and his website always come first
 Nice=10
+OOMScoreAdjust=800
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

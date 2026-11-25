@@ -1,4 +1,5 @@
 """Gino's mind. Each 'turn' he looks at his body, memories and world, then decides for himself what to do."""
+import contextlib
 import datetime as dt
 import logging
 import random
@@ -11,6 +12,12 @@ from . import (artstyle, budget, capsules, clips, config, continuity, db, dreams
 
 log = logging.getLogger("gino.brain")
 mind_lock = threading.Lock()  # one thought at a time
+THINKING_MARK = config.DATA_DIR / "thinking"  # while it exists, the 5-minute auto-update waits (deploy/update.sh)
+
+# How long Gino waits for a word from Claude before deciding the line has gone dead. His answers come in bit by bit
+# (streamed), so this counts silence, not the whole answer: a long answer that keeps arriving is never cut off. Before
+# this, a call that hung could freeze his mind for up to half an hour (10 minutes, tried 3 times).
+STALL_SECONDS = 120
 
 FALLBACK_MODELS = {"claude-fable-5-2", "claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"}
 
@@ -197,8 +204,45 @@ def client():
     global _client
     if _client is None:
         import anthropic
-        _client = anthropic.Anthropic()
+        _client = anthropic.Anthropic(max_retries=2, timeout=anthropic.Timeout(
+            connect=15, read=STALL_SECONDS, write=60, pool=30))
     return _client
+
+
+@contextlib.contextmanager
+def thinking():
+    """Gino's mind is busy (a turn, a chat with dad, a dream). One thought at a time, and while he's thinking the
+    auto-update waits, so a new version never cuts him off mid-sentence."""
+    with mind_lock:
+        with contextlib.suppress(OSError):
+            THINKING_MARK.write_text(f"{time.time():.0f}\n")
+        try:
+            yield
+        finally:
+            with contextlib.suppress(OSError):
+                THINKING_MARK.unlink(missing_ok=True)
+
+
+# Dad wrote while Gino was in the middle of a turn: the turn wraps up after the step it's on, so dad's message is
+# answered next instead of waiting for the whole turn (which could take several minutes).
+_dad_waiting = 0
+_dad_lock = threading.Lock()
+
+
+def dad_is_waiting() -> bool:
+    return _dad_waiting > 0
+
+
+@contextlib.contextmanager
+def _dad_knocks():
+    global _dad_waiting
+    with _dad_lock:
+        _dad_waiting += 1
+    try:
+        yield
+    finally:
+        with _dad_lock:
+            _dad_waiting -= 1
 
 
 def record_spend(purpose: str, resp, fallback_model: str) -> float:
@@ -228,12 +272,15 @@ def call(model: str, messages: list, tool_list: list, max_tokens: int = 16000):
     if model in FALLBACK_MODELS:
         kwargs["betas"] = ["server-side-fallback-2026-07-01"]
         kwargs["fallbacks"] = "default"
-    return client().beta.messages.create(**kwargs)
+    # streamed, so a dead line is noticed after STALL_SECONDS of silence while long answers still arrive in full
+    with client().beta.messages.stream(**kwargs) as stream:
+        return stream.get_final_message()
 
 
 class Thought(str):
     """Gino's final words from a run_loop, plus whether he had to stop because the budget ran out."""
     out_of_budget = False
+    for_dad = False  # he put this thought aside because dad wrote
 
 
 def run_loop(purpose: str, model: str, prompt: str, body: dict, tool_list: list) -> Thought:
@@ -245,7 +292,12 @@ def run_loop(purpose: str, model: str, prompt: str, body: dict, tool_list: list)
     final_text, stopped = "", False
     web = budget.uses_web(tool_list)
     est_in = budget.estimate_tokens(SYSTEM, prompt, tool_list)
+    for_dad = False
     for _ in range(config.MAX_STEPS_PER_TICK):
+        if purpose != "chat" and dad_is_waiting():
+            for_dad = True
+            db.event("mind", "Dad wrote, so Gino put his thought aside to answer him first.")
+            break
         max_tokens = budget.step_allowance(model, spent_today(), purpose, est_in, web)
         if not max_tokens:
             stopped = True
@@ -291,6 +343,7 @@ def run_loop(purpose: str, model: str, prompt: str, body: dict, tool_list: list)
         est_in += budget.estimate_tokens(results)
     out = Thought(final_text)
     out.out_of_budget = stopped
+    out.for_dad = for_dad
     return out
 
 
@@ -306,8 +359,10 @@ def can_think(purpose: str, model: str, prompt: str, tool_list: list) -> bool:
 
 def take_turn() -> None:
     """One self-directed turn. Called by the scheduler."""
-    with mind_lock:
-        body = vitals.tick(vitals.load())
+    with thinking():
+        if dad_is_waiting():  # dad's message goes first; this turn starts again in a moment
+            return
+        body = vitals.settle(vitals.tick(vitals.load()))
         if not vitals.is_asleep(body):
             try:
                 news.refresh(local_now())
@@ -336,6 +391,8 @@ def take_turn() -> None:
             murmur = run_loop("turn", config.MODEL, prompt, body, tool_list)
             if murmur:
                 db.event("murmur", murmur[:400])
+            if murmur.for_dad:  # he'll pick up where he left off soon after answering dad
+                body["next_wake"] = min(body["next_wake"], time.time() + config.MIN_WAKE_MINUTES * 60)
         if body["next_wake"] < time.time() + config.MIN_WAKE_MINUTES * 60 and not vitals.is_asleep(body):
             body["next_wake"] = time.time() + config.MIN_WAKE_MINUTES * 60
         vitals.save(body)
@@ -344,32 +401,41 @@ def take_turn() -> None:
 def chat(text: str) -> str:
     """Dad said something. Gino replies (and may do things while replying)."""
     db.x("INSERT INTO chat(ts,sender,text) VALUES(?,?,?)", (time.time(), "dad", text[:4000]))
-    with mind_lock:
-        body = vitals.tick(vitals.load())
-        if vitals.is_asleep(body):
-            body["asleep_until"] = time.time()
-            body["activity"] = "woke up because dad said hi"
-            db.event("sleep", "Dad's message woke Gino up.")
-        body["social"] = vitals.clamp(body["social"] + 12)
-        vitals.save(body)
-        tired = "*yawns* My brain is all thought out for today, dad. Talk tomorrow? 💤"
-        chat_tools = [t for t in tools.all_tools()
-                      if t["name"] not in ("sleep", "message_dad", "set_next_wake", "social_post", "make_clip")]
-        prompt = (context(body) + f"\n\n---\nDad is here chatting with you right now. He just said:\n\n"
-                  f"\"{text}\"\n\nReply to him as yourself. Your final plain text is what he sees, "
-                  "so keep it natural, like a text message. You can use tools first if you want "
-                  "(remember what he tells you that matters, update how you feel).")
-        if config.FAKE_BRAIN:
-            reply = fake_reply(text, body)
-        elif not can_think("chat", config.CHAT_MODEL, prompt, chat_tools):
-            reply = tired
-        else:
+    with _dad_knocks(), thinking():
+        return _chat(text)
+
+
+def _chat(text: str) -> str:
+    """Gino answers dad. Called by chat() while his mind is his own (thinking())."""
+    body = vitals.settle(vitals.tick(vitals.load()))
+    if vitals.is_asleep(body):
+        body["asleep_until"] = time.time()
+        body["activity"] = "woke up because dad said hi"
+        db.event("sleep", "Dad's message woke Gino up.")
+    body["social"] = vitals.clamp(body["social"] + 12)
+    vitals.save(body)
+    tired = "*yawns* My brain is all thought out for today, dad. Talk tomorrow? 💤"
+    chat_tools = [t for t in tools.all_tools()
+                  if t["name"] not in ("sleep", "message_dad", "set_next_wake", "social_post", "make_clip")]
+    prompt = (context(body) + f"\n\n---\nDad is here chatting with you right now. He just said:\n\n"
+              f"\"{text}\"\n\nReply to him as yourself. Your final plain text is what he sees, "
+              "so keep it natural, like a text message. You can use tools first if you want "
+              "(remember what he tells you that matters, update how you feel).")
+    if config.FAKE_BRAIN:
+        reply = fake_reply(text, body)
+    elif not can_think("chat", config.CHAT_MODEL, prompt, chat_tools):
+        reply = tired
+    else:
+        try:
             said = run_loop("chat", config.CHAT_MODEL, prompt, body, chat_tools)
             reply = said.strip() or (tired if said.out_of_budget else "*happy capybara noises*")
-        db.x("INSERT INTO chat(ts,sender,text) VALUES(?,?,?)", (time.time(), "gino", reply))
-        body["last_chat"] = time.time()
-        vitals.save(body)
-        return reply
+        except Exception:  # the line to Claude went dead or broke: say so kindly instead of an error box
+            log.exception("chat reply failed")
+            reply = "*blinks* Sorry dad, I lost my train of thought for a second. Can you say that again? 🧡"
+    db.x("INSERT INTO chat(ts,sender,text) VALUES(?,?,?)", (time.time(), "gino", reply))
+    body["last_chat"] = time.time()
+    vitals.save(body)
+    return reply
 
 
 # ---------------------------------------------------------------- offline brain (no API key)
