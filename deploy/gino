@@ -86,6 +86,11 @@ case "${1:-help}" in
     echo "   Next update check: $(systemctl list-timers gino-update.timer --no-legend | awk '{print $1, $2, $3}')"
     echo "   Telegram: $( [ -n "$(setting TELEGRAM_CHAT_ID)" ] && echo 'connected 📱' || echo 'not connected (gino telegram)')"
     echo "   WhatsApp: $( [ -n "$(setting WHATSAPP_TOKEN)" ] && echo "connected 📱 (nudge template: $(setting WHATSAPP_TEMPLATE))" || echo 'not connected (gino whatsapp)')"
+    disk_pct="$(df --output=pcent /opt/gino | tail -1 | tr -dc 0-9)"
+    echo "   Disk:     $(df -h --output=used,size /opt/gino | tail -1 | awk '{print $1 " of " $2}') used (${disk_pct}%)$( [ "${disk_pct:-0}" -ge 85 ] && echo '  ⚠️  nearly full!')"
+    echo "   Memory:   $(free -h | awk '/^Mem:/{print $3 " of " $2 " in use"}')$(free -h | awk '/^Swap:/{ if ($2 != "0B") print ", spare (swap) " $2}')"
+    [ -f /opt/gino/data/filming ] && echo "   🎬 Filming a video right now (updates wait until it's done)."
+    [ -f /opt/gino/data/thinking ] && echo "   💭 Thinking right now (updates wait until he's finished)."
     if [ -s /var/lib/gino-deploy/bad-commit ]; then
       echo "   ⚠️  Skipped version $(head -c 7 /var/lib/gino-deploy/bad-commit) because it wouldn't start."
     fi
