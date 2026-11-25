@@ -64,6 +64,7 @@ progress: dict[int, str] = {}  # clip id -> "filming 120 of 480 frames", for dad
 _busy = threading.Lock()
 _waiting = 0  # clips waiting for the camera: the server's polish steps aside for them (polish.py)
 _waiting_lock = threading.Lock()
+_filming: int | None = None  # the clip the camera is filming right now (it can't be deleted until it's done)
 
 
 def camera_wanted() -> bool:
@@ -101,6 +102,8 @@ def _schema() -> None:
             db.x(f"ALTER TABLE clips ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
     if "tries" not in have:
         db.x("ALTER TABLE clips ADD COLUMN tries INTEGER NOT NULL DEFAULT 0")
+    if "gone" not in have:  # 1: dad deleted it. The row stays (so Gino doesn't film the same story again, and a
+        db.x("ALTER TABLE clips ADD COLUMN gone INTEGER NOT NULL DEFAULT 0")  # deleted daily video still counts)
 
 
 _schema()
@@ -705,6 +708,13 @@ def _film(cid: int, job: dict) -> None:
     finally:
         with _waiting_lock:
             _waiting -= 1
+    global _filming
+    if not db.q("SELECT 1 FROM clips WHERE id=? AND status='making' AND gone=0", (cid,)):  # deleted while it waited
+        photo._lock.release()
+        _busy.release()
+        progress.pop(cid, None)
+        return
+    _filming = cid
     started = time.time()  # the time limit counts from here, not from the wait
     try:
         progress[cid] = "setting up the camera (about a minute)"
@@ -730,6 +740,7 @@ def _film(cid: int, job: dict) -> None:
         except Exception as e:  # noqa: BLE001
             ok, tail = False, [str(e)]
     finally:
+        _filming = None
         photo._lock.release()
         _busy.release()
     progress.pop(cid, None)
@@ -764,6 +775,32 @@ def _tidy() -> None:
         if r["polished"]:
             (CLIPS_DIR / r["polished"]).unlink(missing_ok=True)
         db.x("UPDATE clips SET filename='', polished='' WHERE id=?", (r["id"],))
+
+
+def delete(cid: int) -> str:
+    """Dad deletes a video from his Videos tab: its files go (freeing disk space) and it leaves the list.
+    A video still waiting its turn is cancelled. Raises RuntimeError (in plain words) when it can't go yet."""
+    rows = db.q("SELECT status, filename, polished, tiktok_status FROM clips WHERE id=? AND gone=0", (cid,))
+    if not rows:
+        raise RuntimeError("That video is already gone.")
+    r = rows[0]
+    if cid == _filming:
+        raise RuntimeError("Gino is filming this one right now. You can delete it once it's finished.")
+    if r["tiktok_status"] == "sending":
+        raise RuntimeError("This one is being sent to TikTok right now. Try again in a minute.")
+    db.x("UPDATE clips SET gone=1, filename='', polished='', polish_note='', "
+         "status=CASE WHEN status='making' THEN 'failed' ELSE status END, "
+         "error=CASE WHEN status='making' THEN 'deleted before filming' ELSE error END WHERE id=?", (cid,))
+    progress.pop(cid, None)
+    for name in (r["filename"], r["polished"], f"gino-{cid}-*.mp4"):
+        if not name:
+            continue
+        for f in CLIPS_DIR.glob(name) if "*" in name else [CLIPS_DIR / name]:
+            f.unlink(missing_ok=True)
+    log.info("Clip %s deleted by dad", cid)
+    if r["tiktok_status"] in ("sent", "posted"):
+        return "Deleted from Gino's page. It's still on TikTok: delete it in the TikTok app if you want it gone there too."
+    return "Deleted."
 
 
 def path(cid: int, raw: bool = False):
@@ -840,13 +877,14 @@ def polish_failed(cid: int, note: str) -> None:
 
 def listing(limit: int = 30) -> list[dict]:
     rows = db.q("SELECT id,ts,kind,title,caption,status,seconds,error,made_by,tiktok_status,tiktok_note,tiktok_ts,"
-                "polished,polished_by,polish_note FROM clips ORDER BY id DESC LIMIT ?", (limit,))
+                "polished,polished_by,polish_note FROM clips WHERE gone=0 ORDER BY id DESC LIMIT ?", (limit,))
     for r in rows:
         r["progress"] = progress.get(r["id"], "")
         r["has_video"] = r["status"] == "ready" and path(r["id"]) is not None
         r["polished"] = bool(r["polished"]) and r["has_video"]
         r["polished_by"] = (r["polished_by"] or "pc") if r["polished"] else ""
         r["polishing"] = r.pop("polish_note") == "server: polishing"
+        r["can_delete"] = r["id"] != _filming and r["tiktok_status"] != "sending"
     return rows
 
 
@@ -872,7 +910,7 @@ def context_lines() -> str:
     """What Gino knows about his clips (shown in his turn when the camera is on)."""
     if not available():
         return ""
-    rows = db.q("SELECT title, tiktok_status FROM clips WHERE status='ready' ORDER BY id DESC LIMIT 3")
+    rows = db.q("SELECT title, tiktok_status FROM clips WHERE status='ready' AND gone=0 ORDER BY id DESC LIMIT 3")
     if not rows:
         return "You have a video camera now: make_clip films a short video of your life for your TikTok."
     seen = "; ".join(r["title"] + (" (on TikTok)" if r["tiktok_status"] == "posted" else "") for r in rows)

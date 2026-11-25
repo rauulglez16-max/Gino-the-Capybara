@@ -127,7 +127,7 @@ def _polish(cid: int) -> None:
             err = errf.read().decode(errors="replace")[-1500:]
         except OSError as e:
             ok, err = False, str(e)
-        if ok and db.q("SELECT 1 FROM clips WHERE id=? AND polished='' AND tiktok_status=''", (cid,)):
+        if ok and db.q("SELECT 1 FROM clips WHERE id=? AND polished='' AND tiktok_status='' AND filename!=''", (cid,)):
             db.x("UPDATE clips SET polished=?, polished_by='server', polish_note='' WHERE id=?", (name, cid))
             db.event("clip", f"his clip got its finishing touch on the server in {int(time.time() - started)} s")
             log.info("Clip %s polished on the server in %.0f s", cid, time.time() - started)
