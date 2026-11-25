@@ -122,6 +122,7 @@ def _shoot(job: dict) -> bytes:
 
 
 if __name__ == "__main__":
+    config.first_to_go()  # heavy helper: if memory runs short, this goes before Gino does
     if sys.argv[1:] == ["shoot"]:
         sys.stdout.buffer.write(_shoot(json.loads(sys.stdin.read())))
     elif sys.argv[1:2] == ["test"]:  # `python -m gino.photo test out.jpg` takes a picture without posting it

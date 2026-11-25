@@ -11,6 +11,8 @@ EnvironmentFile=/etc/gino/gino.env
 ExecStart=/opt/gino/venv/bin/python run.py
 Restart=always
 RestartSec=10
+# if memory ever runs short, Linux stops a filming browser or the polisher first (they ask for that), not Gino
+OOMScoreAdjust=-300
 # Gino only needs his own folder
 NoNewPrivileges=yes
 ProtectSystem=strict

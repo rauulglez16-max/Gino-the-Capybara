@@ -157,3 +157,14 @@ PRICES = {
     "claude-opus-4-8": (5.0, 25.0, 0.50),
 }
 WEB_SEARCH_USD = 0.01
+
+
+def first_to_go() -> None:
+    """Called by the heavy helpers (the browser that films or takes photos, the video polisher). If the server ever
+    runs short of memory, Linux stops one of these first, never Gino himself: a lost video is filmed again later,
+    but a stopped Gino means a frozen website. Raising your own number is always allowed, so this needs no admin."""
+    try:
+        with open("/proc/self/oom_score_adj", "w") as f:
+            f.write("800")
+    except OSError:
+        pass  # not Linux (dad's Windows PC): nothing to do
