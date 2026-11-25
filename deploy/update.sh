@@ -27,6 +27,7 @@ main() {
   }
 
   backup_now "$BASE" daily
+  ensure_swap || true
 
   g fetch --quiet origin "$BRANCH"
   local current new
@@ -44,6 +45,11 @@ main() {
   # Gino is filming a video: updating now would restart him and cut it off. Wait for the next check (every
   # 5 minutes), unless the mark is old (over 2.5 hours: something went wrong) or dad typed `gino update` himself.
   if [ "$force" != "--verbose" ] && [ -n "$(find "$BASE/data/filming" -mmin -150 2>/dev/null)" ]; then
+    return 0
+  fi
+  # Gino is in the middle of a thought (a turn, a reply to dad, a dream): restarting now would cut him off mid-sentence.
+  # Wait for him to finish (a thought takes a few minutes at most; a mark older than 20 minutes is left over).
+  if [ "$force" != "--verbose" ] && [ -n "$(find "$BASE/data/thinking" -mmin -20 2>/dev/null)" ]; then
     return 0
   fi
   if [ "$force" = "--verbose" ] && [ -f "$BASE/data/filming" ]; then
@@ -86,6 +92,20 @@ apply() {  # apply <commit> <previous commit>: put that code in place and restar
   chmod +x "$APP/deploy/gino"
   systemctl restart gino
   systemctl try-restart gino-stream 2>/dev/null || true  # only if the live stream is on: picks up the new code
+}
+
+ensure_swap() {  # a safety net: 2 GB of spare memory on disk, so a busy moment slows Gino down instead of stopping him
+  swapon --show 2>/dev/null | grep -q . && return 0   # already has some
+  [ -e /swapfile ] && return 0
+  [ "$(df --output=avail -k / | tail -1)" -gt 8000000 ] || return 0   # only with plenty of free disk (8 GB+)
+  if fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap -q /swapfile && swapon /swapfile; then
+    grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    echo 'vm.swappiness=10' > /etc/sysctl.d/90-gino-swap.conf   # use it only when memory is really tight
+    sysctl -q -w vm.swappiness=10 || true
+    echo "Added 2 GB of spare memory (swap) as a safety net."
+  else
+    swapoff /swapfile 2>/dev/null || true; rm -f /swapfile
+  fi
 }
 
 backup_now() {  # backup_now <base> daily|before-update|manual

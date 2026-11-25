@@ -154,7 +154,7 @@ def prompt(body: dict, level: int, f: dict, invent: bool = False) -> str:
 def dream_now() -> int | None:
     """Gino dreams. Returns the new dream's id (or None if he slept soundly)."""
     from . import brain  # late import: brain imports this module
-    with brain.mind_lock:
+    with brain.thinking():
         body = vitals.tick(vitals.load())
         if not due(body):
             return None
