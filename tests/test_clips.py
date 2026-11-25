@@ -499,3 +499,47 @@ def test_the_filming_browser_never_touches_the_list():
     subprocess.run([sys.executable, "-c", "import gino.clips, gino.polish"], check=True, cwd=str(clips.config.ROOT),
                    env={**__import__("os").environ, "GINO_DATA_DIR": str(clips.config.DATA_DIR)})
     assert db.q("SELECT status FROM clips WHERE id=?", (cid,))[0]["status"] == "making"
+
+
+def test_a_photo_never_waits_hours_for_the_camera(monkeypatch):
+    """While videos film (three in a row can take hours on the small server), a photo for Bluesky gives up quickly.
+    It used to wait for the camera inside Gino's turn, which froze his mind: no replies to dad, no turns."""
+    from gino import photo, social
+    monkeypatch.setattr(photo, "available", lambda: True)
+    monkeypatch.setattr(photo, "WAIT_FOR_CAMERA", 0.05)
+    monkeypatch.setattr(photo.subprocess, "run", lambda *a, **k: pytest.fail("no photo while the camera films"))
+    photo._lock.acquire()  # a video is filming
+    try:
+        t0 = time.time()
+        with pytest.raises(RuntimeError, match="busy filming"):
+            photo.take("selfie")
+        assert time.time() - t0 < 2
+        monkeypatch.setattr(social, "configured", lambda: True)
+        monkeypatch.setattr(social, "wait_minutes", lambda: 0)
+        monkeypatch.setattr(social, "_send", lambda *a: pytest.fail("not posted without its photo"))
+        said = social.post("A sunny afternoon by the lake.", "selfie", "Gino by the lake")
+        assert said.startswith("Not posted") and "without a photo" in said  # Gino hears why, and carries on
+    finally:
+        photo._lock.release()
+
+
+def test_filming_gives_way_to_gino_and_his_website(monkeypatch, tmp_path):
+    """The browser and ffmpeg run at low priority, in their own group, so a stuck one can be stopped whole."""
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    started = []
+
+    class Render:
+        def __init__(self, cmd, **k):
+            started.append((cmd, k))
+            self.pid, self.returncode = 0, 1
+            self.stdin = type("In", (), {"write": lambda s, b: None, "close": lambda s: None})()
+            self.stderr = iter([])
+
+        def wait(self):
+            return 1
+    monkeypatch.setattr(clips.subprocess, "Popen", Render)
+    cid = db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "day", "x", "making"))
+    clips._film(cid, {"kind": "day"})
+    cmd, kw = started[0]
+    assert cmd[:3] == ["nice", "-n", "10"] and "render" in cmd and kw["start_new_session"] is True
+    assert config.CLIP_TIMEOUT >= 2 * 3600 or config.CLIP_LOOK == "basic"  # an HD video takes ~1 h on 2 processors

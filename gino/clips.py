@@ -28,6 +28,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -708,11 +709,14 @@ def _film(cid: int, job: dict) -> None:
     try:
         progress[cid] = "setting up the camera (about a minute)"
         try:
-            p = subprocess.Popen([sys.executable, "-m", "gino.clips", "render", str(out)], stdin=subprocess.PIPE,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=str(config.ROOT),
+            # nice: filming is slow background work, so Gino's thinking and his website always get the processors
+            # first. Its own process group: if it runs out of time, the browser and ffmpeg are stopped with it.
+            p = subprocess.Popen(["nice", "-n", "10", sys.executable, "-m", "gino.clips", "render", str(out)],
+                                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                 cwd=str(config.ROOT), start_new_session=True,
                                  env={**os.environ, "HOME": os.environ.get("TMPDIR", "/tmp")})
             p.stdin.write(json.dumps(job).encode()); p.stdin.close()
-            timer = threading.Timer(config.CLIP_TIMEOUT, p.kill); timer.start()
+            timer = threading.Timer(config.CLIP_TIMEOUT, _stop, args=(p,)); timer.start()
             tail = []
             for raw in p.stderr:
                 line = raw.decode(errors="replace").rstrip()
@@ -743,6 +747,14 @@ def _film(cid: int, job: dict) -> None:
         log.warning("Clip %s failed: %s", cid, "\n".join(tail)[-1500:])
         db.x("UPDATE clips SET status='failed', error=? WHERE id=?", (reason, cid))
         out.unlink(missing_ok=True)
+
+
+def _stop(p: subprocess.Popen) -> None:
+    """Stop a filming that ran out of time, with its browser and ffmpeg, so nothing is left eating the server."""
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except OSError:
+        p.kill()
 
 
 def _tidy() -> None:
