@@ -13,6 +13,9 @@ Restart=always
 RestartSec=10
 # if memory ever runs short, Linux stops a filming browser or the polisher first (they ask for that), not Gino
 OOMScoreAdjust=-300
+# ...and Gino carries on. (By default systemd stops and restarts the whole service when any one of its processes is
+# stopped for lack of memory: a filming browser running out of memory used to restart Gino and cut the video off.)
+OOMPolicy=continue
 # Gino only needs his own folder
 NoNewPrivileges=yes
 ProtectSystem=strict

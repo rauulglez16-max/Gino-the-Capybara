@@ -43,9 +43,9 @@ main() {
   fi
 
   # Gino is filming a video: updating now would restart him and cut it off. Wait for the next check (every
-  # 5 minutes), unless the mark is old (over 3 h 20 min: something went wrong) or dad typed `gino update` himself.
-  # (An HD video may take up to 3 hours before it counts as stuck, so a shorter wait could cut a slow one off.)
-  if [ "$force" != "--verbose" ] && [ -n "$(find "$BASE/data/filming" -mmin -200 2>/dev/null)" ]; then
+  # 5 minutes), unless dad typed `gino update` himself. The mark is written again every few frames, so one that
+  # hasn't changed for 45 minutes is left over from a filming that's gone (a stuck one is stopped after 25).
+  if [ "$force" != "--verbose" ] && [ -n "$(find "$BASE/data/filming" -mmin -45 2>/dev/null)" ]; then
     return 0
   fi
   # Gino is in the middle of a thought (a turn, a reply to dad, a dream): restarting now would cut him off mid-sentence.
@@ -77,10 +77,16 @@ main() {
 
 apply() {  # apply <commit> <previous commit>: put that code in place and restart Gino
   local target="$1" previous="$2" APP=/opt/gino/app BASE=/opt/gino
-  as_gino git -C "$APP" reset --quiet --hard "$target"
+  # New libraries first, before the code changes: if that fails, nothing has changed and the next check tries again.
+  # (Done after, a failure left the new code on disk with the old one still running, and the next check thought it
+  # was already up to date, so Gino never restarted onto it.)
   if ! as_gino git -C "$APP" diff --quiet "$previous" "$target" -- requirements.txt; then
-    "$BASE/venv/bin/pip" install -q -r "$APP/requirements.txt"
+    local req; req="$(mktemp)"
+    as_gino git -C "$APP" show "$target:requirements.txt" > "$req"
+    "$BASE/venv/bin/pip" install -q -r "$req" || { rm -f "$req"; return 1; }
+    rm -f "$req"
   fi
+  as_gino git -C "$APP" reset --quiet --hard "$target"
   # Pick up changes to the service files themselves
   local f changed=""
   for f in gino.service gino-update.service gino-update.timer gino-stream.service; do
