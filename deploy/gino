@@ -314,14 +314,16 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
       quality)
         case "${3:-}" in
           hd) set_setting GINO_CLIP_LOOK hd; systemctl restart gino
-              echo "🎬 New videos will be in full HD with all the detail (the default). Each one takes the server a bit longer to film." ;;
+              echo "🎬 New videos will be in full HD with all the detail. Each one takes the server a lot longer to film (and needs about 1 GB of memory)." ;;
           basic) set_setting GINO_CLIP_LOOK basic; systemctl restart gino
               echo "🎬 New videos will use the simpler, quicker look (smaller and less detailed)." ;;
-          *) echo "usage: gino clips quality hd|basic"; exit 1 ;;
+          auto) unset_setting GINO_CLIP_LOOK; systemctl restart gino
+              echo "🎬 Gino picks: full HD on a server with 2 GB of memory and 2 processors or more, the lighter look on a smaller one." ;;
+          *) echo "usage: gino clips quality hd|basic|auto"; exit 1 ;;
         esac
         ;;
       status)
-        [ "$(setting GINO_CLIPS)" = "1" ] && echo "🎬 The video camera is ON ($(setting GINO_CLIPS_PER_DAY | sed 's/^$/1/') a day by himself, $(setting GINO_CLIP_LOOK | sed 's/^$/hd/') quality)" \
+        [ "$(setting GINO_CLIPS)" = "1" ] && echo "🎬 The video camera is ON ($(setting GINO_CLIPS_PER_DAY | sed 's/^$/1/') a day by himself, $(setting GINO_CLIP_LOOK | sed 's/^$/auto/') quality)" \
           || echo "The video camera is OFF (turn on with: gino clips on)"
         ;;
       *) echo "usage: gino clips [status|on|test|daily N|quality hd|basic|off]"; exit 1 ;;

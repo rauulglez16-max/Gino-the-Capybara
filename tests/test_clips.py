@@ -548,3 +548,103 @@ def test_filming_gives_way_to_gino_and_his_website(monkeypatch, tmp_path):
     cmd, kw = started[0]
     assert cmd[:3] == ["nice", "-n", "10"] and "render" in cmd and kw["start_new_session"] is True
     assert config.CLIP_TIMEOUT >= 2 * 3600 or config.CLIP_LOOK == "basic"  # an HD video takes ~1 h on 2 processors
+
+
+class FakeRender:
+    """Stands in for the filming browser: prints frame lines (each after a pause), then ends with a return code."""
+    def __init__(self, lines, pause=0.0, code=0, out=None):
+        self.lines, self.pause, self.code, self.out = lines, pause, code, out
+        self.pid, self.returncode, self.killed = 0, None, False
+        self.stdin = type("In", (), {"write": lambda s, b: None, "close": lambda s: None})()
+
+    @property
+    def stderr(self):
+        for line in self.lines:
+            if self.killed:
+                return
+            time.sleep(self.pause)
+            yield line.encode() + b"\n"
+        if self.out and not self.killed:
+            self.out.write_bytes(b"x" * 20_000)
+
+    def wait(self):
+        self.returncode = -9 if self.killed else self.code
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+
+
+def test_a_slow_video_is_left_to_finish_but_a_stuck_one_is_stopped(monkeypatch, tmp_path):
+    """Filming in HD on the small server is slow. A video that keeps moving on is never cut off for being slow
+    (that's what failed most videos with "it took too long"); one that stops moving on is stopped."""
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    monkeypatch.setattr(clips, "FILMING_MARK", tmp_path / "filming")
+    monkeypatch.setattr(clips, "WATCH_EVERY", 0.02)
+    monkeypatch.setattr(config, "CLIP_STALL", 0.3)
+    monkeypatch.setattr(__import__("gino.tiktok").tiktok, "after_clip", lambda cid: None)
+    from gino import polish
+    monkeypatch.setattr(polish, "maybe_polish", lambda: None)
+    monkeypatch.setattr(clips, "_stop", lambda p: p.kill())
+    monkeypatch.setattr(config, "CLIP_TIMEOUT", 5)  # the very long overall limit isn't reached here
+    slow = db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "day", "x", "making"))
+    frames = [f"clip: frame {i}/10" for i in range(1, 11)]
+    monkeypatch.setattr(clips.subprocess, "Popen", lambda *a, **k: FakeRender(
+        frames, pause=0.1, out=tmp_path / f"gino-{slow}-day.mp4"))
+    assert clips._film(slow, {"kind": "day"}) == "ok"  # 1 s in all, but never 0.3 s without a new frame
+    assert db.q("SELECT status FROM clips WHERE id=?", (slow,))[0]["status"] == "ready"
+    assert (tmp_path / "filming").exists()  # the mark was kept fresh, so the auto-update kept waiting
+
+    stuck = db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "day", "x", "making"))
+    monkeypatch.setattr(clips.subprocess, "Popen", lambda *a, **k: FakeRender(["clip: frame 1/10"] * 2, pause=1.0))
+    assert clips._film(stuck, {"kind": "day"}) == "stuck"
+    assert db.q("SELECT error FROM clips WHERE id=?", (stuck,))[0]["error"] == "the camera got stuck"
+
+
+def test_running_out_of_memory_films_it_again_in_the_lighter_look(monkeypatch, tmp_path):
+    """If Linux has to stop the HD filming for lack of memory, the same story is filmed again in 720p."""
+    monkeypatch.setattr(clips, "available", lambda: True)
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    monkeypatch.setattr(clips, "FILMING_MARK", tmp_path / "filming")
+    monkeypatch.setattr(__import__("gino.tiktok").tiktok, "after_clip", lambda cid: None)
+    from gino import polish
+    monkeypatch.setattr(polish, "maybe_polish", lambda: None)
+    monkeypatch.setattr(clips, "_watch", lambda *a: None)  # (threads run straight away in this test)
+    kills = iter([3, 4, 4, 4])  # one process stopped for lack of memory during the first (HD) try
+    monkeypatch.setattr(clips, "_oom_kills", lambda: next(kills))
+    jobs = []
+
+    def render(cmd, **k):
+        r = FakeRender(["clip: frame 1/1"], code=1)
+        jobs.append(r)
+        if len(jobs) == 2:
+            r.code, r.out = 0, tmp_path / cmd[-1].rsplit("/", 1)[-1]
+        return r
+    seen = []
+    monkeypatch.setattr(clips.subprocess, "Popen", render)
+    real = clips._film
+    monkeypatch.setattr(clips, "_film", lambda cid, job: seen.append(job["detail"]) or real(cid, job))
+    monkeypatch.setattr(clips.threading, "Thread", lambda target, args=(), **k: type(
+        "T", (), {"start": lambda self: target(*args)})())
+    cid = clips.make("day", by="dad")
+    assert seen == [clips.LOOKS["hd"]["detail"], "low"]
+    row = db.q("SELECT status, tries, job FROM clips WHERE id=?", (cid,))[0]
+    assert row["status"] == "ready" and row["tries"] == 2
+    assert __import__("json").loads(row["job"])["width"] == 720
+
+
+def test_gino_keeps_running_when_a_helper_runs_out_of_memory():
+    """systemd's default restarts the whole of Gino when any of his processes is stopped for lack of memory: that
+    restarted the server in the middle of filming. Gino's service must carry on instead."""
+    unit = (config.ROOT / "deploy" / "systemd" / "gino.service").read_text()
+    assert "OOMPolicy=continue" in unit
+    update = (config.ROOT / "deploy" / "update.sh").read_text()
+    assert update.index("pip\" install") < update.index("reset --quiet --hard \"$target\"")  # libraries first
+
+
+def test_a_small_server_films_in_the_lighter_look_unless_dad_chooses():
+    assert config._clip_look("auto", 0.9, 1) == "basic"  # Gino's 1 GB, 1-processor server
+    assert config._clip_look("auto", 3.8, 2) == "hd"
+    assert config._clip_look("hd", 0.9, 1) == "hd" and config._clip_look("basic", 8, 4) == "basic"
+    job = clips.lighter({"kind": "day", "width": 1080, "height": 1920, "detail": "fur"})
+    assert (job["width"], job["height"], job["detail"], job["kind"]) == (720, 1280, "low", "day")

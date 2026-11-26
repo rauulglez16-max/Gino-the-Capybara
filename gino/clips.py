@@ -106,6 +106,7 @@ def _schema() -> None:
 
 _schema()
 MAX_TRIES = 3          # a video cut off by restarts is filmed again, but not forever
+WATCH_EVERY = 15       # how often (seconds) a filming is checked for being stuck
 RESUME_DELAY = 45      # after a restart, let Gino wake up properly before the camera starts again
 FILMING_MARK = config.DATA_DIR / "filming"  # while it exists, the 5-minute auto-update waits (deploy/update.sh)
 
@@ -665,14 +666,44 @@ def _film_all(jobs: list[tuple[int, dict]]) -> None:
         db.x("UPDATE clips SET ts=?, tries=tries+1 WHERE id=?", (time.time(), cid))  # dated when it's filmed
         _mark(cid)
         try:
-            _film(cid, job)
+            if _film(cid, job) == "memory" and job.get("detail") != "low":
+                # the server ran out of memory filming in full HD: film the same story again in the lighter look,
+                # which needs far less, rather than losing it
+                job = lighter(job)
+                db.x("UPDATE clips SET job=?, tries=tries+1 WHERE id=?", (json.dumps(job, ensure_ascii=False), cid))
+                progress[cid] = "waiting for the camera: the server ran short of memory, so Gino is filming it " \
+                                "again in lighter quality"
+                _mark(cid)
+                _film(cid, job)
         finally:
             if not db.q("SELECT 1 FROM clips WHERE status='making'"):
                 FILMING_MARK.unlink(missing_ok=True)
 
 
+def lighter(job: dict) -> dict:
+    """The same story in the basic look (720p, less fur, no film effects): needs much less memory and time."""
+    b = LOOKS["basic"]
+    return {**job, "width": 720, "height": 1280, "render_scale": 0.75, "quality": b["jpeg"], "detail": b["detail"],
+            "film": b["film"], "crf": b["crf"], "preset": b["preset"]}
+
+
+def _oom_kills() -> int | None:
+    """How many times Linux has had to stop one of Gino's processes for lack of memory (None: can't tell here)."""
+    try:
+        with open("/proc/self/cgroup") as f:
+            group = f.read().strip().split("\n")[-1].split("::", 1)[1]
+        with open(f"/sys/fs/cgroup{group}/memory.events") as f:
+            for line in f:
+                if line.startswith("oom_kill "):
+                    return int(line.split()[1])
+    except (OSError, IndexError, ValueError):
+        pass
+    return None
+
+
 def _mark(cid: int) -> None:
-    """Tell the auto-update a video is filming, so it doesn't restart the server in the middle of it."""
+    """Tell the auto-update a video is filming, so it doesn't restart the server in the middle of it.
+    Written again every time filming moves on, so a mark that stops changing means the filming is gone."""
     try:
         FILMING_MARK.write_text(f"{cid}\n")
     except OSError:
@@ -693,7 +724,9 @@ def script(job: dict) -> dict:
     return {"seconds": round(t, 2), "lines": sorted(lines, key=lambda l: l["at"])}
 
 
-def _film(cid: int, job: dict) -> None:
+def _film(cid: int, job: dict) -> str:
+    """Film one clip. Returns how it went: 'ok', or why not. 'memory' (the server ran out of it filming in HD) leaves
+    the video on the list, to be filmed again in the lighter look; every other failure is final."""
     CLIPS_DIR.mkdir(exist_ok=True)
     name = f"gino-{cid}-{job['kind']}.mp4"
     out = CLIPS_DIR / name
@@ -709,6 +742,9 @@ def _film(cid: int, job: dict) -> None:
         with _waiting_lock:
             _waiting -= 1
     started = time.time()  # the time limit counts from here, not from the wait
+    stopped: list[str] = []  # why the watcher had to stop it, if it did
+    done = threading.Event()
+    oom0 = _oom_kills()
     try:
         progress[cid] = "setting up the camera (about a minute)"
         try:
@@ -719,23 +755,33 @@ def _film(cid: int, job: dict) -> None:
                                  cwd=str(config.ROOT), start_new_session=True,
                                  env={**os.environ, "HOME": os.environ.get("TMPDIR", "/tmp")})
             p.stdin.write(json.dumps(job).encode()); p.stdin.close()
-            timer = threading.Timer(config.CLIP_TIMEOUT, _stop, args=(p,)); timer.start()
+            # A slow server is fine (an HD video can take hours on 2 processors while Gino thinks): it's only stopped
+            # when it stops moving on for a long while, or runs past the very long overall limit.
+            last = [time.time()]
+            threading.Thread(target=_watch, args=(p, started, last, done, stopped), daemon=True,
+                             name=f"clip-{cid}-watch").start()
             tail = []
             for raw in p.stderr:
                 line = raw.decode(errors="replace").rstrip()
                 if line.startswith("clip: frame "):
                     n, total = line.split()[2].split("/")
                     progress[cid] = f"filming frame {n} of {total}"
+                    last[0] = time.time()
+                    _mark(cid)
                 else:
                     tail = (tail + [line])[-30:]
-            p.wait(); timer.cancel()
+            p.wait(); done.set()
             ok = p.returncode == 0 and out.exists() and out.stat().st_size > 10_000
         except Exception as e:  # noqa: BLE001
             ok, tail = False, [str(e)]
+            p = None
+            done.set()
     finally:
         photo._lock.release()
         _busy.release()
     progress.pop(cid, None)
+    oom = not ok and not stopped and (
+        (oom0 is not None and (_oom_kills() or 0) > oom0) or (p is not None and p.returncode in (-9, 137)))
     if ok:
         db.x("UPDATE clips SET status='ready', filename=? WHERE id=?", (name, cid))
         db.event("clip", f"filmed a {job['kind']} clip of his life in {int(time.time() - started)} s")
@@ -745,13 +791,29 @@ def _film(cid: int, job: dict) -> None:
         from . import polish
         polish.maybe_polish()
         tiktok.after_clip(cid)
+        result = "ok"
     else:
-        reason = "it took too long" if time.time() - started >= config.CLIP_TIMEOUT else "the camera didn't work"
-        log.warning("Clip %s failed: %s", cid, "\n".join(tail)[-1500:])
-        db.x("UPDATE clips SET status='failed', error=? WHERE id=?", (reason, cid))
+        result = "memory" if oom else (stopped[0] if stopped else "broken")
+        reason = {"memory": "the server ran out of memory", "slow": "it took too long",
+                  "stuck": "the camera got stuck"}.get(result, "the camera didn't work")
+        log.warning("Clip %s failed (%s): %s", cid, reason, "\n".join(tail)[-1500:])
         out.unlink(missing_ok=True)
+        if not (result == "memory" and job.get("detail") != "low"):
+            db.x("UPDATE clips SET status='failed', error=? WHERE id=?", (reason, cid))
     # a filming stopped for taking too long can't tidy up after itself: don't leave its half-made video on the disk
     (CLIPS_DIR / (name + ".part.mp4")).unlink(missing_ok=True)
+    return result
+
+
+def _watch(p, started: float, last: list, done: threading.Event, stopped: list) -> None:
+    """Stops a filming that is stuck (no new frame for a long while) or has run past the overall limit."""
+    while not done.wait(WATCH_EVERY):
+        now = time.time()
+        why = "stuck" if now - last[0] > config.CLIP_STALL else "slow" if now - started > config.CLIP_TIMEOUT else ""
+        if why:
+            stopped.append(why)
+            _stop(p)
+            return
 
 
 def _stop(p: subprocess.Popen) -> None:
