@@ -43,8 +43,9 @@ main() {
   fi
 
   # Gino is filming a video: updating now would restart him and cut it off. Wait for the next check (every
-  # 5 minutes), unless the mark is old (over 2.5 hours: something went wrong) or dad typed `gino update` himself.
-  if [ "$force" != "--verbose" ] && [ -n "$(find "$BASE/data/filming" -mmin -150 2>/dev/null)" ]; then
+  # 5 minutes), unless the mark is old (over 3 h 20 min: something went wrong) or dad typed `gino update` himself.
+  # (An HD video may take up to 3 hours before it counts as stuck, so a shorter wait could cut a slow one off.)
+  if [ "$force" != "--verbose" ] && [ -n "$(find "$BASE/data/filming" -mmin -200 2>/dev/null)" ]; then
     return 0
   fi
   # Gino is in the middle of a thought (a turn, a reply to dad, a dream): restarting now would cut him off mid-sentence.

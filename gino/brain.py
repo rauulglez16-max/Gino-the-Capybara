@@ -248,7 +248,11 @@ def _dad_knocks():
 def record_spend(purpose: str, resp, fallback_model: str) -> float:
     u = resp.usage
     model = getattr(resp, "model", None) or fallback_model
-    pin, pout, pcache = config.PRICES.get(model, config.PRICES.get(fallback_model, (4.0, 20.0, 0.2)))
+    if model not in config.PRICES:  # a model we have no price for: count it at the dearest one we know, never less
+        log.warning("No price known for %s; counting it at the highest known price", model)
+        pin, pout, pcache = max(config.PRICES.values(), key=lambda p: p[1])
+    else:
+        pin, pout, pcache = config.PRICES[model]
     inp = u.input_tokens or 0
     out = u.output_tokens or 0
     cr = getattr(u, "cache_read_input_tokens", 0) or 0

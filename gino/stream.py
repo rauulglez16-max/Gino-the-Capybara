@@ -47,6 +47,7 @@ SCENE_SECONDS = 30
 KEEP_SCENES = 20        # the loop plays the newest 20 scenes (10 minutes) and keeps filming fresh ones
 FRESH_MINUTES = 90      # older scenes are dropped even if no new ones arrived, so the time of day stays right
 OVERLAY_EVERY = 10      # seconds between caption updates
+SCENE_TIMEOUT = 90 * 60  # a 30-second scene takes a few minutes (more while a video films); 90 means stuck
 PAGE_HEADERS = {**live.PAGE_HEADERS,
                 "Content-Security-Policy": live.PAGE_HEADERS["Content-Security-Policy"] + "; font-src 'self'",
                 "X-Robots-Tag": "noindex"}
@@ -148,12 +149,24 @@ def film_scene(platform: str) -> str:
     name = f"scene-{int(time.time())}.mp4"
     out = folder(platform) / name
     nice = ["nice", "-n", "15"] if shutil.which("nice") else []
-    p = subprocess.run([*nice, sys.executable, "-m", "gino.clips", "render", str(out)],
-                       input=json.dumps(job).encode(), capture_output=True, cwd=str(config.ROOT),
-                       timeout=config.CLIP_TIMEOUT, env={**os.environ, "HOME": os.environ.get("TMPDIR", "/tmp")})
+    # its own process group: if a scene gets stuck, its browser and ffmpeg are stopped with it, not left running
+    p = subprocess.Popen([*nice, sys.executable, "-m", "gino.clips", "render", str(out)], stdin=subprocess.PIPE,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=str(config.ROOT),
+                         start_new_session=True, env={**os.environ, "HOME": os.environ.get("TMPDIR", "/tmp")})
+    try:
+        _, err = p.communicate(json.dumps(job).encode(), timeout=SCENE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            p.kill()
+        _, err = p.communicate()
+        err = b"it took too long. " + (err or b"")
+    finally:
+        (out.parent / (out.name + ".part.mp4")).unlink(missing_ok=True)
     if p.returncode or not out.exists() or out.stat().st_size < 10_000:
         out.unlink(missing_ok=True)
-        raise RuntimeError("the camera didn't work: " + p.stderr.decode(errors="replace")[-400:])
+        raise RuntimeError("the camera didn't work: " + err.decode(errors="replace")[-400:])
     return name
 
 

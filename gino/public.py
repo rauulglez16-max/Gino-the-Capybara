@@ -34,14 +34,25 @@ def _secrets() -> list[str]:
     return [v for v in vals if v and len(v) >= 4]
 
 
+_dad_cache: dict = {"key": None, "sentences": []}
+
+
 def _dad_sentences() -> list[str]:
-    """Sentences dad wrote in chat, so they can't be quoted on the public site."""
+    """Sentences dad wrote in chat, so they can't be quoted on the public site.
+
+    Worked out again only when dad has written something new. check() runs for every name, story and caption on the
+    live page, the welcome page and every public drawing, so re-reading 300 chat messages each time made a single
+    refresh of /live take about a quarter of a second of the server's time."""
+    key = tuple(db.q("SELECT MAX(id) AS m, COUNT(*) AS n FROM chat WHERE sender='dad'")[0].values())
+    if key == _dad_cache["key"]:
+        return _dad_cache["sentences"]
     out = []
     for r in db.q("SELECT text FROM chat WHERE sender='dad' ORDER BY ts DESC LIMIT 300"):
         for s in re.split(r"[.!?\n]+", r["text"]):
             s = " ".join(s.lower().split())
             if len(s) >= 24:
                 out.append(s)
+    _dad_cache["key"], _dad_cache["sentences"] = key, out
     return out
 
 
