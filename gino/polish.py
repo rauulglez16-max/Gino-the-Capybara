@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -35,6 +36,7 @@ PC_GRACE = 40 * 60     # in "pc" mode, a clip FilmCraft hasn't finished 40 minut
 TIMEOUT = 20 * 60      # the server's polish takes a minute or three; give up after 20
 WORKING = "server: polishing"
 _lock = threading.Lock()
+_claim = threading.Lock()
 _reset = False
 
 
@@ -85,13 +87,16 @@ def maybe_polish(now: float | None = None) -> int | None:
     if not _reset:  # a restart in the middle of a polish: let it be picked up again
         _reset = True
         db.x("UPDATE clips SET polish_note='' WHERE polish_note=?", (WORKING,))
-    if _lock.locked() or clips.camera_wanted():  # new videos go first; polishing can wait
-        return None
-    for cid in due(now):
-        db.x("UPDATE clips SET polish_note=? WHERE id=? AND polished='' AND polish_note=''", (WORKING, cid))
-        if db.q("SELECT 1 FROM clips WHERE id=? AND polish_note=?", (cid, WORKING)):
-            threading.Thread(target=_polish, args=(cid,), daemon=True, name=f"polish-{cid}").start()
-            return cid
+    # one at a time: the heartbeat and a just-finished video both call this, and without the lock both could claim
+    # the same clip and polish it twice
+    with _claim:
+        if _lock.locked() or clips.camera_wanted():  # new videos go first; polishing can wait
+            return None
+        for cid in due(now):
+            db.x("UPDATE clips SET polish_note=? WHERE id=? AND polished='' AND polish_note=''", (WORKING, cid))
+            if db.q("SELECT 1 FROM clips WHERE id=? AND polish_note=?", (cid, WORKING)):
+                threading.Thread(target=_polish, args=(cid,), daemon=True, name=f"polish-{cid}").start()
+                return cid
     return None
 
 
@@ -110,13 +115,15 @@ def _polish(cid: int) -> None:
         name = f"gino-{cid}-{rows[0]['kind']}-finished.mp4"  # not the PC's file name, so neither overwrites the other
         out = clips.CLIPS_DIR / name
         err = ""
+        errf = tempfile.TemporaryFile()  # a file, not a pipe: a chatty ffmpeg can't block it
         try:
-            errf = tempfile.TemporaryFile()  # a file, not a pipe: a chatty ffmpeg can't block it
+            # its own process group, so stopping it also stops the ffmpeg it started (see _kill)
             p = subprocess.Popen(["nice", "-n", "10", sys.executable, "-m", "gino.polish", "make", str(src), str(out)],
                                  stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errf,
-                                 cwd=str(config.ROOT))
+                                 cwd=str(config.ROOT), start_new_session=True)
             p.stdin.write(json.dumps({"script": script, "voice": narrator()}).encode()); p.stdin.close()
             stopped = _wait(p)
+            _part(out).unlink(missing_ok=True)  # half-written video left by a polish that was stopped
             if stopped:  # a new video wants the camera: it goes first, and this one is polished again later
                 out.unlink(missing_ok=True)
                 db.x("UPDATE clips SET polish_note='' WHERE id=? AND polish_note=?", (cid, WORKING))
@@ -127,6 +134,8 @@ def _polish(cid: int) -> None:
             err = errf.read().decode(errors="replace")[-1500:]
         except OSError as e:
             ok, err = False, str(e)
+        finally:
+            errf.close()
         if ok and db.q("SELECT 1 FROM clips WHERE id=? AND polished='' AND tiktok_status='' AND filename!=''", (cid,)):
             db.x("UPDATE clips SET polished=?, polished_by='server', polish_note='' WHERE id=?", (name, cid))
             db.event("clip", f"his clip got its finishing touch on the server in {int(time.time() - started)} s")
@@ -145,13 +154,30 @@ def _wait(p: subprocess.Popen, step: float = 1.0) -> str:
     started = time.time()
     while p.poll() is None:
         if clips.camera_wanted():
-            p.kill(); p.wait()
+            _kill(p)
             return "a new video wanted the camera"
         if time.time() - started > TIMEOUT:
-            p.kill(); p.wait()
+            _kill(p)
             return ""  # counts as a failure, like before
         time.sleep(step)
     return ""
+
+
+def _kill(p: subprocess.Popen) -> None:
+    """Stop a polish and everything it started. Stopping only the Python helper used to leave its ffmpeg running on
+    by itself for minutes, fighting the new video's filming for the server's two processors."""
+    try:
+        if not (isinstance(p.pid, int) and p.pid > 1):
+            raise OSError("no process group")
+        os.killpg(p.pid, signal.SIGKILL)  # p.pid is also its group's number (start_new_session)
+    except OSError:
+        p.kill()
+    p.wait()
+
+
+def _part(out):
+    """Where the helper writes the video before it's finished."""
+    return out.with_name(out.name + ".part.mp4")
 
 
 # ---------------------------------------------------------------- the editing itself (separate process)

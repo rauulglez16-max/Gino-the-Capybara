@@ -19,27 +19,36 @@ STATIC = config.ROOT / "gino" / "static"
 from . import recap  # noqa: E402  ("since your last visit")
 
 
-def shop_news() -> None:
-    """Every few minutes, ask Stripe about new sales and tell Gino (and dad's phone) about them."""
+def shop_news(check: bool = True) -> bool:
+    """Every few minutes, ask Stripe about new sales and tell Gino (and dad's phone) about them.
+    Returns False if Gino was busy thinking, so the news waits for the next heartbeat. It never waits for him: asking
+    Stripe takes a moment, a turn could start meanwhile, and waiting here used to stop his whole heartbeat (no body
+    ticks, no videos, no polishing) until that turn was over."""
     if not config.STRIPE_KEY:
-        return
-    shop.check_sales()
-    with brain.mind_lock:
+        return True
+    if check:
+        shop.check_sales()
+    if not brain.mind_lock.acquire(blocking=False):
+        return False
+    try:
         sold = shop.news_for_gino()
         if not sold:
-            return
+            return True
         body = vitals.load()
         body["fun"] = vitals.clamp(body["fun"] + min(30, 10 * len(sold)))
         body["social"] = vitals.clamp(body["social"] + 5)
         vitals.save(body)
+    finally:
+        brain.mind_lock.release()
     telegram.send("🛒 Gino's shop: someone bought " + ", ".join(f"'{t}'" for t in sold)
                   + ". The money is in your Stripe account.")
+    return True
 
 
 async def life_loop():
     """Gino's heartbeat: keeps his body ticking and gives him turns when he wants them."""
     await asyncio.sleep(2)
-    last_shop = 0.0
+    last_shop, shop_told = 0.0, True
     while True:
         try:
             await asyncio.to_thread(clips.maybe_auto)  # his daily video, filmed in the background
@@ -52,7 +61,9 @@ async def life_loop():
         try:
             if time.time() - last_shop > 600 and not brain.mind_lock.locked():
                 last_shop = time.time()
-                await asyncio.to_thread(shop_news)
+                shop_told = await asyncio.to_thread(shop_news)
+            elif not shop_told and not brain.mind_lock.locked():  # he was busy last time: tell him now
+                shop_told = await asyncio.to_thread(shop_news, False)
         except Exception:
             log.exception("Checking the shop's sales failed; trying again later")
         try:

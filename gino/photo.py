@@ -61,11 +61,12 @@ def scene_state() -> dict:
     }
 
 
-def take(shot: str = "selfie") -> bytes:
-    """Take a photo now. Returns JPEG bytes, or raises RuntimeError with a reason."""
+def take(shot: str = "selfie", state: dict | None = None) -> bytes:
+    """Take a photo now (of `state`, a scene_state() from earlier, if given). Returns JPEG bytes, or raises
+    RuntimeError with a reason."""
     if not available():
         raise RuntimeError("the camera isn't set up on this server")
-    job = json.dumps({"state": scene_state(), "shot": "wide" if shot == "wide" else "selfie"})
+    job = json.dumps({"state": state or scene_state(), "shot": "wide" if shot == "wide" else "selfie"})
     # Never wait long for the camera: a video (or three, with "make 3 at once") can keep it busy for hours, and the
     # one waiting here is Gino's own turn. Stuck here, his whole mind froze: no replies to dad, no turns, no ticks.
     if not _lock.acquire(timeout=WAIT_FOR_CAMERA):

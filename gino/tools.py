@@ -419,7 +419,7 @@ def run(name: str, a: dict, body: dict) -> str:
     if name == "social_post":
         shot = a.get("photo") if a.get("photo") in ("selfie", "wide") else ""
         r = social.post(a.get("text", ""), shot, a.get("photo_description", ""))
-        if r.startswith("Posted"):
+        if r.startswith(("Posted", "Posting")):
             body["fun"] = vitals.clamp(body["fun"] + 3)
         return r
     if name == "make_clip":

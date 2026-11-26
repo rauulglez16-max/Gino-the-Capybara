@@ -150,9 +150,15 @@ SHOP_MAX_ITEMS = max(1, int(_f("GINO_SHOP_MAX_ITEMS", 20)))
 SHOP_MAX_NEW_PER_DAY = max(1, int(_f("GINO_SHOP_MAX_NEW_PER_DAY", 2)))
 
 # USD per million tokens: (input, output, cache_read). Cache writes are billed at 1.25x input.
+# When a model turns a request down, the server can hand it to another model (brain.FALLBACK_MODELS), and the bill is
+# at THAT model's price: every model it can land on is listed, so a fallback is never counted at the cheaper price.
 PRICES = {
     "claude-opus-5-5": (4.0, 20.0, 0.20),
+    "claude-opus-5": (5.0, 25.0, 0.50),
+    "claude-fable-5-2": (8.0, 40.0, 0.20),
+    "claude-fable-5-1": (10.0, 50.0, 1.00),
     "claude-sonnet-5-5": (2.0, 10.0, 0.10),
+    "claude-sonnet-5": (2.0, 10.0, 0.20),
     "claude-haiku-5-5": (0.10, 0.50, 0.01),
     "claude-opus-4-8": (5.0, 25.0, 0.50),
 }
