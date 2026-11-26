@@ -516,9 +516,14 @@ def test_a_photo_never_waits_hours_for_the_camera(monkeypatch):
         assert time.time() - t0 < 2
         monkeypatch.setattr(social, "configured", lambda: True)
         monkeypatch.setattr(social, "wait_minutes", lambda: 0)
-        monkeypatch.setattr(social, "_send", lambda *a: pytest.fail("not posted without its photo"))
+        sent = []
+        monkeypatch.setattr(social, "_send", lambda text, jpeg=b"", alt="": sent.append((text, jpeg)) or "at://x")
+        monkeypatch.setattr(social.threading, "Thread", lambda target, args, **k: type(
+            "T", (), {"start": lambda self: target(*args)})())
         said = social.post("A sunny afternoon by the lake.", "selfie", "Gino by the lake")
-        assert said.startswith("Not posted") and "without a photo" in said  # Gino hears why, and carries on
+        assert said.startswith("Posting")  # the photo is taken in the background, his turn carries straight on
+        assert sent == [("A sunny afternoon by the lake.", b"")]  # camera busy: the words still go up
+        assert not social._photo_post["busy"]
     finally:
         photo._lock.release()
 

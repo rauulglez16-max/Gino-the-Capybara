@@ -62,6 +62,7 @@ SET_SIZE = 3  # "make 3 at once"
 
 progress: dict[int, str] = {}  # clip id -> "filming 120 of 480 frames", for dad's page
 _busy = threading.Lock()
+_starting = threading.Lock()  # checking 'nothing is filming' and adding the new video happen together
 _waiting = 0  # clips waiting for the camera: the server's polish steps aside for them (polish.py)
 _waiting_lock = threading.Lock()
 
@@ -618,10 +619,11 @@ def make(kind: str = "", by: str = "auto", caption: str = "") -> int:
     """Start filming a clip in the background. Returns its id straight away (status 'making')."""
     if not available():
         raise RuntimeError("the video camera isn't set up on this server")
-    if db.q("SELECT 1 FROM clips WHERE status='making'"):
-        raise RuntimeError("Gino is already filming a clip. One at a time!")
-    kind = kind if kind in KINDS else best_kind()
-    cid, job = _add(kind, by, caption)
+    with _starting:  # two presses at once (or dad and the evening video together) must not both get through
+        if db.q("SELECT 1 FROM clips WHERE status='making'"):
+            raise RuntimeError("Gino is already filming a clip. One at a time!")
+        kind = kind if kind in KINDS else best_kind()
+        cid, job = _add(kind, by, caption)
     threading.Thread(target=_film_all, args=([(cid, job)],), daemon=True, name=f"clip-{cid}").start()
     return cid
 
@@ -631,10 +633,11 @@ def make_set(n: int = SET_SIZE, by: str = "dad", kind: str = "") -> list[int]:
     background (the small server can only film one at a time). Returns their ids straight away."""
     if not available():
         raise RuntimeError("the video camera isn't set up on this server")
-    if db.q("SELECT 1 FROM clips WHERE status='making'"):
-        raise RuntimeError("Gino is still filming. Wait until he's finished, then ask again!")
-    n = max(1, min(SET_SIZE, int(n)))
-    jobs = [_add(k, by) for k in pick_kinds(n, kind)]
+    with _starting:
+        if db.q("SELECT 1 FROM clips WHERE status='making'"):
+            raise RuntimeError("Gino is still filming. Wait until he's finished, then ask again!")
+        n = max(1, min(SET_SIZE, int(n)))
+        jobs = [_add(k, by) for k in pick_kinds(n, kind)]
     for i, (cid, _) in enumerate(jobs[1:], 2):
         progress[cid] = f"waiting its turn ({i} of {n})"
     threading.Thread(target=_film_all, args=(jobs,), daemon=True, name=f"clips-{jobs[0][0]}").start()
@@ -747,6 +750,8 @@ def _film(cid: int, job: dict) -> None:
         log.warning("Clip %s failed: %s", cid, "\n".join(tail)[-1500:])
         db.x("UPDATE clips SET status='failed', error=? WHERE id=?", (reason, cid))
         out.unlink(missing_ok=True)
+    # a filming stopped for taking too long can't tidy up after itself: don't leave its half-made video on the disk
+    (CLIPS_DIR / (name + ".part.mp4")).unlink(missing_ok=True)
 
 
 def _stop(p: subprocess.Popen) -> None:

@@ -14,6 +14,7 @@ Uses Bluesky's public HTTP API (https://docs.bsky.app) with the standard library
 import json
 import logging
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -44,6 +45,8 @@ def _recent(seconds: float) -> list[dict]:
 
 def wait_minutes() -> int:
     """0 if Gino may post now, else how many minutes until he can."""
+    if _photo_post["busy"]:  # a photo post is on its way: it counts as one just made
+        return max(1, config.SOCIAL_MIN_GAP_MINUTES)
     now = time.time()
     day = _recent(24 * 3600)
     waits = []
@@ -160,18 +163,52 @@ def post(text: str, take_photo: str = "", alt: str = "") -> str:
     if wait:
         return (f"Not posted: you can post at most {config.SOCIAL_MAX_PER_DAY} times a day, at least "
                 f"{config.SOCIAL_MIN_GAP_MINUTES} minutes apart. You can post again in about {wait} minutes.")
-    jpeg = b""
     if take_photo:
+        # The photo is taken in the background. A server photo takes a minute or more (several while a video films),
+        # and taking it inside Gino's turn kept his whole mind busy all that time: dad's messages waited, and so did
+        # everything else he wanted to do. The picture is of his world as it is right now, when he asked for it.
+        with _photo_lock:
+            if _photo_post["busy"]:
+                return "Not posted: your last photo post is still on its way. Give it a few minutes."
+            _photo_post["busy"] = True
         try:
-            jpeg = photo.take(take_photo)
+            state = photo.scene_state()
+            threading.Thread(target=_post_with_photo, args=(text, take_photo, alt or DEFAULT_ALT, state),
+                             daemon=True, name="bluesky-photo").start()
+        except Exception:
+            _photo_post["busy"] = False
+            raise
+        return ("Posting on Bluesky with your photo! 🦋 Your camera is taking it now and the post goes up in a few "
+                "minutes (if the camera can't manage, it goes up without the photo).")
+    return _publish(text)
+
+
+_photo_lock = threading.Lock()
+_photo_post = {"busy": False}  # a photo post is on its way (counts as a post for the gap between posts)
+
+
+def _post_with_photo(text: str, shot: str, alt: str, state: dict) -> None:
+    try:
+        try:
+            jpeg = photo.take(shot, state)
         except RuntimeError as e:
-            return f"Not posted: {e}. You could post without a photo instead."
-        alt = alt or DEFAULT_ALT
+            log.info("No photo for the Bluesky post (%s); posting without one", e)
+            db.event("social", f"his camera couldn't take the photo ({e}), so the post went up without it")
+            jpeg = b""
+        _publish(text, jpeg, alt)
+    except Exception:  # noqa: BLE001  (never let a background post take anything else down)
+        log.exception("Bluesky photo post failed")
+    finally:
+        _photo_post["busy"] = False
+
+
+def _publish(text: str, jpeg: bytes = b"", alt: str = "") -> str:
     try:
         uri = _send(text, jpeg, alt)
     except Exception as e:  # network trouble or Bluesky refusing: tell Gino, never crash his turn
         log.warning("Bluesky post failed: %s", e)
         db.x("INSERT INTO social_posts(ts,text,uri,status) VALUES(?,?,?,?)", (time.time(), text, "", "failed"))
+        db.event("social", "Bluesky didn't take his post (maybe it was down)")
         return "Bluesky didn't take the post (maybe it's down). Try again another time."
     pid = db.x("INSERT INTO social_posts(ts,text,uri,status,alt) VALUES(?,?,?,?,?)",
                (time.time(), text, uri, "posted", alt if jpeg else ""))

@@ -16,7 +16,18 @@ def fresh(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "CLIPS_ON", True)
     monkeypatch.setattr(config, "POLISHER", "pc")
     monkeypatch.setattr(clips, "ffmpeg", lambda: "ffmpeg")
+    RUNNING.clear()
+    GROUPS_KILLED.clear()
+
+    def killpg(pgid, sig):  # stands in for stopping a whole process group (never touches real processes)
+        GROUPS_KILLED.append(pgid)
+        RUNNING[pgid].kill()
+    monkeypatch.setattr(polish.os, "killpg", killpg)
     yield
+
+
+RUNNING: dict = {}  # pid -> fake process
+GROUPS_KILLED: list = []
 
 
 class FakePolish:
@@ -26,6 +37,7 @@ class FakePolish:
 
     def __call__(self, cmd, **kw):
         fake = self
+        fake.kw = kw
         if fake.runs:
             fake.on_start()
         elif fake.code == 0:
@@ -45,7 +57,10 @@ class FakePolish:
 
             def wait(self):
                 return self.returncode
-        return P()
+        p = P()
+        p.pid = 40000 + len(RUNNING)
+        RUNNING[p.pid] = p
+        return p
 
 
 def clip(tmp_path, age=0.0, **cols):
@@ -125,6 +140,8 @@ def test_new_videos_go_before_polishing_an_old_one(tmp_path, monkeypatch):
     # dad presses "Make a video" while it's polishing (on_start)
     assert polish.maybe_polish() == old
     assert getattr(fake, "killed", False)  # it stepped aside straight away...
+    # ...stopping its ffmpeg too (the whole process group), not only the helper that started it
+    assert fake.kw.get("start_new_session") and GROUPS_KILLED
     row = db.q("SELECT polished, polish_note FROM clips WHERE id=?", (old,))[0]
     assert row["polished"] == "" and row["polish_note"] == ""  # ...and will be polished again later, not marked failed
     monkeypatch.setattr(clips, "_waiting", 0)
