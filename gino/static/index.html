@@ -540,7 +540,7 @@ async function renderTab() {
 }
 
 // Videos: short clips of his life for TikTok, filmed by his server
-let clipTimer = null;
+let clipTimer = null, clipFails = 0;
 const why = e => { try { return JSON.parse(e.message).detail || e.message; } catch { return e.message; } };
 const clipUrl = (id, dl) => `/clips/${id}.mp4?key=${encodeURIComponent(key())}${dl ? '&download=1' : ''}`;
 // What a video that isn't ready yet is doing: next in line, waiting for the camera (and why), or filming.
@@ -552,11 +552,25 @@ function clipWait(p) {
 }
 async function renderVideos(P) {
   clearTimeout(clipTimer);
-  let d; try { d = await api('/api/clips'); } catch (e) { P.innerHTML = `<p class="muted">${esc(why(e))}</p>`; return; }
+  let d; try { d = await api('/api/clips'); } catch (e) {
+    // The server didn't answer (it may be restarting, or busy filming): keep the videos on screen and try again,
+    // instead of wiping the page and giving up.
+    if (tab !== 'videos') return;
+    const shown = P.querySelector('.clips');
+    if (!shown) P.innerHTML = '<div class="clips"></div>';
+    let note = P.querySelector('#clipNote');
+    if (!note) { note = document.createElement('p'); note.id = 'clipNote'; note.className = 'muted'; P.prepend(note); }
+    clipFails++;
+    note.textContent = shown ? "⏳ Gino's server isn't answering right now (it may be restarting). Your videos are safe: trying again…"
+      : "⏳ Can't reach Gino's server right now (it may be restarting). Trying again…";
+    clipTimer = setTimeout(() => tab === 'videos' && renderVideos(P), Math.min(60000, 5000 * clipFails));
+    return;
+  }
+  clipFails = 0;
   if (tab !== 'videos') return;
   const tt = d.tiktok, kinds = Object.entries(d.kinds);
   const head = d.on
-    ? `<div class="row"><select id="clipKind"><option value="">Gino picks the story</option>${kinds.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select><button id="clipMake">🎬 Make a new video</button><button id="clipMake3" title="Three videos in one go, each a different story">🎬🎬🎬 Make 3 at once</button><span class="muted" style="font-size:13px">About 20 seconds long, in full HD. Filming takes a few minutes each. Finishing touch: ${{pc: 'FilmCraft on your PC (the server helps when your PC is off)', server: 'done on the server', off: 'off'}[d.polisher] || ''}.</span></div>`
+    ? `<div class="row"><select id="clipKind"><option value="">Gino picks the story</option>${kinds.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select><button id="clipMake">🎬 Make a new video</button><button id="clipMake3" title="Three videos in one go, each a different story">🎬🎬🎬 Make 3 at once</button><span class="muted" style="font-size:13px">About 20 seconds long, ${d.look === 'basic' ? 'in 720p (the lighter look, right for a small server)' : 'in full HD'}. Filming takes a while on the server (often an hour or more each), so you can close this page and come back. Finishing touch: ${{pc: 'FilmCraft on your PC (the server helps when your PC is off)', server: 'done on the server', off: 'off'}[d.polisher] || ''}.</span></div>`
     : `<p class="muted">Gino's video camera is off. To turn it on, log in to the server and type <code>gino clips on</code>.</p>`;
   const tbox = !tt.configured ? `<div class="tt">📱 <b>TikTok:</b> download a video below and post it from your phone. To let Gino send videos to TikTok himself, follow "Gino on TikTok" in the server guide, then type <code>gino tiktok setup</code>.</div>`
     : !tt.connected ? `<div class="tt">📱 <b>TikTok</b> is set up. <button id="ttConnect">Connect TikTok</button></div>`
