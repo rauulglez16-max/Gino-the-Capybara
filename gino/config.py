@@ -103,13 +103,32 @@ CLIPS_ON = os.environ.get("GINO_CLIPS", "0") == "1"
 CLIPS_PER_DAY = max(0, int(_f("GINO_CLIPS_PER_DAY", 1)))  # he films this many by himself each evening (0 = only on request)
 CLIP_HOUR = max(0, min(23, int(_f("GINO_CLIP_HOUR", 19))))  # local hour after which the daily clip is filmed
 CLIP_FPS = max(23, min(30, int(_f("GINO_CLIP_FPS", 24))))  # TikTok wants 23 to 60 frames a second
-CLIP_LOOK = "basic" if os.environ.get("GINO_CLIP_LOOK", "hd") == "basic" else "hd"  # hd: full HD, all the detail
+def _memory_gb() -> float:
+    try:
+        with open("/proc/meminfo") as f:
+            return int(f.readline().split()[1]) / 1024 / 1024  # MemTotal, in kB
+    except (OSError, IndexError, ValueError):
+        return 0.0
+
+
+def _clip_look(wanted: str, memory_gb: float, cpus: int) -> str:
+    """hd: full HD, all the detail. basic: 720p, lighter. Unless dad chose (`gino clips quality hd|basic`), a small
+    server films in basic: HD filming needs about 1 GB of memory on its own, so on a 1 GB, 1-processor server it
+    kept running out (Linux stopped the browser) and took hours."""
+    if wanted in ("hd", "basic"):
+        return wanted
+    return "hd" if memory_gb >= 1.8 and cpus >= 2 else "basic"
+
+
+CLIP_LOOK = _clip_look(os.environ.get("GINO_CLIP_LOOK", "auto").strip().lower(), _memory_gb(), os.cpu_count() or 1)
 CLIP_SIZE = (1080, 1920) if CLIP_LOOK == "hd" else (720, 1280)  # 9:16, the shape of a phone screen
 # the 3D is drawn smaller, then stretched to fit (much quicker without a graphics card); the words stay full size
 CLIP_RENDER_SCALE = max(0.5, min(1.0, _f("GINO_CLIP_RENDER_SCALE", 0.67 if CLIP_LOOK == "hd" else 0.75)))
-# seconds for one video; the server has no graphics card, so filming is slow: an HD video takes about an hour on
-# 2 processors (more while Gino is busy thinking), so it gets 3 hours before it counts as stuck
-CLIP_TIMEOUT = int(_f("GINO_CLIP_TIMEOUT", 3 * 3600 if CLIP_LOOK == "hd" else 3600))
+# seconds for one video; the server has no graphics card, so filming is slow: an HD video takes an hour or more on
+# 2 processors (more while Gino is busy thinking). A slow video is left to finish: it's only stopped when no new frame
+# has come for CLIP_STALL seconds (stuck), or it passes this very long overall limit.
+CLIP_TIMEOUT = int(_f("GINO_CLIP_TIMEOUT", 5 * 3600 if CLIP_LOOK == "hd" else 3 * 3600))
+CLIP_STALL = int(_f("GINO_CLIP_STALL", 25 * 60))
 FFMPEG = os.environ.get("GINO_FFMPEG", "")  # optional path to ffmpeg
 # Who gives his videos their finishing touch: "pc" (FilmCraft on dad's PC, with the server as a backup when the PC
 # is off or slow), "server" (the server does it straight away, day and night) or "off" (videos stay as filmed).

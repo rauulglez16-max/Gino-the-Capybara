@@ -271,7 +271,7 @@ def creation(filename: str):
 @app.get("/api/clips", dependencies=[Depends(auth)])
 def clip_list():
     return {"on": clips.available(), "clips": clips.listing(), "kinds": clips.KIND_NAMES, "tiktok": tiktok.status(),
-            "polisher": polish.mode()}
+            "polisher": polish.mode(), "look": config.CLIP_LOOK}
 
 
 class ClipIn(BaseModel):
