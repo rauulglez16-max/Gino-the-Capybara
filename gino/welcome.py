@@ -489,6 +489,8 @@ def page() -> str:
                       "picks what goes in the shop and names the prices himself.", "Have a look"))
     visit.append(("/timeline", "🗺️", "#b9a3e8", "His story so far", "Everything that has happened in Gino's life, "
                   "day by day, from the morning he first woke up until today.", "Read his story"))
+    visit.append(("/mind", "💭", "#f19a8a", "Inside his head", "What Gino is thinking about, what he loves, what "
+                  "he's getting better at and who he is slowly becoming.", "Peek inside"))
     visit.append(("/roadmap", "🌱", "#9fcf7a", "Coming soon", "What's on its way to Gino's life next: new places "
                   "to explore, new friends and new things to make.", "See what's next"))
     if bsky:
@@ -498,7 +500,7 @@ def page() -> str:
     gallery = (_photos() + GALLERY)[:3]
     board = s.get("board") or []
     nav = ['<a href="#who">Who is Gino?</a>', '<a href="/live">Live</a>', '<a href="/blog">Diary</a>',
-           '<a href="/timeline">His story</a>', '<a href="/roadmap">Coming soon</a>']
+           '<a href="/mind">His mind</a>', '<a href="/timeline">His story</a>', '<a href="/roadmap">Coming soon</a>']
     if shop_on:
         nav.append('<a href="/blog/shop">Shop</a>')
     base = config.PUBLIC_URL.rstrip("/")
