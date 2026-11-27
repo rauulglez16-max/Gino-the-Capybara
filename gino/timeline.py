@@ -177,7 +177,8 @@ def page(today: dt.date | None = None) -> str:
     shop_on = shop.configured()
     bsky = social.profile_url()
 
-    nav = ['<a href="/">Home</a>', '<a href="/live">Live</a>', '<a href="/blog">Diary</a>', '<a href="/roadmap">Coming soon</a>']
+    nav = ['<a href="/">Home</a>', '<a href="/live">Live</a>', '<a href="/blog">Diary</a>', '<a href="/mind">His mind</a>',
+           '<a href="/roadmap">Coming soon</a>']
     if shop_on:
         nav.append('<a href="/blog/shop">Shop</a>')
 

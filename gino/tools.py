@@ -2,8 +2,8 @@
 import re
 import time
 
-from . import (artstyle, capsules, clips, config, db, dreams, inventions, news, public, shop, social, telegram,
-               vitals, whatsapp)
+from . import (artstyle, capsules, clips, config, db, dreams, inside, inventions, news, public, shop, social,
+               telegram, vitals, whatsapp)
 
 GRID_W, GRID_H = 16, 10
 
@@ -225,6 +225,7 @@ class TurnEnded(Exception):
 def run(name: str, a: dict, body: dict) -> str:
     """Execute one tool against Gino's body/world. Returns text for the model."""
     now = time.time()
+    inside.touch(name, now)  # lights up that part of his mind on /mind, and counts one more go at it
     if name == "feel":
         body["emotion"] = str(a.get("emotion", "")).lower()[:30]
         body["emotion_intensity"] = _cell(a.get("intensity", 3), 6) or 1

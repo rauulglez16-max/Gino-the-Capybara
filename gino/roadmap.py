@@ -95,7 +95,7 @@ def page() -> str:
     shop_on = shop.configured()
     bsky = social.profile_url()
     nav = ['<a href="/">Home</a>', '<a href="/live">Live</a>', '<a href="/blog">Diary</a>',
-           '<a href="/timeline">His story</a>']
+           '<a href="/mind">His mind</a>', '<a href="/timeline">His story</a>']
     if shop_on:
         nav.append('<a href="/blog/shop">Shop</a>')
     count = {k: sum(1 for it in items if it["when"] == k) for k in WHEN}
