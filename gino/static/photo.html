@@ -21,6 +21,7 @@ window.takePhoto = async ({ state, key, shot, maxBytes }) => {
     { key, season: state.weather?.season, autoQuality: false, lite: true });
   w.setQuality('low');
   w.update(state); mark('world built');
+  await w._debug.gino.userData.realReady; mark('gino loaded');
   const { camera, controls, gino, skip, snap } = w._debug;
   skip(); snap();  // no fly-in, and he's already standing where he is
   await frames(2); mark('first frames');
