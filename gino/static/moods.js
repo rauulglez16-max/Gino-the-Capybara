@@ -70,6 +70,19 @@ export function createMoods(gino, opts = {}) {
   const M = { f: feelings(), cue: '', at: -99, next: 1.5, cueK: 0, ear: [0, 0] };
   const v = new THREE.Vector3();
   const toGino = (obj, x, y, z) => gino.worldToLocal(obj.localToWorld(v.set(x, y, z)));
+  // where his mouth is, in Gino's own frame: on the sculpted model (G.real) the face is found with G.faceAt
+  const mouthAt = (fwd = 0, up = 0) => {
+    if (G.faceAt) { gino.worldToLocal(G.faceAt(v)); v.x += 0.22 + fwd; v.y += -0.12 + up; return v; }
+    return toGino(G.head, 0.8 + fwd, up, 0);
+  };
+  // the sculpted model hides the simple shapes, so move the yawn mouth onto its head bone, at the front of its snout
+  let mouthK = 1;
+  function fitMouth() {
+    const hb = G.real.getObjectByName('head'); if (!hb) return;
+    G.mouth.traverse(o => { if (o.isMesh) o.visible = true; });
+    G.body.add(G.mouth); G.mouth.position.set(1.45, 0.95, 0); G.mouth.rotation.set(0, 0, 0); G.mouth.scale.setScalar(1);
+    hb.attach(G.mouth); mouthK = G.mouth.scale.x * 1.25;   // keep its size in the bone's units, a bit wider for the bigger snout
+  }
 
   return {
     get feeling() { return M.f; },
@@ -81,6 +94,7 @@ export function createMoods(gino, opts = {}) {
     // still: 1 when he's standing about, 0 while he's busy (rolling, napping, swimming...) so moods don't fight the action.
     apply(t, dt, { awake, still }) {
       const f = M.f, k = awake ? 1 : 0;
+      if (G.real && !M.fitted) { M.fitted = true; fitMouth(); }
       M.cueK = THREE.MathUtils.lerp(M.cueK, k, Math.min(1, dt * 4));
       if (!awake) { M.cue = ''; M.next = Math.max(M.next, t + 2); }
       else if (t > M.next) {
@@ -117,7 +131,7 @@ export function createMoods(gino, opts = {}) {
       G.head.rotation.z += 0.42 * yawn;
       G.body.position.y += 0.03 * yawn;
       if (yawn > 0.35) G.eyes.forEach(eye => { eye.scale.y = 0.018; });
-      G.mouth.scale.set(1 + 0.3 * yawn, 0.0001 + 0.16 * yawn, 1 + 0.35 * yawn); G.mouth.visible = yawn > 0.02;
+      G.mouth.scale.set((1 + 0.3 * yawn) * mouthK, (0.0001 + 0.16 * yawn) * mouthK, (1 + 0.35 * yawn) * mouthK); G.mouth.visible = yawn > 0.02;
       G.legs.forEach((l, i) => { if (i < 2) l.rotation.z += 0.12 * yawn; });   // front legs stretch forward a touch
 
       // tummy rumble: his body wobbles, rumble lines by his belly and he looks down at it
@@ -128,19 +142,19 @@ export function createMoods(gino, opts = {}) {
       rumble.forEach((s, i) => {
         const side = i ? 1 : -1, wob = Math.sin(t * 20 + i) * 0.03;
         s.visible = rum > 0.05; if (!s.visible) return;
-        toGino(G.body, 0.3 + wob, 0.45, side * 0.66); s.position.copy(v); s.scale.setScalar(0.42 * rum + 0.1); s.material.opacity = Math.min(1, rum * 1.6);
+        toGino(G.body, (G.real ? 0 : 0.3) + wob, 0.45, side * (G.real ? 0.78 : 0.66)); s.position.copy(v); s.scale.setScalar(0.42 * rum + 0.1); s.material.opacity = Math.min(1, rum * 1.6);
       });
 
       // grumble: a little grey cloud by his head and a grumpy shake of the head
       const gr = cue === 'grumble' ? bell : 0;
       G.head.rotation.y += Math.sin(t * 9) * 0.16 * gr; G.head.rotation.z -= 0.1 * gr;
       cloud.visible = gr > 0.05;
-      if (cloud.visible) { toGino(G.head, 0.55, 0.5 + ph * 0.25, 0); cloud.position.copy(v); cloud.scale.setScalar(0.25 + 0.3 * gr); cloud.material.opacity = Math.min(1, gr * 1.7); }
+      if (cloud.visible) { mouthAt(-0.2, 0.75 + ph * 0.25); cloud.position.copy(v); cloud.scale.setScalar(0.25 + 0.3 * gr); cloud.material.opacity = Math.min(1, gr * 1.7); }
 
       // humming: musical notes float up from his mouth, his head bobs to the tune
       const hum = cue === 'hum' ? M.cueK : 0;
       G.head.rotation.z += Math.sin(t * 5.5) * 0.06 * hum * Math.min(1, e * 2) * (1 - clamp01((e - LEN.hum + 0.5) * 2));
-      toGino(G.head, 0.8, 0.0, 0); const mx = v.x, my = v.y, mz = v.z;
+      mouthAt(); const mx = v.x, my = v.y, mz = v.z;
       notes.forEach((n, i) => {
         const nk = (e - i * 0.55) / 1.7;
         n.visible = hum > 0 && nk > 0 && nk < 1 && e - i * 0.55 < LEN.hum - 0.6; if (!n.visible) return;

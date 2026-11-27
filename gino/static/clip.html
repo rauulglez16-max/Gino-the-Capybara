@@ -59,6 +59,7 @@ window.setupClip = async (j) => {
     clock: () => hourNow, director: direct });
   // 'high': all his fur, all the grass and sharper shadows; smooth edges and colour come from the film effects
   w.setQuality(j.detail === 'high' ? 'high' : 'low');
+  await w._debug.gino.userData.realReady;   // film the sculpted Gino, not the backup shapes
   if (j.detail === 'fur') w._debug.gino.traverse(n => { if (n.userData.shell) n.visible = true; });   // all his fur, the rest light
   // a new thing he made starts beside where it will go: in the clip he carries it to its spot
   if (j.carry) j.state = { ...j.state, habitat: j.state.habitat.map(it => it.id === j.carry.id ? { ...it, x: j.carry.from[0], y: j.carry.from[1] } : it) };
