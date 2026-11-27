@@ -662,9 +662,11 @@ export function createWorld(container, tooltip, opts = {}) {
   const timer = new THREE.Timer(); timer.connect(document);
   const v3 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   let snapshot = null, quality = small ? 'low' : 'high', slow = 0, frames = 0;
+  const furLayers = () => gino.traverse(n => { if (n.userData.shell) n.visible = quality === 'high' || n.userData.shell % 2 === 0; });   // half the fur layers on slow devices
+  G.onReal = furLayers;   // the sculpted model's fur arrives a moment later
   function setQuality(q) {
     quality = q; const hi = q === 'high';
-    gino.traverse(n => { if (n.userData.shell) n.visible = hi || n.userData.shell % 2 === 0; });   // half the fur layers on slow devices
+    furLayers();
     if (gtao) gtao.enabled = hi; renderer.setPixelRatio(Math.min(devicePixelRatio, hi ? 2 : 1)); grassShare = hi ? 1 : 0.45; grass.count = Math.round((grass.userData.full || 0) * grassShare);
     const sm = hi ? (opts.film ? 2048 : 4096) : 1024; sun.shadow.mapSize.set(sm, sm); sun.shadow.map?.dispose(); sun.shadow.map = null; resize(); opts.onQuality?.(q);
   }
@@ -740,6 +742,7 @@ export function createWorld(container, tooltip, opts = {}) {
     G.orange.visible = (inPond && (!walking || moving)) || (!!R.pose?.orange && posing > 0.4);
     G.zs.forEach((z, i) => { const k = (t * 0.35 + i / 3) % 1; z.visible = down || (c === 'nap' && a > 0.7); z.position.set(1.0 + k * 0.5, 1.5 + k * 1.3, 0); z.scale.setScalar(0.25 + k * 0.4); z.material.opacity = 1 - k; });
     G.hearts.forEach((h, i) => { const k = (t - heartT) / 1.6 - i * 0.08; h.visible = k > 0 && k < 1; if (h.visible) { h.position.set(Math.cos(i * 1.05) * (0.3 + k * 0.7), 1.6 + k * 1.6, Math.sin(i * 1.05) * (0.3 + k * 0.7)); h.scale.setScalar(0.3 + Math.sin(k * Math.PI) * 0.25); h.material.opacity = 1 - k * k; } });
+    G.sync?.();   // copy the moves above onto the sculpted model's skeleton
     const ep = G.emote.userData.pop = Math.max(0, (G.emote.userData.pop || 0) - dt * 1.5);
     G.emote.visible = !!lastEmote; G.emote.position.y = 2.15 + Math.sin(t * 1.5) * 0.05 - 0.3 * sleepK + (carry?.o.userData.carried ? carry.h + 0.15 : 0); G.emote.scale.setScalar(0.6 + Math.sin(ep * Math.PI) * 0.35);
 
@@ -866,7 +869,7 @@ export function createWorld(container, tooltip, opts = {}) {
       cutePose(name) { strikePose(POSES[name] || poseFor(state.emotion)); R.arrived = true; R.until = Infinity; },
       itemPos: id => itemObjs.get(id)?.position.clone() || null,
       items: itemsGroup,
-      face: (out = new THREE.Vector3()) => G.head.localToWorld(out.set(0.16, 0.08, 0)) },   // the middle of his face
+      face: (out = new THREE.Vector3()) => G.faceAt ? G.faceAt(out) : G.head.localToWorld(out.set(0.16, 0.08, 0)) },   // the middle of his face
   };
   return api;
 }
