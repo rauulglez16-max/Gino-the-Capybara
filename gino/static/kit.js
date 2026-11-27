@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 export const U = { time: { value: 0 } };           // shared shader clock
-export const env = { season: 'summer', art: [], artKey: '', lite: false };
+export const env = { season: 'summer', art: [], artKey: '', lite: false,
+  oldGino: typeof location !== 'undefined' && /[?&]oldgino\b/.test(location.search) };   // ?oldgino shows the simple shapes model
 
 const mats = new Map();
 export function mat(color, extra = {}) {
@@ -591,5 +592,63 @@ export function buildGino() {
   const emote = textSprite('', 84); emote.scale.setScalar(0.62); emote.position.y = 2.15; g.add(emote);
   g.traverse(n => { n.userData.isGino = true; });
   g.userData = { body, head, legs, ears, eyes, zs, hearts, emote, orange, isGino: true };
+  // swaps in the sculpted model once it has loaded; realReady settles within a minute either way (it can still arrive later)
+  g.userData.realReady = env.oldGino ? Promise.resolve(false) : Promise.race([realGino(g), new Promise(res => setTimeout(() => res(false), 60000))]);
   return g;
+}
+
+// ---------------------------------------------------------------- the sculpted Gino (made in Blender, gino/static/models)
+// The shapes above stay as a backup and as the "puppet": world.js keeps moving body/head/legs/ears/eyes exactly as before,
+// and every frame sync() copies those moves onto the real model's skeleton. If the file can't load, the old Gino stays.
+let gltfLoader = null;
+async function realGino(g) {
+  try {
+    if (!gltfLoader) { const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js'); gltfLoader = new GLTFLoader(); }
+    const gltf = await gltfLoader.loadAsync('/static/models/gino.glb');
+    const G = g.userData, model = gltf.scene;
+    let skin = null; model.traverse(o => { if (o.isSkinnedMesh && !skin) skin = o; });
+    const bone = n => model.getObjectByName(n) || model.getObjectByName(n.replace(/\./g, ''));
+    const need = ['neck', 'head', 'arm.L', 'arm.R', 'forearm.L', 'forearm.R', 'hand.L', 'hand.R', 'thigh.L', 'thigh.R', 'shin.L', 'shin.R', 'ear.L', 'ear.R', 'lid.L', 'lid.R'];
+    if (!skin || need.some(n => !bone(n))) throw new Error('model is missing parts');
+    // hide the old shapes (they still catch clicks, which is handy), keep the orange hat, sprites and puppet groups
+    G.body.traverse(o => { if (o.isMesh && !o.isSprite) { o.visible = false; delete o.userData.shell; } });
+    G.body.add(model); model.updateMatrixWorld(true);
+    // fur: dotted hair tips stacked in shells over the skin, bent by the same skeleton; vertex colour R = how long the fur is there
+    const base = skin.material, dots = furDots().clone(); dots.repeat.set(14, 14); dots.needsUpdate = true;
+    const FUR = 0.07, N = 12;
+    for (let i = 1; i <= N; i++) { const t = i / N;
+      const m = new THREE.MeshStandardMaterial({ map: base.map, alphaMap: dots, alphaTest: 0.12 + t * 0.62, roughness: 1, color: new THREE.Color().setScalar(0.78 + t * 0.4) });
+      m.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 color;')
+        .replace('#include <begin_vertex>', `#include <begin_vertex>\n transformed += normalize(objectNormal) * ${(FUR * t).toFixed(4)} * color.r; transformed.y -= ${(FUR * t * t * 0.5).toFixed(4)} * color.r;`); };
+      m.customProgramCacheKey = () => 'realshell' + i;
+      const sh = new THREE.SkinnedMesh(skin.geometry, m); sh.bind(skin.skeleton, skin.bindMatrix); sh.receiveShadow = true; sh.frustumCulled = false; sh.userData.shell = i;
+      skin.parent.add(sh); sh.position.copy(skin.position); sh.quaternion.copy(skin.quaternion); sh.scale.copy(skin.scale); }
+    skin.material = env.lite ? new THREE.MeshStandardMaterial({ map: base.map, normalMap: base.normalMap, roughness: 0.92 })
+      : new THREE.MeshPhysicalMaterial({ map: base.map, normalMap: base.normalMap, roughness: 0.92, sheen: 0.6, sheenRoughness: 0.5, sheenColor: new THREE.Color('#d9a877') });
+    model.traverse(o => { if (o.isMesh) { o.receiveShadow = true; if (!o.userData.shell) o.castShadow = true; o.frustumCulled = false; } o.userData.isGino = true; });
+    // the orange hat rides on the new head
+    G.orange.traverse(o => { if (o.isMesh) o.visible = true; });
+    G.orange.position.set(1.0, 1.4, 0); G.body.add(G.orange); bone('head').attach(G.orange);
+    // driving the skeleton: a turn D given in the body's frame becomes bone = P⁻¹·D·P·rest (P = the bone's parent at rest)
+    const bq = new THREE.Quaternion().copy(G.body.getWorldQuaternion(new THREE.Quaternion())).invert();
+    const drive = {};
+    for (const n of need) { const b = bone(n); drive[n] = { b, rest: b.quaternion.clone(), P: bq.clone().multiply(b.parent.getWorldQuaternion(new THREE.Quaternion())) }; }
+    const D = new THREE.Quaternion(), E = new THREE.Euler(), tq = new THREE.Quaternion();
+    const turn = (n, x, y, z) => { const d = drive[n]; D.setFromEuler(E.set(x, y, z));
+      d.b.quaternion.copy(tq.copy(d.P).invert().multiply(D).multiply(d.P).multiply(d.rest)); };
+    const R = Math.PI / 180, legSide = ['R', 'L', 'R', 'L'];
+    G.sync = () => {
+      const h = G.head.rotation; turn('neck', 0, h.y * 0.5, h.z * 0.5); turn('head', 0, h.y * 0.5, h.z * 0.5);
+      G.legs.forEach((l, i) => { const s = legSide[i], front = i < 2, sy = l.scale.y, lie = Math.min(1, Math.max(0, (1 - sy) / 0.75)), a = l.rotation.z;
+        if (front) { turn('arm.' + s, 0, 0, a + 30 * R * lie); turn('forearm.' + s, 0, 0, -Math.max(0, a) * 0.6 - 105 * R * lie); turn('hand.' + s, 0, 0, 60 * R * lie); }
+        else { turn('thigh.' + s, 0, 0, a + 70 * R * lie); turn('shin.' + s, 0, 0, -Math.max(0, a) * 0.6 - 125 * R * lie); drive['thigh.' + s].b.scale.y = Math.max(1, sy); } });
+      G.ears.forEach((e, i) => turn('ear.' + (i ? 'R' : 'L'), (i ? -1 : 1) * e.rotation.x, 0, 0));
+      const open = Math.min(1, Math.max(0, (G.eyes[0].scale.y - 0.018) / 0.087));
+      turn('lid.L', (-90 + 190 * open) * R, 0, 0); turn('lid.R', (90 - 190 * open) * R, 0, 0);
+    };
+    const face = bone('head').worldToLocal(G.body.localToWorld(new THREE.Vector3(1.22, 1.12, 0)));   // middle of his face, for selfies
+    G.faceAt = out => bone('head').localToWorld(out.copy(face));
+    G.real = model; G.sync(); G.onReal?.();
+    return true;
+  } catch (e) { console.warn('Gino: keeping the simple model', e); return false; }
 }
