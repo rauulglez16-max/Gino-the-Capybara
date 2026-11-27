@@ -7,8 +7,8 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
-from . import (artstyle, budget, capsules, clips, config, continuity, db, dreams, inventions, keepsakes, news, public,
-               shop, social, tools, vitals)
+from . import (artstyle, budget, capsules, clips, config, continuity, db, dreams, inside, inventions, keepsakes, news,
+               public, shop, social, tools, vitals)
 
 log = logging.getLogger("gino.brain")
 mind_lock = threading.Lock()  # one thought at a time
@@ -166,6 +166,9 @@ def context(body: dict, turn: bool = False) -> str:
     past = continuity.context_lines(goals, {m["id"] for m in important + recent_mem})
     if past:
         lines.append(past)
+    becoming = inside.context_lines()
+    if becoming:
+        lines.append(becoming)
     if journal:
         lines.append("\n## Your last diary entries\n" + "\n".join(f"- ({ago(j['ts'])}) {j['text'][:600]}"
                                                                  for j in journal))
@@ -309,6 +312,7 @@ def run_loop(purpose: str, model: str, prompt: str, body: dict, tool_list: list)
             break
         resp = call(model, messages, tool_list, max_tokens=max_tokens)
         record_spend(purpose, resp, model)
+        inside.note_reading(resp.content)  # pages he read on the web, for /mind
         u = resp.usage
         # next step re-reads everything so far: what this step read, what it wrote, plus the tool results
         est_in = ((u.input_tokens or 0) + (getattr(u, "cache_read_input_tokens", 0) or 0)
@@ -418,6 +422,7 @@ def _chat(text: str) -> str:
         db.event("sleep", "Dad's message woke Gino up.")
     body["social"] = vitals.clamp(body["social"] + 12)
     vitals.save(body)
+    inside.touch("chat")
     tired = "*yawns* My brain is all thought out for today, dad. Talk tomorrow? 💤"
     chat_tools = [t for t in tools.all_tools()
                   if t["name"] not in ("sleep", "message_dad", "set_next_wake", "social_post", "make_clip")]

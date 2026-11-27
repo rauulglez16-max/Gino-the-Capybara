@@ -178,7 +178,10 @@ def dream_now() -> int | None:
             d = _ask_claude(brain, text, max_tokens)
             if not d:
                 return None
-        return save(body, d, level)
+        did = save(body, d, level)
+        from . import inside
+        inside.touch("dream")
+        return did
 
 
 def _ask_claude(brain, text: str, max_tokens: int = 4000) -> dict | None:
