@@ -11,8 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import (artstyle, brain, clips, config, db, dreams, live, news, polish, public, roadmap, shop, stream, telegram,
-               tiktok, timeline, vitals, welcome, whatsapp)
+from . import (artstyle, brain, clips, config, db, dreams, inside, live, news, polish, public, roadmap, shop, stream,
+               telegram, tiktok, timeline, vitals, welcome, whatsapp)
 
 log = logging.getLogger("gino")
 STATIC = config.ROOT / "gino" / "static"
@@ -76,6 +76,8 @@ async def life_loop():
                 now = time.time()
                 if dreams.due(body, now):
                     await asyncio.to_thread(dreams.dream_now)
+                elif inside.reflect_due(body, now):  # once a night he looks back over his days
+                    await asyncio.to_thread(inside.reflect_now)
                 elif not vitals.is_asleep(body, now) and now >= body.get("next_wake", 0):
                     await asyncio.to_thread(brain.take_turn)
         except Exception:
@@ -110,6 +112,7 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 app.include_router(welcome.router)  # /: the welcome page that introduces Gino to everyone
 app.include_router(timeline.router)  # /timeline: Gino's story so far, from gino/timeline.json
 app.include_router(roadmap.router)  # /roadmap: what's coming next for Gino, from gino/roadmap.json
+app.include_router(inside.router)  # /mind: inside Gino's head, filtered like his website
 app.include_router(public.router)  # Gino's public website at /blog: no password, only what he chose to publish
 app.include_router(shop.router)  # /blog/shop: Gino's drawings for sale; payments happen on Stripe's own checkout
 app.include_router(artstyle.router)  # /blog/periods: his art periods, with drawings he already made public
