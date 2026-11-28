@@ -194,7 +194,7 @@ const overlay = opt.get('overlay') === '1';
 try {
   if (overlay) throw 'the server films the world itself';
   if (!state) throw new Error('no state yet');
-  const m = await import('/static/world.js');
+  const m = await import('/static/world.js?v=2');
   const low = opt.get('quality') === 'low';
   world = m.createWorld($('#world'), $('#tip'), { season: state.weather?.season, clock: gHour, petHint: '', autoQuality: !low, lite: low });
   if (low) world.setQuality('low'); else if (opt.get('quality') === 'high') world.setQuality('high');
