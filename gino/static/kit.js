@@ -562,10 +562,21 @@ export function buildGino() {
     n.set(x > 0 ? sq(x, 0.72) * 0.66 : x * 0.42, sq(y, 0.82) * 0.31 * (1 - 0.14 * f) - 0.05 * f + 0.02, sq(z, 0.85) * 0.3 * (1 - 0.24 * f * f));
     return 1 - 0.22 * Math.max(0, (x - 0.55) / 0.45) + (y < -0.3 ? 0.14 : 0); }, 40, 28);
   furShells(meshOf(head, headG, F(shade(fur, -0.05)), [1, 1, 1], [0.06, 0, 0]), fur, 0.03, 10);
-  part(head, 'smooth', '#3a281a', [0.09, 0.12, 0.2], [0.715, 0.09, 0], null, { flatShading: false, roughness: 0.35 });                        // nose pad
-  for (const s of [-1, 1]) part(head, 'smooth', '#1c120b', [0.035, 0.04, 0.05], [0.752, 0.105, s * 0.055], null, sm);
-  part(head, 'box', '#2a1b10', [0.02, 0.07, 0.015], [0.752, 0.0, 0]); for (const s of [-1, 1]) part(head, 'box', '#2a1b10', [0.02, 0.016, 0.1], [0.745, -0.035, s * 0.045], [-s * 0.3, 0, 0]);                                  // mouth line
-  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) part(head, 'smooth', '#2a1b10', [0.016, 0.016, 0.016], [0.6 - i * 0.05, 0.0 - i * 0.025, s * 0.2], null, sm);   // whisker dots
+  // nose, mouth and whiskers are placed ON the snout's actual surface (found with a ray), so they never float
+  // in front of it when he's seen from the side
+  const probe = new THREE.Mesh(headG); probe.position.x = 0.06; probe.updateMatrixWorld();
+  const ray = new THREE.Raycaster(), surf = (from, dir) => { ray.set(from, dir); const h = ray.intersectObject(probe)[0]; return h ? h.point : from; };
+  const front = (y, z) => surf(new THREE.Vector3(2, y, z), new THREE.Vector3(-1, 0, 0)).x;
+  const side = (x, y, s) => surf(new THREE.Vector3(x, y, s * 2), new THREE.Vector3(0, 0, -s)).z;
+  const nose = new THREE.Group(); nose.position.set(front(0.09, 0) - 0.012, 0.09, 0); nose.rotation.z = 0.42; head.add(nose);                      // tilted to follow the snout
+  part(nose, 'smooth', '#3a281a', [0.075, 0.12, 0.2], [0, 0, 0], null, { flatShading: false, roughness: 0.35 });                                         // nose pad
+  for (const s of [-1, 1]) part(nose, 'smooth', '#1c120b', [0.03, 0.036, 0.048], [0.03, 0.006, s * 0.048], [0, s * 0.35, 0], sm);                          // nostrils
+  part(head, 'box', '#2a1b10', [0.02, 0.07, 0.015], [front(0.0, 0) + 0.008, 0.0, 0]);                                                                        // mouth line
+  for (const s of [-1, 1]) part(head, 'box', '#2a1b10', [0.02, 0.016, 0.1], [front(-0.035, s * 0.045) + 0.004, -0.035, s * 0.045], [-s * 0.3, 0, 0]);
+  const mouth = new THREE.Group(); mouth.position.set(front(-0.06, 0) - 0.01, -0.06, 0); mouth.scale.y = 0.0001; mouth.visible = false; head.add(mouth);   // opens wide for a yawn
+  part(mouth, 'smooth', '#3a1410', [0.06, 1, 0.13], [0, -0.45, 0], null, sm); part(mouth, 'smooth', '#d9707a', [0.05, 0.45, 0.09], [0.004, -0.62, 0], null, sm);
+  for (const s of [-1, 1]) part(mouth, 'box', '#f4efe2', [0.02, 0.22, 0.022], [0.012, -0.12, s * 0.014]);                                                  // his two big front teeth
+  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) { const x = 0.6 - i * 0.05, y = 0.0 - i * 0.025; part(head, 'smooth', '#2a1b10', [0.016, 0.016, 0.016], [x, y, side(x, y, s) + s * 0.006], null, sm); }   // whisker dots
   const ears = [], eyes = [];
   for (const s of [-1, 1]) {
     const ear = new THREE.Group(); ear.position.set(-0.17, 0.3, s * 0.21); head.add(ear);
@@ -592,7 +603,7 @@ export function buildGino() {
   for (let i = 0; i < 6; i++) { const s = textSprite('❤️', 80, '#e0445c'); s.visible = false; g.add(s); hearts.push(s); }
   const emote = textSprite('', 84); emote.scale.setScalar(0.62); emote.position.y = 2.15; g.add(emote);
   g.traverse(n => { n.userData.isGino = true; });
-  g.userData = { body, head, legs, ears, eyes, zs, hearts, emote, orange, isGino: true };
+  g.userData = { body, head, legs, ears, eyes, mouth, zs, hearts, emote, orange, isGino: true };
   // swaps in the sculpted model once it has loaded; realReady settles within a minute either way (it can still arrive later)
   g.userData.realReady = env.oldGino ? Promise.resolve(false) : Promise.race([realGino(g), new Promise(res => setTimeout(() => res(false), 60000))]);
   return g;
