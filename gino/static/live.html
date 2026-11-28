@@ -319,7 +319,7 @@ try {
   const m = await import('/static/world.js?v=2');
   let follow = true;
   world = m.createWorld($('#world'), $('#tip'), {
-    season: state.weather?.season, clock: gHour, petHint: '',
+    season: state.weather?.season, look: new URLSearchParams(location.search).get('look') || state.weather?.look, clock: gHour, petHint: '',
     onFollow: v => { follow = v; $('#followBtn').textContent = v ? 'Free camera' : 'Follow Gino'; },
     onPiece: p => openPiece(p),
     onItem: it => openKeepsake(it),

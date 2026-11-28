@@ -55,7 +55,7 @@ window.setupClip = async (j) => {
   for (const s of j.shots) if (s.art && !art[s.art]) art[s.art] = await loadImage(s.art);
   const { createWorld } = await import('/static/world.js?v=2');
   w = createWorld(box, document.getElementById('tip'), {
-    key: '', season: j.state.weather?.season, autoQuality: false, lite: true, film: j.film || null,
+    key: '', season: j.state.weather?.season, look: j.state.weather?.look, autoQuality: false, lite: true, film: j.film || null,
     clock: () => hourNow, director: direct });
   // 'high': all his fur, all the grass and sharper shadows; smooth edges and colour come from the film effects
   w.setQuality(j.detail === 'high' ? 'high' : 'low');
