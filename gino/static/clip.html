@@ -53,7 +53,7 @@ window.setupClip = async (j) => {
   box.style.width = Math.round(W * rs) + 'px'; box.style.height = Math.round(H * rs) + 'px';
   await Promise.all([document.fonts.load('700 40px Fraunces'), document.fonts.load('700 40px Caveat')]).catch(() => {});
   for (const s of j.shots) if (s.art && !art[s.art]) art[s.art] = await loadImage(s.art);
-  const { createWorld } = await import('/static/world.js');
+  const { createWorld } = await import('/static/world.js?v=2');
   w = createWorld(box, document.getElementById('tip'), {
     key: '', season: j.state.weather?.season, autoQuality: false, lite: true, film: j.film || null,
     clock: () => hourNow, director: direct });
