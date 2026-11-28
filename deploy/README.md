@@ -310,14 +310,14 @@ about you. Videos show the web address of his welcome page at the end.
 gino clips on
 ```
 
-From then on he films **one video every evening** by himself (after 7pm), and he can also choose to film one
+From then on he films **two videos a day** by himself: one in the **morning** (from 7am) and one at **night** (from
+7pm), by Gino's own clock. Each takes the server about an hour, and he films them one at a time so the server never
+runs out of memory. He can also choose to film one
 when something nice happens. To see them, open your private page and click the **Videos 🎬** tab. Each video has:
 
 - **Download**: saves the video to your phone or computer, ready to post.
 - **Copy caption**: copies the words and hashtags to paste into TikTok.
 - **Make a new video**: films one now (pick the story, or let Gino pick).
-- **Make 3 at once**: films three videos in one go, each a different story. They're filmed one after another, so
-  the second and third show "waiting its turn" until the camera is free.
 
 Videos are filmed in **full HD** (1080 × 1920, the size TikTok likes best) with all of Gino's fur, sharp words, smooth
 edges and the same warm colours as his live page. If your server ever feels too slow, `gino clips quality basic`
@@ -331,7 +331,8 @@ press **+**, pick the video, paste the caption, and before posting turn on **AI-
 | --- | --- |
 | `gino clips` | Is the video camera on or off |
 | `gino clips test` | Film a test video now (add `day`, `night`, `dream`, `made`, `cute`, `tour` or `grow` to choose) |
-| `gino clips daily 2` | How many videos he films by himself each evening (0 to 3; 0 = only when you ask) |
+| `gino clips daily off` | Stop his morning and night videos (he only films when you ask). `daily on` turns them back on |
+| `gino clips times 7 19` | When his morning and night videos start (hours, 0 to 23: here 7am and 7pm) |
 | `gino clips quality hd` | Full HD videos with all the detail (the default). `basic` = the older, quicker look |
 | `gino clips off` | Stop filming. Videos already made stay on your private page |
 

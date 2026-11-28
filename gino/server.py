@@ -51,7 +51,7 @@ async def life_loop():
     last_shop, shop_told = 0.0, True
     while True:
         try:
-            await asyncio.to_thread(clips.maybe_auto)  # his daily video, filmed in the background
+            await asyncio.to_thread(clips.maybe_auto)  # his morning and night videos, filmed in the background
         except Exception:
             log.exception("Starting today's video failed; trying again later")
         try:
@@ -290,15 +290,11 @@ def clip_list():
 
 class ClipIn(BaseModel):
     kind: str = ""
-    count: int = 1  # 3: "make 3 at once", each a different story
 
 
 @app.post("/api/clips", dependencies=[Depends(auth)])
 def clip_make(c: ClipIn):
     try:
-        if c.count > 1:
-            ids = clips.make_set(c.count, by="dad", kind=c.kind)
-            return {"id": ids[0], "ids": ids}
         return {"id": clips.make(c.kind, by="dad")}
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from None
