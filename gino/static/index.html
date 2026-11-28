@@ -187,6 +187,7 @@ dialog::backdrop{background:rgba(40,28,16,.45)}
 .clip .wait{display:flex;align-items:center;justify-content:center;color:#f3e9da;text-align:center;padding:12px;box-sizing:border-box;font-size:14px}
 .clip .cap{font-size:13px;color:var(--muted);max-height:5.6em;overflow:auto;white-space:pre-wrap}
 .clip .row a,.clip .row button{font-size:13px;padding:5px 10px}
+#panel .clip button.del{color:#b4442c;margin-left:auto}
 .clip a.btn{text-decoration:none;color:#fff}
 .tt{border:2px dashed var(--edge);border-radius:12px;padding:10px;margin:10px 0;font-size:14px}
 #fallbackNote{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);padding:16px 18px;max-width:340px;display:none;z-index:1}
@@ -582,7 +583,8 @@ async function renderVideos(P) {
     const canSend = ready && tt.connected && !['sending', 'sent', 'posted'].includes(c.tiktok_status);
     return `<div class="clip">${top}<strong>${esc(c.title)}</strong><div class="muted" style="font-size:12px">${when(c.ts)} · ${c.made_by === 'dad' ? 'you asked' : c.made_by === 'gino' ? 'Gino filmed it' : c.made_by === 'morning' ? '☀️ his morning video' : c.made_by === 'night' ? '🌙 his night video' : 'his daily video'}${c.polished ? (c.polished_by === 'server' ? ' · ✨ polished on the server' : ' · ✨ polished in FilmCraft') : c.polishing ? ' · ✨ polishing…' : ''}</div>`
       + `<div class="cap">${esc(c.caption)}</div>`
-      + (ready ? `<div class="row"><a class="btn" href="${clipUrl(c.id, 1)}">⬇ Download</a><button class="ghost" data-copy="${c.id}">Copy caption</button>${canSend ? `<button data-tt="${c.id}">Send to TikTok</button>` : ''}</div>` : '') + sent + `</div>`;
+      + (ready ? `<div class="row"><a class="btn" href="${clipUrl(c.id, 1)}">⬇ Download</a><button class="ghost" data-copy="${c.id}">Copy caption</button>${canSend ? `<button data-tt="${c.id}">Send to TikTok</button>` : ''}</div>` : '') + sent
+      + (c.can_delete ? `<div class="row"><button class="ghost del" data-del="${c.id}" title="Delete this video for good">🗑 ${c.status === 'making' ? 'Cancel this video' : 'Delete'}</button></div>` : '') + `</div>`;
   };
   P.innerHTML = head + tbox + `<div class="clips">${d.clips.map(card).join('') || '<p class="muted">No videos yet.' + (d.on ? ' Make the first one!' : '') + '</p>'}</div>`;
   const byId = Object.fromEntries(d.clips.map(c => [c.id, c]));
@@ -594,6 +596,14 @@ async function renderVideos(P) {
   $('#ttOff') && ($('#ttOff').onclick = async () => { if (confirm('Disconnect TikTok?')) { await api('/api/tiktok/disconnect', {method: 'POST'}); renderVideos(P); } });
   P.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(byId[b.dataset.copy].caption); b.textContent = 'Copied ✓'; } catch { prompt('Copy this:', byId[b.dataset.copy].caption); } });
   P.querySelectorAll('[data-tt]').forEach(b => b.onclick = () => tiktokDialog(byId[b.dataset.tt], tt, P));
+  P.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const c = byId[b.dataset.del];
+    const ask = c.status === 'making' ? `Cancel "${c.title}"? Gino won't film it.`
+      : `Delete "${c.title}"? It will be gone for good from Gino's page (download it first if you want to keep it).`;
+    if (!confirm(ask)) return;
+    b.disabled = true;
+    try { const m = (await api(`/api/clips/${c.id}`, {method: 'DELETE'})).message; if (m !== 'Deleted.') alert(m); } catch (e) { alert(why(e)); }
+    renderVideos(P); });
   if (d.clips.some(c => c.status === 'making' || c.polishing || c.tiktok_status === 'sending')) clipTimer = setTimeout(() => tab === 'videos' && renderVideos(P), 8000);
 }
 async function tiktokDialog(c, tt, P) {
