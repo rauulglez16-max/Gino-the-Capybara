@@ -383,32 +383,82 @@ def test_gino_can_choose_every_kind_of_video():
         assert k in clips.KIND_NAMES
 
 
-def test_three_at_once_are_three_different_stories(monkeypatch):
-    for i in range(6):
-        tools.run("build", {"name": f"thing {i}", "emoji": "🌼", "x": i, "y": 1, "kind": "bench"}, body())
-    kinds = clips.pick_kinds(3)
-    assert len(kinds) == 3 and len(set(kinds)) == 3
-    assert clips.pick_kinds(3, "grow")[0] == "grow"  # dad's choice goes first
+def test_no_more_three_at_once():
+    assert not hasattr(clips, "make_set")
+    page = (clips.config.ROOT / "gino" / "static" / "index.html").read_text()
+    assert "clipMake3" not in page and "3 at once" not in page
 
 
-def test_three_at_once_are_filmed_one_after_another(monkeypatch):
+def _at(hour: int, minute: int = 0) -> float:
+    from gino.brain import local_now
+    return local_now().replace(hour=hour, minute=minute, second=0, microsecond=0).timestamp()
+
+
+def test_he_films_one_video_each_morning_and_one_each_night(monkeypatch):
     monkeypatch.setattr(clips, "available", lambda: True)
-    filmed = []
-    monkeypatch.setattr(clips, "_film", lambda cid, job: filmed.append(cid) or
-                        db.x("UPDATE clips SET status='ready' WHERE id=?", (cid,)))
-    monkeypatch.setattr(clips.threading, "Thread", lambda target, args, **k: type(
-        "T", (), {"start": lambda self: target(*args)})())
-    ids = clips.make_set(3)
-    assert len(ids) == 3 and filmed == ids  # in order, never two at once
-    rows = db.q("SELECT kind, made_by FROM clips ORDER BY id")
-    assert len({r["kind"] for r in rows}) == 3 and all(r["made_by"] == "dad" for r in rows)
+    monkeypatch.setattr(clips.config, "CLIPS_PER_DAY", 2)
+    monkeypatch.setattr(clips.config, "CLIP_MORNING_HOUR", 7)
+    monkeypatch.setattr(clips.config, "CLIP_HOUR", 19)
+    made = []
+
+    def fake_make(kind="", by="auto", caption=""):
+        made.append((by, kind))
+        return db.x("INSERT INTO clips(ts,kind,title,status,made_by) VALUES(?,?,?,?,?)",
+                    (time.time(), kind, "t", "ready", by))
+    monkeypatch.setattr(clips, "make", fake_make)
+    monkeypatch.setattr(clips.time, "time", lambda: _at(6, 30))
+    clips.maybe_auto(_at(6, 30))
+    assert made == []  # too early
+    for h in (7, 9, 13):
+        monkeypatch.setattr(clips.time, "time", lambda h=h: _at(h, 5))
+        clips.maybe_auto(_at(h, 5))
+    assert [by for by, _ in made] == ["morning"]  # only one in the morning
+    assert made[0][1] != "night"  # mornings get a daytime story
+    for h in (19, 21, 23):
+        monkeypatch.setattr(clips.time, "time", lambda h=h: _at(h, 5))
+        clips.maybe_auto(_at(h, 5))
+    assert [by for by, _ in made] == ["morning", "night"]
+    assert made[1][1] == "night"  # "While you sleep" at night (none filmed lately)
 
 
-def test_a_set_waits_while_gino_is_still_filming(monkeypatch):
+def test_the_next_night_tells_a_different_story(monkeypatch):
+    db.x("INSERT INTO clips(ts,kind,title,status,made_by) VALUES(?,?,?,?,?)", (_at(19, 10) - 86400 + 3600 * 5,
+                                                                            "night", "t", "ready", "night"))
+    db.x("INSERT INTO clips(ts,kind,title,status,made_by) VALUES(?,?,?,?,?)", (_at(7, 5), "day", "t", "ready",
+                                                                            "morning"))
+    kind = clips.slot_kind("night", _at(19, 10))
+    assert kind not in ("night", "day")
+
+
+def test_a_busy_camera_or_dads_video_doesnt_use_up_his_turn(monkeypatch):
+    monkeypatch.setattr(clips, "available", lambda: True)
+    monkeypatch.setattr(clips.config, "CLIPS_PER_DAY", 2)
+    db.x("INSERT INTO clips(ts,kind,title,status,made_by) VALUES(?,?,?,?,?)", (time.time(), "day", "t", "making", "dad"))
+    made = []
+    monkeypatch.setattr(clips, "make", lambda kind="", by="auto", caption="": made.append(by))
+    clips.maybe_auto(_at(8))
+    assert made == []  # dad's video is still filming: wait
+    db.x("UPDATE clips SET status='ready'")
+    assert clips.slot_due(_at(8)) == "morning"  # dad's video doesn't count as Gino's morning one
+
+
+def test_the_old_evening_video_counts_as_tonights(monkeypatch):
+    db.x("INSERT INTO clips(ts,kind,title,status,made_by) VALUES(?,?,?,?,?)", (_at(19, 1), "day", "t", "ready", "auto"))
+    assert clips.slot_due(_at(20)) == ""
+
+
+def test_daily_off_means_only_when_asked(monkeypatch):
+    monkeypatch.setattr(clips, "available", lambda: True)
+    monkeypatch.setattr(clips.config, "CLIPS_PER_DAY", 0)
+    made = []
+    monkeypatch.setattr(clips, "make", lambda kind="", by="auto", caption="": made.append(by))
+    clips.maybe_auto(_at(8))
+    assert made == []
+
+
+def test_two_at_once_are_refused(monkeypatch):
     monkeypatch.setattr(clips, "available", lambda: True)
     db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "day", "x", "making"))
-    with pytest.raises(RuntimeError):
-        clips.make_set(3)
     with pytest.raises(RuntimeError):
         clips.make("day")
 
@@ -460,7 +510,7 @@ def test_videos_cut_off_by_a_restart_are_filmed_again(monkeypatch, tmp_path):
                         db.x("UPDATE clips SET status='ready' WHERE id=?", (cid,)))
     monkeypatch.setattr(clips.threading, "Thread", lambda target, args=(), **k: type(
         "T", (), {"start": lambda self: None})())
-    ids = clips.make_set(3)  # the server restarts before any of them is filmed
+    ids = [clips._add(k, "dad")[0] for k in ("day", "cute", "night")]  # the server restarts before they're filmed
     old = db.q("SELECT id FROM clips WHERE job=''")  # (rows from before this change can't be filmed again)
     assert not old
     tired = db.x("INSERT INTO clips(ts,kind,title,status,job,tries) VALUES(?,?,?,?,?,?)",
@@ -485,8 +535,8 @@ def test_the_auto_update_waits_while_a_video_is_filming(monkeypatch, tmp_path):
                         db.x("UPDATE clips SET status='ready' WHERE id=?", (cid,)))
     monkeypatch.setattr(clips.threading, "Thread", lambda target, args, **k: type(
         "T", (), {"start": lambda self: target(*args)})())
-    clips.make_set(3)
-    assert marked == [True, True, True] and not (tmp_path / "filming").exists()
+    clips.make("day")
+    assert marked == [True] and not (tmp_path / "filming").exists()
     update = (clips.config.ROOT / "deploy" / "update.sh").read_text()
     assert "data/filming" in update
 
