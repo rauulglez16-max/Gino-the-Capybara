@@ -100,8 +100,11 @@ PUBLIC_URL = os.environ.get("GINO_PUBLIC_URL", "").strip()  # e.g. https://203-0
 
 # Short vertical videos of his life for TikTok (needs Playwright + Chromium + ffmpeg: `gino clips on`)
 CLIPS_ON = os.environ.get("GINO_CLIPS", "0") == "1"
-CLIPS_PER_DAY = max(0, int(_f("GINO_CLIPS_PER_DAY", 1)))  # he films this many by himself each evening (0 = only on request)
-CLIP_HOUR = max(0, min(23, int(_f("GINO_CLIP_HOUR", 19))))  # local hour after which the daily clip is filmed
+# His own videos: one every morning and one every night (GINO_CLIPS_PER_DAY=0 = only when someone asks; any other
+# number keeps the morning + night pair, so an older setting of 1, 2 or 3 still means "on")
+CLIPS_PER_DAY = max(0, int(_f("GINO_CLIPS_PER_DAY", 2)))
+CLIP_MORNING_HOUR = max(0, min(22, int(_f("GINO_CLIP_MORNING_HOUR", 7))))  # local hour the morning video starts
+CLIP_HOUR = max(CLIP_MORNING_HOUR + 1, min(23, int(_f("GINO_CLIP_HOUR", 19))))  # local hour the night video starts
 CLIP_FPS = max(23, min(30, int(_f("GINO_CLIP_FPS", 24))))  # TikTok wants 23 to 60 frames a second
 def _memory_gb() -> float:
     try:

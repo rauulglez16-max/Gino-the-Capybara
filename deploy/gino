@@ -290,7 +290,7 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
         [ -n "$domain" ] && [ -z "$(setting GINO_PUBLIC_URL)" ] && set_setting GINO_PUBLIC_URL "https://$domain"
         set_setting GINO_CLIPS 1
         systemctl restart gino
-        echo "🎬 Video camera installed! Gino films one video every evening, and you can make more any time:"
+        echo "🎬 Video camera installed! Gino films one video every morning and one every night, and you can make more any time:"
         echo "   open your private page, then the Videos tab. (Make a test one here with: gino clips test)"
         ;;
       test)
@@ -307,9 +307,21 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
         echo "The video camera is OFF. The videos he already made stay on your private page."
         ;;
       daily)
-        n="${3:-}"; case "$n" in 0|1|2|3) ;; *) echo "usage: gino clips daily 0|1|2|3   (videos he films by himself each evening)"; exit 1 ;; esac
-        set_setting GINO_CLIPS_PER_DAY "$n"; systemctl restart gino
-        echo "Gino will film $n video(s) by himself each evening."
+        case "${3:-}" in
+          on|1|2|3) set_setting GINO_CLIPS_PER_DAY 2; systemctl restart gino
+              echo "🎬 Gino will film one video every morning and one every night by himself." ;;
+          off|0) set_setting GINO_CLIPS_PER_DAY 0; systemctl restart gino
+              echo "Gino won't film videos by himself any more. You can still make one on the Videos tab." ;;
+          *) echo "usage: gino clips daily on|off   (his morning and night videos)"; exit 1 ;;
+        esac
+        ;;
+      times)
+        m="${3:-}"; n="${4:-}"
+        if ! [[ "$m" =~ ^[0-9]+$ && "$n" =~ ^[0-9]+$ ]] || [ "$m" -gt 22 ] || [ "$n" -gt 23 ] || [ "$m" -ge "$n" ]; then
+          echo "usage: gino clips times MORNING NIGHT   (hours 0 to 23, morning first, e.g. gino clips times 7 19)"; exit 1
+        fi
+        set_setting GINO_CLIP_MORNING_HOUR "$m"; set_setting GINO_CLIP_HOUR "$n"; systemctl restart gino
+        echo "🎬 His morning video starts at $m:00 and his night video at $n:00 (Gino's clock)."
         ;;
       quality)
         case "${3:-}" in
@@ -323,10 +335,10 @@ urllib.request.urlopen(r, timeout=15)' && echo "Sent a test message. Check your 
         esac
         ;;
       status)
-        [ "$(setting GINO_CLIPS)" = "1" ] && echo "🎬 The video camera is ON ($(setting GINO_CLIPS_PER_DAY | sed 's/^$/1/') a day by himself, $(setting GINO_CLIP_LOOK | sed 's/^$/auto/') quality)" \
+        [ "$(setting GINO_CLIPS)" = "1" ] && echo "🎬 The video camera is ON ($( [ "$(setting GINO_CLIPS_PER_DAY)" = "0" ] && echo "only when you ask" || echo "one at $(setting GINO_CLIP_MORNING_HOUR | sed 's/^$/7/'):00 and one at $(setting GINO_CLIP_HOUR | sed 's/^$/19/'):00 by himself"), $(setting GINO_CLIP_LOOK | sed 's/^$/auto/') quality)" \
           || echo "The video camera is OFF (turn on with: gino clips on)"
         ;;
-      *) echo "usage: gino clips [status|on|test|daily N|quality hd|basic|off]"; exit 1 ;;
+      *) echo "usage: gino clips [status|on|test|daily on|off|times M N|quality hd|basic|off]"; exit 1 ;;
     esac
     ;;
   polish)
@@ -645,7 +657,7 @@ gino telegram    connect him to your phone (gino telegram test / gino telegram o
 gino whatsapp    connect him to your WhatsApp (gino whatsapp test / webhook / template / off)
 gino social      Bluesky posting: gino social setup | on | off | status
 gino photos      photos in his posts: gino photos on | test | off
-gino clips       his videos: gino clips on | test | daily N | quality hd|basic | off
+gino clips       his videos: gino clips on | test | daily on|off | times 7 19 | quality hd|basic | off
 gino polish      who polishes his videos: gino polish server | pc | off (and: gino polish voice on/off)
 gino tiktok      send videos to TikTok: gino tiktok setup | mode | auto on/off | privacy | off
 gino shop        his shop: gino shop setup | on | off | sales | status

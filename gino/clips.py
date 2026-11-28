@@ -21,6 +21,7 @@ journals. Dad sees the finished clips on his private page and decides what to po
 Off by default (GINO_CLIPS=0). `gino clips on` installs what it needs on the server.
 """
 import base64
+import datetime as dt
 import json
 import logging
 import math
@@ -58,7 +59,7 @@ LOOKS = {
     "basic": {"detail": "low", "film": None, "jpeg": 0.88, "crf": 23, "preset": "veryfast"},
 }
 LOOK = LOOKS["basic" if config.CLIP_LOOK == "basic" else "hd"]
-SET_SIZE = 3  # "make 3 at once"
+SLOTS = ("morning", "night")  # his own videos: one each morning, one each night (made_by says which)
 
 progress: dict[int, str] = {}  # clip id -> "filming 120 of 480 frames", for dad's page
 _busy = threading.Lock()
@@ -204,17 +205,6 @@ def best_kind(now: float | None = None) -> str:
     return _choices(now)[0]
 
 
-def pick_kinds(n: int, first: str = "", now: float | None = None) -> list[str]:
-    """n different stories for a set of videos made together: dad's pick (or today's best) first, then the others
-    his home can fill, so the set isn't three of the same."""
-    order = ([first] if first in KINDS else []) + _choices(now, everyday_all=True)
-    out = []
-    for k in order:
-        if k not in out:
-            out.append(k)
-    return (out * n)[:n]  # a tiny home can't fill n different stories: repeat (each one still differs a little)
-
-
 def _choices(now: float | None = None, everyday_all: bool = False) -> list[str]:
     """The stories worth filming now, best first."""
     now = now or time.time()
@@ -233,7 +223,7 @@ def _choices(now: float | None = None, everyday_all: bool = False) -> list[str]:
     last = db.q("SELECT kind FROM clips WHERE status!='failed' ORDER BY id DESC LIMIT 1")
     fresh_ok = [k for k in ok if not last or k != last[0]["kind"]] or ok
     i = int(now // 86400) % len(fresh_ok)
-    out += fresh_ok[i:] + fresh_ok[:i]  # today's turn first, then the rest in order (for a set of videos)
+    out += fresh_ok[i:] + fresh_ok[:i]  # today's turn first, then the rest in order
     if everyday_all:
         out += [k for k in ok if k not in out]
     return out
@@ -623,29 +613,13 @@ def make(kind: str = "", by: str = "auto", caption: str = "") -> int:
     """Start filming a clip in the background. Returns its id straight away (status 'making')."""
     if not available():
         raise RuntimeError("the video camera isn't set up on this server")
-    with _starting:  # two presses at once (or dad and the evening video together) must not both get through
+    with _starting:  # two presses at once (or dad and the morning/night video together) must not both get through
         if db.q("SELECT 1 FROM clips WHERE status='making'"):
             raise RuntimeError("Gino is already filming a clip. One at a time!")
         kind = kind if kind in KINDS else best_kind()
         cid, job = _add(kind, by, caption)
     threading.Thread(target=_film_all, args=([(cid, job)],), daemon=True, name=f"clip-{cid}").start()
     return cid
-
-
-def make_set(n: int = SET_SIZE, by: str = "dad", kind: str = "") -> list[int]:
-    """Start filming n videos in one go, each a different story. They're filmed one after another in the
-    background (the small server can only film one at a time). Returns their ids straight away."""
-    if not available():
-        raise RuntimeError("the video camera isn't set up on this server")
-    with _starting:
-        if db.q("SELECT 1 FROM clips WHERE status='making'"):
-            raise RuntimeError("Gino is still filming. Wait until he's finished, then ask again!")
-        n = max(1, min(SET_SIZE, int(n)))
-        jobs = [_add(k, by) for k in pick_kinds(n, kind)]
-    for i, (cid, _) in enumerate(jobs[1:], 2):
-        progress[cid] = f"waiting its turn ({i} of {n})"
-    threading.Thread(target=_film_all, args=(jobs,), daemon=True, name=f"clips-{jobs[0][0]}").start()
-    return [cid for cid, _ in jobs]
 
 
 def _add(kind: str, by: str, caption: str = "") -> tuple[int, dict]:
@@ -955,22 +929,48 @@ def listing(limit: int = 30) -> list[dict]:
     return rows
 
 
+def slot_due(now: float | None = None) -> str:
+    """Which of his own videos is due now: 'morning' (from CLIP_MORNING_HOUR until the night one's hour, if he hasn't
+    filmed it yet today), 'night' (from CLIP_HOUR until midnight), or '' when neither is."""
+    from .brain import local_now, tz
+    local = dt.datetime.fromtimestamp(now, tz()) if now else local_now()
+    if local.hour < config.CLIP_MORNING_HOUR:
+        return ""
+    slot = "night" if local.hour >= config.CLIP_HOUR else "morning"
+    start = local.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    names = ("night", "auto") if slot == "night" else ("morning",)  # 'auto' = the old once-an-evening video
+    done = db.q(f"SELECT 1 FROM clips WHERE made_by IN ({','.join('?' * len(names))}) AND ts>=?", (*names, start))
+    return "" if done else slot
+
+
+def slot_kind(slot: str, now: float | None = None) -> str:
+    """The story for his morning or night video. Mornings get a daytime story (a fresh dream painting or something
+    new he made first). Nights get "While you sleep" every other day or so, and another story in between (not the
+    one he filmed that morning), so his videos don't all look the same."""
+    now = now or time.time()
+    choices = [k for k in _choices(now, everyday_all=True) if k != "night"] or ["day"]
+    if slot == "night":
+        recent = db.q("SELECT 1 FROM clips WHERE kind='night' AND status!='failed' AND ts>?", (now - 36 * 3600,))
+        if not recent:
+            return "night"
+        morning = db.q("SELECT kind FROM clips WHERE made_by='morning' AND ts>? ORDER BY id DESC LIMIT 1",
+                       (now - 18 * 3600,))
+        return next((k for k in choices if not morning or k != morning[0]["kind"]), choices[0])
+    return choices[0]
+
+
 def maybe_auto(now: float | None = None) -> None:
-    """Called from his heartbeat: once a day (in the evening) he films a clip of his own."""
+    """Called from his heartbeat: every morning and every night he films a video of his own (one at a time: if the
+    camera is busy, he tries again on the next heartbeat)."""
     if not available() or config.CLIPS_PER_DAY <= 0:
         return
-    from .brain import local_now
-    local = local_now()
-    if local.hour < config.CLIP_HOUR:
-        return
-    start = local.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    done = db.q("SELECT COUNT(*) AS n FROM clips WHERE made_by='auto' AND ts>=?", (start,))[0]["n"]
-    if done >= config.CLIPS_PER_DAY or db.q("SELECT 1 FROM clips WHERE status='making'"):
+    slot = slot_due(now)
+    if not slot or db.q("SELECT 1 FROM clips WHERE status='making'"):
         return
     try:
-        make(by="auto")
+        make(slot_kind(slot, now), by=slot)
     except RuntimeError as e:
-        log.info("No clip today: %s", e)
+        log.info("No %s video: %s", slot, e)
 
 
 def context_lines() -> str:

@@ -51,7 +51,7 @@ async def life_loop():
     last_shop, shop_told = 0.0, True
     while True:
         try:
-            await asyncio.to_thread(clips.maybe_auto)  # his daily video, filmed in the background
+            await asyncio.to_thread(clips.maybe_auto)  # his morning and night videos, filmed in the background
         except Exception:
             log.exception("Starting today's video failed; trying again later")
         try:
@@ -108,7 +108,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Gino", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
+class FreshStatic(StaticFiles):
+    """Static files, but browsers must check back before reusing the site's own code and model files, so phones
+    pick up a new Gino straight after an update instead of keeping an old copy for days. Unchanged files still
+    come back as a tiny "not modified"."""
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if path.endswith((".js", ".html", ".css", ".json", ".glb")):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", FreshStatic(directory=STATIC), name="static")
 app.include_router(welcome.router)  # /: the welcome page that introduces Gino to everyone
 app.include_router(timeline.router)  # /timeline: Gino's story so far, from gino/timeline.json
 app.include_router(roadmap.router)  # /roadmap: what's coming next for Gino, from gino/roadmap.json
@@ -279,15 +290,11 @@ def clip_list():
 
 class ClipIn(BaseModel):
     kind: str = ""
-    count: int = 1  # 3: "make 3 at once", each a different story
 
 
 @app.post("/api/clips", dependencies=[Depends(auth)])
 def clip_make(c: ClipIn):
     try:
-        if c.count > 1:
-            ids = clips.make_set(c.count, by="dad", kind=c.kind)
-            return {"id": ids[0], "ids": ids}
         return {"id": clips.make(c.kind, by="dad")}
     except RuntimeError as e:
         raise HTTPException(409, str(e)) from None
