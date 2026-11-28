@@ -196,7 +196,7 @@ try {
   if (!state) throw new Error('no state yet');
   const m = await import('/static/world.js?v=2');
   const low = opt.get('quality') === 'low';
-  world = m.createWorld($('#world'), $('#tip'), { season: state.weather?.season, clock: gHour, petHint: '', autoQuality: !low, lite: low });
+  world = m.createWorld($('#world'), $('#tip'), { season: state.weather?.season, look: state.weather?.look, clock: gHour, petHint: '', autoQuality: !low, lite: low });
   if (low) world.setQuality('low'); else if (opt.get('quality') === 'high') world.setQuality('high');
   world.update(state); world.setBoard?.((state.board || []).filter(p => p && p.title));
   world.setFollow(true); window.ginoWorld = world;
