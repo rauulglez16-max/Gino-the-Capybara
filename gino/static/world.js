@@ -8,8 +8,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
-import { U, env, B, mat, geos, part, rng, windy, buildItem, buildGino, textSprite, waterMat as sharedWater, ripples } from './kit.js';
-import { createMoods, feelingWords } from './moods.js';
+import { U, env, B, mat, geos, part, rng, windy, buildItem, buildGino, textSprite, waterMat as sharedWater, ripples } from './kit.js?v=3';   // ?v= makes phones that kept an old copy fetch the new one
+import { createMoods, feelingWords } from './moods.js?v=3';   // his feelings, shown in his body
 
 const CELL = 2, GW = 16, GH = 10, WATER_Y = -0.3;
 const LAKE = { x: 7, z: -29, r: 13 };

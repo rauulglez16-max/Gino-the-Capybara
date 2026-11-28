@@ -723,7 +723,7 @@ document.addEventListener('wheel', e => { if (e.target.closest?.('#world') && (e
 // 3D world. If three.js can't load (offline, no WebGL) the flat map stays.
 (async () => {
   try {
-    const m = await import('/static/world.js');
+    const m = await import('/static/world.js?v=3');
     while (!lastState) await new Promise(r => setTimeout(r, 100));
     let f = false;
     const label = { follow: () => f ? '🎥 Free camera' : '🎥 Follow Gino' };

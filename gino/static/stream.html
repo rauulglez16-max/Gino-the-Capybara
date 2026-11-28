@@ -194,7 +194,7 @@ const overlay = opt.get('overlay') === '1';
 try {
   if (overlay) throw 'the server films the world itself';
   if (!state) throw new Error('no state yet');
-  const m = await import('/static/world.js');
+  const m = await import('/static/world.js?v=3');
   const low = opt.get('quality') === 'low';
   world = m.createWorld($('#world'), $('#tip'), { season: state.weather?.season, clock: gHour, petHint: '', autoQuality: !low, lite: low });
   if (low) world.setQuality('low'); else if (opt.get('quality') === 'high') world.setQuality('high');
@@ -206,7 +206,7 @@ try {
 // sound: this page is only ever opened by a streaming program, so it plays straight away
 if (opt.get('sound') !== '0' && !overlay) {
   try {
-    const m = await import('/static/sound.js'); sound = m.createSound(); window.ginoSound = sound;
+    const m = await import('/static/sound.js?v=3'); sound = m.createSound(); window.ginoSound = sound;
     sound.setVolume(0.7); sound.setMusic(opt.get('music') !== '0'); sound.setNature(true);
     if (state) sound.update({ hour: gHour(), weather: state.weather?.kind || 'clear', asleep: state.asleep });
     await sound.setOn(true);

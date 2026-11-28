@@ -300,7 +300,7 @@ const savePrefs = () => { try { localStorage.setItem('ginoSound', JSON.stringify
 $('#vol').value = Math.round((prefs.vol ?? 0.6) * 100); $('#musicChk').checked = prefs.music ?? true; $('#natureChk').checked = prefs.nature ?? true;
 $('#soundBtn').onclick = async () => {
   if (!sound) {
-    const m = await import('/static/sound.js'); sound = m.createSound(); window.ginoSound = sound;
+    const m = await import('/static/sound.js?v=3'); sound = m.createSound(); window.ginoSound = sound;
     sound.setVolume($('#vol').value / 100); sound.setMusic($('#musicChk').checked); sound.setNature($('#natureChk').checked);
     if (state) sound.update({ hour: gHour(), weather: state.weather?.kind || 'clear', asleep: state.asleep });
   }
@@ -316,7 +316,7 @@ document.addEventListener('visibilitychange', () => { sound?.pause(document.hidd
 
 try {
   if (!state) throw new Error('no state yet');
-  const m = await import('/static/world.js');
+  const m = await import('/static/world.js?v=3');
   let follow = true;
   world = m.createWorld($('#world'), $('#tip'), {
     season: state.weather?.season, clock: gHour, petHint: '',

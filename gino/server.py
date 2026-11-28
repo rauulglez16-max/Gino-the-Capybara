@@ -108,7 +108,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Gino", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
+class FreshStatic(StaticFiles):
+    """Static files, but browsers must check back before reusing the site's own code and model files, so phones
+    pick up a new Gino straight after an update instead of keeping an old copy for days. Unchanged files still
+    come back as a tiny "not modified"."""
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if path.endswith((".js", ".html", ".css", ".json", ".glb")):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", FreshStatic(directory=STATIC), name="static")
 app.include_router(welcome.router)  # /: the welcome page that introduces Gino to everyone
 app.include_router(timeline.router)  # /timeline: Gino's story so far, from gino/timeline.json
 app.include_router(roadmap.router)  # /roadmap: what's coming next for Gino, from gino/roadmap.json
