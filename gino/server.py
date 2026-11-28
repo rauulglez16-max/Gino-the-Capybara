@@ -309,6 +309,14 @@ def clip_video(cid: int, download: int = 0, raw: int = 0):
                         content_disposition_type="attachment" if download else "inline")
 
 
+@app.delete("/api/clips/{cid}", dependencies=[Depends(auth)])
+def clip_delete(cid: int):
+    try:
+        return {"message": clips.delete(cid)}
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from None
+
+
 @app.get("/api/clips/polish", dependencies=[Depends(auth)])
 def clip_polish_queue():
     """Dad's PC asks which clips it should polish in FilmCraft."""

@@ -698,3 +698,71 @@ def test_a_small_server_films_in_the_lighter_look_unless_dad_chooses():
     assert config._clip_look("hd", 0.9, 1) == "hd" and config._clip_look("basic", 8, 4) == "basic"
     job = clips.lighter({"kind": "day", "width": 1080, "height": 1920, "detail": "fur"})
     assert (job["width"], job["height"], job["detail"], job["kind"]) == (720, 1280, "low", "day")
+
+
+# ---------------------------------------------------------------- dad deletes videos
+
+def test_dad_can_delete_a_video_and_its_files_go(monkeypatch, tmp_path):
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    keep, cid = ready_clip(tmp_path, "night"), ready_clip(tmp_path)
+    clips.save_polished(cid, b"\0\0\0\x18ftypisom" + b"\1" * 30_000)
+    (tmp_path / f"gino-{cid}-day-finished.mp4").write_bytes(b"x")  # a server finishing touch left behind
+    assert clips.delete(cid) == "Deleted."
+    assert not (tmp_path / "gino-x-day.mp4").exists() and not list(tmp_path.glob(f"gino-{cid}-*"))
+    assert [c["id"] for c in clips.listing()] == [keep]  # gone from his Videos tab
+    assert clips.path(cid) is None and clips.polish_queue() and clips.polish_queue()[0]["id"] == keep
+    with pytest.raises(RuntimeError):
+        clips.save_polished(cid, b"\0\0\0\x18ftypisom" + b"\1" * 30_000)  # his PC can't bring it back
+    with pytest.raises(RuntimeError, match="already gone"):
+        clips.delete(cid)
+
+
+def test_a_deleted_daily_video_still_counts_so_gino_doesnt_film_another(monkeypatch, tmp_path):
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    monkeypatch.setattr(clips, "available", lambda: True)
+    monkeypatch.setattr(config, "CLIPS_PER_DAY", 1)
+    monkeypatch.setattr(config, "CLIP_HOUR", 0)
+    made = []
+    monkeypatch.setattr(clips, "make", lambda **k: made.append(k))
+    cid = ready_clip(tmp_path, made_by="auto")
+    clips.delete(cid)
+    clips.maybe_auto()
+    assert made == []
+
+
+def test_a_video_waiting_its_turn_can_be_cancelled_but_not_the_one_filming(monkeypatch, tmp_path):
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    now = db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "day", "a", "making"))
+    later = db.x("INSERT INTO clips(ts,kind,title,status) VALUES(?,?,?,?)", (time.time(), "night", "b", "making"))
+    monkeypatch.setattr(clips, "_filming", now)
+    rows = {c["id"]: c for c in clips.listing()}
+    assert rows[now]["can_delete"] is False and rows[later]["can_delete"] is True
+    with pytest.raises(RuntimeError, match="filming this one"):
+        clips.delete(now)
+    clips.delete(later)
+    assert db.q("SELECT status FROM clips WHERE id=?", (later,))[0]["status"] == "failed"
+    filmed = []
+    monkeypatch.setattr(clips, "_film", lambda cid, job: filmed.append(cid))
+    clips._film_all([(later, {})])
+    assert filmed == []  # the camera skips it
+
+
+def test_a_video_on_tiktok_is_only_deleted_here(monkeypatch, tmp_path):
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    sending = ready_clip(tmp_path, tiktok_status="sending")
+    with pytest.raises(RuntimeError):
+        clips.delete(sending)
+    posted = ready_clip(tmp_path, "night", tiktok_status="posted")
+    assert "TikTok app" in clips.delete(posted)
+
+
+def test_only_dad_can_delete_videos(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from gino import server
+    monkeypatch.setattr(clips, "CLIPS_DIR", tmp_path)
+    monkeypatch.setattr(config, "PASSWORD", "pw")
+    cid = ready_clip(tmp_path)
+    c = TestClient(server.app)
+    assert c.delete(f"/api/clips/{cid}").status_code == 401
+    assert c.delete(f"/api/clips/{cid}", headers={"x-gino-key": "pw"}).json() == {"message": "Deleted."}
+    assert c.delete(f"/api/clips/{cid}", headers={"x-gino-key": "pw"}).status_code == 409
