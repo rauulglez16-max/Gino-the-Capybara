@@ -18,7 +18,7 @@ window.takePhoto = async ({ state, key, shot, maxBytes }) => {
   const t0 = performance.now(), mark = what => console.log(`photo: ${what} at ${Math.round(performance.now() - t0)} ms`);
   const { createWorld } = await import('/static/world.js?v=3');
   const w = createWorld(document.getElementById('world'), document.getElementById('tip'),
-    { key, season: state.weather?.season, autoQuality: false, lite: true });
+    { key, season: state.weather?.season, look: state.weather?.look, autoQuality: false, lite: true });
   w.setQuality('low');
   w.update(state); mark('world built');
   await w._debug.gino.userData.realReady; mark('gino loaded');

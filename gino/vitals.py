@@ -202,6 +202,18 @@ def season(now: dt.datetime) -> str:
     return s
 
 
+def look(now: dt.datetime) -> str:
+    """How his world is dressed: the season, or a special time of year (Christmas, cherry blossom)."""
+    md = (now.month, now.day)
+    if md >= (12, 1) or md <= (1, 6):
+        return "christmas"
+    s = season(now)
+    blossom = 4 if config.HEMISPHERE != "south" else 10
+    if now.month == blossom:
+        return "sakura"
+    return s
+
+
 def weather(now: dt.datetime) -> dict:
     """The sky over Gino's world. Changes every three hours, the same for everyone looking."""
     s = season(now)
@@ -212,4 +224,6 @@ def weather(now: dt.datetime) -> dict:
     if kind == "rain" and s == "winter":
         kind = "snow"
     words = {"clear": "clear skies", "cloudy": "cloudy", "rain": "raining", "snow": "snowing", "fog": "foggy"}[kind]
-    return {"kind": kind, "season": s, "text": f"{words}, {s}"}
+    lk = look(now)
+    extra = {"christmas": ", Christmas time", "sakura": ", the cherry trees are in blossom"}.get(lk, "")
+    return {"kind": kind, "season": s, "look": lk, "text": f"{words}, {s}{extra}"}

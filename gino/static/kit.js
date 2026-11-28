@@ -75,6 +75,7 @@ const LEAVES = {
   summer: ['#4f9a46', '#5da84f', '#468c44', '#6bb257'],
   autumn: ['#e08a2e', '#d4552f', '#e6b93a', '#b9502a', '#9aa83f'],
   winter: ['#dfe8ea', '#cfdcde', '#eef3f4'],
+  sakura: ['#ffc8da', '#ffb7cf', '#ffd6e4', '#fcaecb'],   // cherry blossom
 };
 export const leaf = r => { const p = LEAVES[env.season] || LEAVES.summer; return p[Math.floor(r() * p.length)]; };
 const pineMat = c => { const k = 'pine' + c; if (!mats.has(k)) mats.set(k, windy(new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 }), 'sway', 0.02)); return mats.get(k); };

@@ -736,7 +736,7 @@ document.addEventListener('wheel', e => { if (e.target.closest?.('#world') && (e
     let f = false;
     const label = { follow: () => f ? '🎥 Free camera' : '🎥 Follow Gino' };
     const w = m.createWorld($('#world'), $('#tip'), {
-      season: new URLSearchParams(location.search).get('season') || lastState.weather?.season, key: key(),
+      season: new URLSearchParams(location.search).get('season') || lastState.weather?.season, look: new URLSearchParams(location.search).get('look') || lastState.weather?.look, key: key(),
       onPet: () => api('/api/pet', {method: 'POST'}).then(refresh).catch(() => {}),
       onItem: it => showKeepsake(it),
       autoQuality: !new URLSearchParams(location.search).has('hq'),

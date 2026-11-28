@@ -8,6 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
+import { seasonDecor, LOOKS } from './seasons.js';
 import { U, env, B, mat, geos, part, rng, windy, buildItem, buildGino, textSprite, waterMat as sharedWater, ripples } from './kit.js?v=3';   // ?v= makes phones that kept an old copy fetch the new one
 import { createMoods, feelingWords } from './moods.js?v=3';   // his feelings, shown in his body
 
@@ -34,14 +35,17 @@ const SEASON = {
   spring: { grass: [0.29, 0.58, 0.37], blade: ['#5fae4a', '#79c25c'], flowers: 520, leaves: null },
   summer: { grass: [0.285, 0.58, 0.34], blade: ['#4f9a3f', '#63ad4c'], flowers: 320, leaves: null },
   autumn: { grass: [0.21, 0.5, 0.35], blade: ['#8f9a3f', '#b0933d', '#6f9440'], flowers: 90, leaves: ['#e08a2e', '#d4552f', '#e6b93a'] },
-  winter: { grass: [0.55, 0.12, 0.9], blade: ['#d9cfa8', '#c9c39c'], flowers: 0, leaves: null },
+  winter: { grass: [0.58, 0.14, 0.78], blade: ['#d9cfa8', '#c9c39c'], flowers: 0, leaves: null },
+  sakura: { grass: [0.29, 0.58, 0.37], blade: ['#5fae4a', '#79c25c'], flowers: 420, leaves: ['#ffc8da'] },   // cherry blossom time: pink trees, drifting petals
 };
 const EMOJI = { happy: '😊', joyful: '😄', excited: '🤩', content: '😌', proud: '😎', peaceful: '😌', loved: '🥰', playful: '😜', curious: '🤔', grateful: '🙏',
   inspired: '✨', calm: '😌', cozy: '☺️', sad: '😢', lonely: '🥺', bored: '😑', angry: '😠', anxious: '😰', frustrated: '😤', scared: '😨', grumpy: '😒',
   tired: '🥱', sleepy: '😴', hungry: '🤤', silly: '🤪', thoughtful: '🤔', nostalgic: '🥹', hopeful: '🌟', relaxed: '😌', determined: '💪', creative: '🎨', amazed: '😮' };
 
 export function createWorld(container, tooltip, opts = {}) {
-  env.season = SEASON[opts.season] ? opts.season : 'summer';
+  // the look of the calendar: a season, or a special time like Christmas or cherry blossom (decorations + Gino's outfit)
+  const look = LOOKS.includes(opts.look) ? opts.look : null;
+  env.season = look === 'sakura' ? 'sakura' : look === 'christmas' ? 'winter' : SEASON[opts.season] ? opts.season : 'summer';
   env.artKey = opts.key || '';
   const S = SEASON[env.season];
   const small = container.clientWidth < 600;
@@ -303,6 +307,7 @@ export function createWorld(container, tooltip, opts = {}) {
   const G = gino.userData;
   const moods = createMoods(gino, { onCue: c => opts.onCue?.(c) });   // his feelings, shown in his body (moods.js)
   const itemsGroup = new THREE.Group(); scene.add(itemsGroup);
+  const decor = look ? seasonDecor({ scene, gino, look, lite: env.lite, ground: groundY, cellX, cellZ, GW, GH }) : null;
   const itemObjs = new Map(); let ponds = [];
   let state = { pos: [7, 5], asleep: false, activity: '', habitat: [] }, placed = false;
   const target = new THREE.Vector3(), anchor = new THREE.Vector3();
@@ -618,6 +623,7 @@ export function createWorld(container, tooltip, opts = {}) {
     }
     for (const [id, o] of itemObjs) if (!seen.has(id)) { dropCarry(o, false); itemsGroup.remove(o); dispose(o); itemObjs.delete(id); }
     ponds = [...itemObjs.values()].filter(o => o.userData.kind === 'pond');
+    decor?.place(s.habitat, ponds);
     regrass();
     hangArt();
     anchor.set(cellX(s.pos[0]) + 1.0, 0, cellZ(s.pos[1]) + 1.0);
@@ -666,7 +672,8 @@ export function createWorld(container, tooltip, opts = {}) {
   const v3 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   let snapshot = null, quality = small ? 'low' : 'high', slow = 0, frames = 0;
   const furLayers = () => gino.traverse(n => { if (n.userData.shell) n.visible = quality === 'high' || n.userData.shell % 2 === 0; });   // half the fur layers on slow devices
-  G.onReal = furLayers;   // the sculpted model's fur arrives a moment later
+  G.onReal = () => { furLayers(); decor?.dress(); };   // the sculpted model's fur (and seasonal outfit) arrive a moment later
+  if (G.real) G.onReal();
   function setQuality(q) {
     quality = q; const hi = q === 'high';
     furLayers();
@@ -679,6 +686,7 @@ export function createWorld(container, tooltip, opts = {}) {
     const now = new Date();
     const hour = timeMode === 'day' ? 12.5 : timeMode === 'sunset' ? 17.75 : timeMode === 'night' ? 23 : opts.clock ? opts.clock() : now.getHours() + now.getMinutes() / 60;
     const day = applySky(hour, dt);
+    decor?.tick(t, day);
 
     // camera: fly in once, then idle orbit / follow / focus
     if (intro < 1) { intro = Math.min(1, intro + dt / 4.5); const k = 1 - Math.pow(1 - intro, 3); camera.position.lerpVectors(v3.set(-70, 60, 95), HOME, k); if (intro >= 1) idleAt = performance.now() + 12000; }
@@ -783,7 +791,7 @@ export function createWorld(container, tooltip, opts = {}) {
     if (rain.visible) { for (let i = 0; i < RN; i++) { const y = 40 - ((rainSeed[i * 3 + 1] + t * 34) % 40), x = cx + rainSeed[i * 3], z = cz + rainSeed[i * 3 + 2]; rainPos.set([x, y, z, x + 0.12, y + 0.9, z], i * 6); } rainGeo.attributes.position.needsUpdate = true; }
     const leafy = !!S.leaves && W.rain < 0.3, fl = Math.max(W.snow, leafy ? 0.5 : 0);
     flakes.visible = fl > 0.02; flakes.material.opacity = Math.min(1, fl * 1.2);
-    if (flakes.visible) { const snow = W.snow > 0.3; flakes.material.color.set(snow ? '#ffffff' : '#e08a2e'); flakes.material.size = snow ? 0.22 : 0.3; const cnt = snow ? FN : 140;
+    if (flakes.visible) { const snow = W.snow > 0.3; flakes.material.color.set(snow ? '#ffffff' : S.leaves?.[0] || '#e08a2e'); flakes.material.size = snow ? 0.22 : 0.3; const cnt = snow ? FN : 140;
       for (let i = 0; i < FN; i++) { const s = flakeSeed[i * 4 + 3]; const y = i < cnt ? 30 - ((flakeSeed[i * 4 + 1] + t * (snow ? 2.6 : 1.5)) % 30) : -50; flakePos.set([cx + flakeSeed[i * 4] + Math.sin(t * 0.8 + s) * 1.5, y, cz + flakeSeed[i * 4 + 2] + Math.cos(t * 0.6 + s) * 1.5], i * 3); } flakeGeo.attributes.position.needsUpdate = true; }
 
     opts.director?.(t, dt);   // the clip maker (static/clip.html) steers the camera itself, shot by shot
