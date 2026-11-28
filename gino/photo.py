@@ -67,7 +67,7 @@ def take(shot: str = "selfie", state: dict | None = None) -> bytes:
     if not available():
         raise RuntimeError("the camera isn't set up on this server")
     job = json.dumps({"state": state or scene_state(), "shot": "wide" if shot == "wide" else "selfie"})
-    # Never wait long for the camera: a video (or three, with "make 3 at once") can keep it busy for hours, and the
+    # Never wait long for the camera: a video can keep it busy for an hour or more, and the
     # one waiting here is Gino's own turn. Stuck here, his whole mind froze: no replies to dad, no turns, no ticks.
     if not _lock.acquire(timeout=WAIT_FOR_CAMERA):
         raise RuntimeError("your camera is busy filming a video right now")
